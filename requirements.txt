@@ -1,3 +1,14 @@
-pandas>=2.2.0
-openpyxl>=3.1.0
-tqdm>=4.66.0
+streamlit>=1.30.0
+langchain>=0.1.0
+langchain-openai>=0.0.5
+langchain-core>=0.1.0
+openai>=1.10.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+
+# RAG 평가용 라이브러리
+ragas>=0.1.0
+datasets>=2.14.0
+tqdm>=4.65.0
+colorama>=0.4.6
+pandas>=2.0.0
