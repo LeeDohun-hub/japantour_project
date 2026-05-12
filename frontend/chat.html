@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0a0f18" />
+  <title>AIチャット — 韓国旅行案内</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <a href="/" class="nav-back">← ホームに戻る</a>
+      <div class="brand">
+        <span class="brand-badge">Korea · Japan</span>
+        <h1>AIチャット</h1>
+        <p class="tagline">韓国旅行の質問はこちら。日本語・한국어でどうぞ。</p>
+      </div>
+      <label class="field">
+        <span>応答言語 / 응답 언어</span>
+        <select id="replyLanguage" aria-label="応答言語">
+          <option value="日本語" selected>日本語</option>
+          <option value="한국어">한국어</option>
+        </select>
+      </label>
+      <p id="healthStatus" class="muted small">API: …</p>
+      <button type="button" id="btnReset" class="btn secondary">会話をリセット</button>
+    </aside>
+    <main class="main">
+      <header class="main-header">
+        <h2>チャット</h2>
+        <p class="muted small">観光・交通・グルメ・マナーなど、お気軽にどうぞ。</p>
+      </header>
+      <div id="chatLog" class="chat-log" aria-live="polite"></div>
+      <form id="chatForm" class="composer">
+        <textarea
+          id="messageInput"
+          rows="2"
+          maxlength="8000"
+          placeholder="例：ソウルで初めての観光、おすすめコースは？"
+          required
+          aria-label="メッセージ"
+        ></textarea>
+        <button type="submit" class="btn primary" id="btnSend">送信</button>
+      </form>
+    </main>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>
