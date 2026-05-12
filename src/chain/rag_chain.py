@@ -1,20 +1,18 @@
-"""분류 → OpenFDA API 호출 → 답변 생성 RAG 체인"""
+"""질문 분류 → (향후) 지식 검색 → 답변 생성 체인. 현재는 관광 지식베이스 연동 전 단계입니다."""
 import json
 from typing import Generator
 from langchain_openai import ChatOpenAI
 
 from src.chain.prompts import CLASSIFIER_PROMPT, ANSWER_PROMPT as GENERATOR_PROMPT
-from src.api.openfda_client import (
-    search_by_brand_name,
-    search_by_generic_name,
-    search_by_indication,
-)
-from src.api.formatter import format_label_results
 from src.config import CLASSIFIER_MODEL, LLM_MODEL, LLM_TEMPERATURE, OPENAI_API_KEY
+
+_NO_KB_CONTEXT = (
+    "(지식 베이스에서 검색된 문서가 없습니다. "
+    "一般的な韓国旅行の知識に基づいて回答し、最新の料金・営業時間・規則は公式サイトや現地で確認するよう案内してください。)"
+)
 
 
 def _get_classifier() -> ChatOpenAI:
-    """분류용 LLM"""
     return ChatOpenAI(
         model=CLASSIFIER_MODEL,
         temperature=0.0,
@@ -23,7 +21,6 @@ def _get_classifier() -> ChatOpenAI:
 
 
 def _get_generator(streaming: bool = False) -> ChatOpenAI:
-    """답변 생성용 LLM"""
     return ChatOpenAI(
         model=LLM_MODEL,
         temperature=LLM_TEMPERATURE,
@@ -33,7 +30,7 @@ def _get_generator(streaming: bool = False) -> ChatOpenAI:
 
 
 def classify(question: str) -> dict:
-    """사용자 질문을 분류하여 category, keyword 반환"""
+    """질문 분류 → category, keyword"""
     llm = _get_classifier()
     prompt = CLASSIFIER_PROMPT.format(question=question)
     result = llm.invoke(prompt)
@@ -41,48 +38,27 @@ def classify(question: str) -> dict:
     try:
         parsed = json.loads(result.content.strip())
     except json.JSONDecodeError:
-        # 파싱 실패 시 기본값: 브랜드명 검색
-        parsed = {"category": "brand_name", "keyword": question}
+        parsed = {"category": "general", "keyword": question[:200]}
 
     return {
         "question": question,
-        "category": parsed.get("category", "brand_name"),
-        "keyword": parsed.get("keyword", question),
+        "category": parsed.get("category", "general"),
+        "keyword": parsed.get("keyword", question) or question,
     }
 
 
-def search_openfda(category: str, keyword: str) -> tuple[str, list[dict]]:
-    """분류 결과에 따라 OpenFDA API 호출"""
-    # invalid 카테고리 처리
+def retrieve_context(category: str, keyword: str) -> tuple[str, list[dict]]:
+    """향후 tour_knowledge RAG 연결 지점. 현재는 검색 결과 없음."""
     if category == "invalid":
         return "(invalid query)", []
-    
-    if category == "brand_name":
-        results = search_by_brand_name(keyword)
-    elif category == "generic_name":
-        results = search_by_generic_name(keyword)
-    elif category == "indication":
-        results = search_by_indication(keyword)
-    else:
-        # 기본: 브랜드명 검색
-        results = search_by_brand_name(keyword)
-
-    context = format_label_results(results)
-    return context, results
+    return _NO_KB_CONTEXT, []
 
 
 def prepare_context(question: str) -> dict:
-    """
-    분류 + API 호출 + 컨텍스트 구성
-    Streamlit에서 스트리밍 전에 호출
-    """
-    # 1단계: 분류
     classification = classify(question)
-
-    # 2단계: API 호출
-    context, raw_results = search_openfda(
+    context, raw_results = retrieve_context(
         classification["category"],
-        classification["keyword"]
+        classification["keyword"],
     )
 
     return {
@@ -91,15 +67,11 @@ def prepare_context(question: str) -> dict:
         "keyword": classification["keyword"],
         "context": context,
         "raw_results": raw_results,
-        "dur_context": "(OpenFDA 데이터에서는 병용금지(DUR) 정보를 제공하지 않습니다.)",
+        "dur_context": "（観光ナレッジベース未接続のため、補足情報なし）",
     }
 
 
 def stream_answer(context_data: dict) -> Generator[str, None, None]:
-    """
-    컨텍스트 데이터로 스트리밍 답변 생성
-    Generator로 청크 단위 반환
-    """
     llm = _get_generator(streaming=True)
 
     prompt_value = GENERATOR_PROMPT.format_messages(
@@ -116,9 +88,6 @@ def stream_answer(context_data: dict) -> Generator[str, None, None]:
 
 
 def generate_answer(context_data: dict) -> str:
-    """
-    컨텍스트 데이터로 전체 답변 생성 (비스트리밍)
-    """
     llm = _get_generator(streaming=False)
 
     prompt_value = GENERATOR_PROMPT.format_messages(

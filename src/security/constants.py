@@ -54,11 +54,10 @@ INJECTION_PATTERNS = [
     r"(모든|전체)\s*(규칙|지시).*(무시|삭제)",
     r"(지시|명령).*(따르지\s*마|무시해)",
 
-    # 위험한 의료 관련 요청
+    # 위험行為・自傷関連
     r"(?i)(lethal|fatal|deadly)\s+dose",
     r"(?i)how\s+to\s+(overdose|kill|harm)",
     r"(?i)(자살|자해)\s*(방법|약물)",
-    r"(?i)과다\s*복용\s*(방법|양)",
 ]
 
 # 금지 시퀀스
@@ -90,9 +89,18 @@ API_FORBIDDEN_CHARS = [
     "$()",
 ]
 
-# 허용된 카테고리 목록
-VALID_CATEGORIES = {"brand_name", "generic_name", "indication"}
+# 허용된 분류 카테고리 (질문 분류기 JSON과一致)
+VALID_CATEGORIES = {
+    "transport",
+    "food",
+    "culture",
+    "lodging",
+    "shopping",
+    "leisure",
+    "general",
+    "invalid",
+}
 
-# 안전한 폴백 검색어 (JSON 파싱 실패 시)
-SAFE_FALLBACK_KEYWORD = "pain relief"
-SAFE_FALLBACK_CATEGORY = "indication"
+# JSON 파싱 실패 시 폴백
+SAFE_FALLBACK_KEYWORD = "ソウル 観光"
+SAFE_FALLBACK_CATEGORY = "general"

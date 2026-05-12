@@ -1,6 +1,6 @@
 """
 RAG 시스템 평가 스크립트
-Ragas 라이브러리를 사용한 의약품 정보 Q&A 시스템 평가
+Ragas 라이브러리를 사용한 질의응답 품질 평가
 """
 import json
 import sys
@@ -217,7 +217,7 @@ def save_results(results: Dict, output_file: str):
 
 def main():
     """메인 실행 함수"""
-    print_header("🔬 FDA 의약품 정보 RAG 시스템 평가")
+    print_header("🛫 Japan Tour RAG 체인 평가 (Ragas)")
     
     # 환경 변수 검증
     try:

@@ -1,25 +1,23 @@
 """
-최적화된 RAG 체인
-OptimizationConfig를 적용한 RAG 파이프라인
+최적화 설정을 적용한 체인 (평가 스크립트 호환).
+현재는 관광 지식베이스 연동 전 단계입니다.
 """
 import json
 from typing import Generator, Dict
 from langchain_openai import ChatOpenAI
 
 from src.chain.prompts import CLASSIFIER_PROMPT, ANSWER_PROMPT as GENERATOR_PROMPT
-from src.api.openfda_client import (
-    search_by_brand_name,
-    search_by_generic_name,
-    search_by_indication,
-)
-from src.api.formatter import format_label_results
 from src.config import OPENAI_API_KEY
 from src.optimization_config import OptimizationConfig, BASELINE
 from src.optimizations import apply_optimizations
 
+_NO_KB_CONTEXT = (
+    "(지식 베이스에서 검색된 문서가 없습니다. "
+    "一般的な韓国旅行の知識に基づいて回答し、最新の料金・営業時間・規則は公式サイトや現地で確認するよう案内してください。)"
+)
+
 
 def _get_classifier(config: OptimizationConfig) -> ChatOpenAI:
-    """분류용 LLM (GPT-4 사용 여부에 따라)"""
     model = "gpt-4o-mini" if config.use_gpt4 else "gpt-4o-mini"
     return ChatOpenAI(
         model=model,
@@ -29,20 +27,16 @@ def _get_classifier(config: OptimizationConfig) -> ChatOpenAI:
 
 
 def _get_generator(config: OptimizationConfig, streaming: bool = False) -> ChatOpenAI:
-    """답변 생성용 LLM (GPT-4 사용 여부에 따라)"""
-    # GPT-4 사용 여부에 따라 모델 선택
     model = "gpt-4o" if config.use_gpt4 else "gpt-4o-mini"
-    
     return ChatOpenAI(
         model=model,
-        temperature=0.0,  # Faithfulness 향상을 위해 낮은 temperature
+        temperature=0.0,
         openai_api_key=OPENAI_API_KEY,
         streaming=streaming,
     )
 
 
 def classify(question: str, config: OptimizationConfig = BASELINE) -> dict:
-    """사용자 질문을 분류하여 category, keyword 반환"""
     llm = _get_classifier(config)
     prompt = CLASSIFIER_PROMPT.format(question=question)
     result = llm.invoke(prompt)
@@ -50,59 +44,33 @@ def classify(question: str, config: OptimizationConfig = BASELINE) -> dict:
     try:
         parsed = json.loads(result.content.strip())
     except json.JSONDecodeError:
-        parsed = {"category": "brand_name", "keyword": question}
+        parsed = {"category": "general", "keyword": question[:200]}
 
     return {
         "question": question,
-        "category": parsed.get("category", "brand_name"),
-        "keyword": parsed.get("keyword", question),
+        "category": parsed.get("category", "general"),
+        "keyword": parsed.get("keyword", question) or question,
     }
 
 
-def search_openfda(category: str, keyword: str, config: OptimizationConfig = BASELINE) -> tuple[str, list[dict]]:
-    """분류 결과에 따라 OpenFDA API 호출 및 최적화 적용"""
+def retrieve_context(
+    category: str,
+    keyword: str,
+    config: OptimizationConfig = BASELINE,
+) -> tuple[str, list[dict]]:
     if category == "invalid":
         return "(invalid query)", []
-    
-    # 두 단계 검색 설정
-    if config.two_stage_retrieval:
-        # 1단계: 광범위 검색을 위해 더 많은 결과 가져오기
-        # OpenFDAClient에서 SEARCH_LIMIT을 config.stage1_limit으로 변경해야 하지만
-        # 지금은 기본 검색 후 필터링하는 방식 사용
-        pass
-    
-    # 기본 검색
-    if category == "brand_name":
-        results = search_by_brand_name(keyword)
-    elif category == "generic_name":
-        results = search_by_generic_name(keyword)
-    elif category == "indication":
-        results = search_by_indication(keyword)
-    else:
-        results = search_by_brand_name(keyword)
-    
-    # 최적화 적용 (중복 제거, 재정렬 등)
-    optimized_results = apply_optimizations(results, config, keyword)
-    
-    # 컨텍스트 포맷팅
-    context = format_label_results(optimized_results)
-    
-    return context, optimized_results
+    raw: list[dict] = []
+    optimized = apply_optimizations(raw, config, keyword)
+    return _NO_KB_CONTEXT, optimized
 
 
 def prepare_context(question: str, config: OptimizationConfig = BASELINE) -> dict:
-    """
-    분류 + API 호출 + 컨텍스트 구성
-    config에 따라 최적화 적용
-    """
-    # 1단계: 분류
     classification = classify(question, config)
-
-    # 2단계: API 호출 및 최적화
-    context, raw_results = search_openfda(
+    context, raw_results = retrieve_context(
         classification["category"],
         classification["keyword"],
-        config
+        config,
     )
 
     return {
@@ -111,13 +79,12 @@ def prepare_context(question: str, config: OptimizationConfig = BASELINE) -> dic
         "keyword": classification["keyword"],
         "context": context,
         "raw_results": raw_results,
-        "dur_context": "(OpenFDA 데이터에서는 병용금지(DUR) 정보를 제공하지 않습니다.)",
-        "config_name": config.name,  # 설정 정보 포함
+        "dur_context": "（観光ナレッジベース未接続のため、補足情報なし）",
+        "config_name": config.name,
     }
 
 
 def stream_answer(context_data: dict, config: OptimizationConfig = BASELINE) -> Generator[str, None, None]:
-    """컨텍스트 데이터로 스트리밍 답변 생성"""
     llm = _get_generator(config, streaming=True)
 
     prompt_value = GENERATOR_PROMPT.format_messages(
@@ -134,7 +101,6 @@ def stream_answer(context_data: dict, config: OptimizationConfig = BASELINE) -> 
 
 
 def generate_answer(context_data: dict, config: OptimizationConfig = BASELINE) -> str:
-    """컨텍스트 데이터로 전체 답변 생성 (비스트리밍)"""
     llm = _get_generator(config, streaming=False)
 
     prompt_value = GENERATOR_PROMPT.format_messages(

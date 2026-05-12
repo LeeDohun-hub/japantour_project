@@ -1,1 +1,1 @@
-# DJAeun OpenFDA RAG Project
+# Japan Tour Project

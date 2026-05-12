@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>가계부 프로젝트 인프라 설명</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #181c27;
+    --surface2: #1e2335;
+    --border: #2a3050;
+    --accent: #4f8ef7;
+    --accent2: #f7c94f;
+    --accent3: #4ff7a8;
+    --accent4: #f74f7c;
+    --text: #e4e8f7;
+    --text-muted: #6b7499;
+    --docker: #2496ed;
+    --aws: #ff9900;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans KR', sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    min-height: 100vh;
+    padding: 40px 20px;
+  }
+
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  /* ─── HEADER ─── */
+  .header {
+    text-align: center;
+    padding: 60px 0 48px;
+    position: relative;
+  }
+  .header::after {
+    content: '';
+    display: block;
+    width: 80px;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent3));
+    margin: 24px auto 0;
+    border-radius: 2px;
+  }
+  .header .badge {
+    display: inline-block;
+    background: rgba(79,142,247,.15);
+    border: 1px solid rgba(79,142,247,.3);
+    color: var(--accent);
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 4px 14px;
+    border-radius: 20px;
+    margin-bottom: 16px;
+  }
+  h1 {
+    font-size: clamp(26px, 5vw, 42px);
+    font-weight: 900;
+    line-height: 1.2;
+    letter-spacing: -1px;
+  }
+  h1 span { color: var(--accent); }
+  .header p {
+    color: var(--text-muted);
+    margin-top: 12px;
+    font-size: 14px;
+  }
+
+  /* ─── TECH STACK CHIPS ─── */
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin: 28px 0 48px;
+  }
+  .chip {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-muted);
+  }
+  .chip.highlight { border-color: var(--accent); color: var(--accent); background: rgba(79,142,247,.08); }
+  .chip.docker-chip { border-color: var(--docker); color: var(--docker); background: rgba(36,150,237,.08); }
+  .chip.aws-chip { border-color: var(--aws); color: var(--aws); background: rgba(255,153,0,.08); }
+
+  /* ─── SECTION ─── */
+  .section {
+    margin-bottom: 48px;
+  }
+  .section-title {
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ─── CARD ─── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin-bottom: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 4px; height: 100%;
+    border-radius: 4px 0 0 4px;
+  }
+  .card.docker::before { background: var(--docker); }
+  .card.aws::before { background: var(--aws); }
+  .card.neutral::before { background: var(--accent3); }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .card-icon {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .card.docker .card-icon { background: rgba(36,150,237,.15); }
+  .card.aws .card-icon { background: rgba(255,153,0,.15); }
+  .card.neutral .card-icon { background: rgba(79,247,168,.12); }
+
+  .card-title {
+    font-size: 17px;
+    font-weight: 700;
+  }
+  .card-subtitle {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  /* ─── DIAGRAM ─── */
+  .diagram {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.8;
+    margin: 16px 0;
+    overflow-x: auto;
+  }
+  .diagram .comment { color: var(--text-muted); }
+  .diagram .box {
+    display: inline-block;
+    border: 1px solid;
+    border-radius: 6px;
+    padding: 2px 10px;
+  }
+  .diagram .box.d { border-color: var(--docker); color: var(--docker); }
+  .diagram .box.a { border-color: var(--aws); color: var(--aws); }
+  .diagram .box.g { border-color: var(--accent3); color: var(--accent3); }
+  .diagram .box.n { border-color: var(--accent); color: var(--accent); }
+  .diagram .arrow { color: var(--text-muted); }
+
+  /* ─── STEPS ─── */
+  .steps { display: flex; flex-direction: column; gap: 12px; }
+  .step {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+  }
+  .step-num {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: rgba(79,142,247,.15);
+    border: 1px solid rgba(79,142,247,.3);
+    color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .step-content strong { color: var(--text); font-weight: 600; }
+  .step-content p { color: var(--text-muted); font-size: 13.5px; margin-top: 2px; }
+
+  /* ─── TWO COL ─── */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media(max-width: 600px) { .two-col { grid-template-columns: 1fr; } }
+
+  /* ─── COMPARE TABLE ─── */
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    margin-top: 8px;
+  }
+  .compare-table th {
+    background: var(--surface2);
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .compare-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(42,48,80,.5);
+    vertical-align: top;
+  }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table td:first-child { color: var(--text-muted); font-size: 12px; }
+
+  /* ─── TAG ─── */
+  .tag {
+    display: inline-block;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-right: 4px;
+  }
+  .tag.docker { background: rgba(36,150,237,.15); color: var(--docker); }
+  .tag.aws { background: rgba(255,153,0,.15); color: var(--aws); }
+
+  /* ─── FLOW DIAGRAM ─── */
+  .flow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 20px;
+    background: var(--surface2);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    margin-top: 16px;
+    font-size: 13px;
+  }
+  .flow-box {
+    border-radius: 8px;
+    padding: 8px 14px;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    border: 1px solid;
+  }
+  .flow-box.local { border-color: var(--accent3); color: var(--accent3); background: rgba(79,247,168,.08); }
+  .flow-box.ecr { border-color: var(--aws); color: var(--aws); background: rgba(255,153,0,.08); }
+  .flow-box.ec2 { border-color: var(--aws); color: var(--aws); background: rgba(255,153,0,.12); }
+  .flow-box.rds { border-color: var(--accent4); color: var(--accent4); background: rgba(247,79,124,.08); }
+  .flow-box.s3  { border-color: var(--accent2); color: var(--accent2); background: rgba(247,201,79,.08); }
+  .flow-arrow { color: var(--text-muted); font-size: 18px; }
+
+  /* ─── HIGHLIGHT BOX ─── */
+  .highlight-box {
+    background: rgba(79,142,247,.07);
+    border: 1px solid rgba(79,142,247,.2);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-top: 16px;
+    font-size: 13.5px;
+    color: var(--text-muted);
+  }
+  .highlight-box strong { color: var(--accent); }
+
+  ul.clean { padding-left: 0; list-style: none; }
+  ul.clean li {
+    padding: 5px 0;
+    color: var(--text-muted);
+    font-size: 13.5px;
+    display: flex; align-items: flex-start; gap: 8px;
+  }
+  ul.clean li::before {
+    content: '→';
+    color: var(--accent3);
+    font-family: 'JetBrains Mono', monospace;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  ul.clean li strong { color: var(--text); font-weight: 600; }
+
+  .footer {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 48px 0 16px;
+    border-top: 1px solid var(--border);
+    margin-top: 48px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="badge">Project Overview</div>
+    <h1>가계부 프로젝트<br><span>인프라 구성</span></h1>
+    <p>2026.05.08 ~ 2026.05.31 · Docker & AWS 설명 자료</p>
+  </div>
+
+  <!-- CHIPS -->
+  <div class="chips">
+    <div class="chip highlight">React</div>
+    <div class="chip highlight">TypeScript</div>
+    <div class="chip highlight">Spring Boot</div>
+    <div class="chip highlight">MySQL</div>
+    <div class="chip docker-chip">🐳 Docker</div>
+    <div class="chip aws-chip">☁️ AWS EC2</div>
+    <div class="chip aws-chip">☁️ AWS RDS</div>
+    <div class="chip aws-chip">☁️ AWS S3</div>
+  </div>
+
+  <!-- SECTION 1: WHY DOCKER -->
+  <div class="section">
+    <div class="section-title">01 · Docker를 쓰는 이유</div>
+
+    <div class="card docker">
+      <div class="card-header">
+        <div class="card-icon">🐳</div>
+        <div>
+          <div class="card-title">Docker란?</div>
+          <div class="card-subtitle">내 앱을 "상자(컨테이너)"에 담아서 어디서든 똑같이 실행되게 해주는 도구</div>
+        </div>
+      </div>
+      <div class="highlight-box">
+        💬 한 줄 요약 : <strong>"내 PC에서 되는데 서버에서 안 돼요"</strong> 문제를 없애주는 도구입니다.
+      </div>
+      <div style="margin-top: 16px;">
+        <ul class="clean">
+          <li><strong>환경 통일</strong> — 팀원 PC, 서버 모두 동일한 환경으로 실행됨</li>
+          <li><strong>빠른 배포</strong> — 이미지 한 장만 있으면 어디서든 동일하게 띄움</li>
+          <li><strong>격리</strong> — Spring Boot / MySQL / React가 서로 독립적인 컨테이너로 돌아감</li>
+          <li><strong>docker-compose</strong> — 컨테이너 여러 개를 파일 하나로 한 번에 관리</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 이 프로젝트에서 Docker 사용 -->
+    <div class="card docker">
+      <div class="card-header">
+        <div class="card-icon">📦</div>
+        <div>
+          <div class="card-title">이 프로젝트에서 Docker 사용 구성</div>
+          <div class="card-subtitle">docker-compose.yml 한 파일로 3개 컨테이너를 한 번에 관리</div>
+        </div>
+      </div>
+      <div class="diagram">
+<span class="comment"># docker-compose 구성 이미지</span>
+
+┌─────────────────────────────────────────┐
+│           docker-compose up             │
+│                                         │
+│  ┌──────────┐  ┌──────────┐  ┌───────┐ │
+│  │<span class="box d"> frontend </span>│  │<span class="box d"> backend  </span>│  │<span class="box d">  mysql </span>│ │
+│  │  React   │  │Spring Boot│  │  DB   │ │
+│  │:3000     │  │:8080     │  │:3306  │ │
+│  └──────────┘  └──────────┘  └───────┘ │
+└─────────────────────────────────────────┘
+      </div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <strong>frontend 컨테이너</strong>
+            <p>React(TypeScript) 빌드 결과물 서빙 · 포트 3000</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <strong>backend 컨테이너</strong>
+            <p>Spring Boot JAR 실행 · JWT 인증 · REST API 제공 · 포트 8080</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <strong>mysql 컨테이너 (로컬 개발용)</strong>
+            <p>개발 환경에서만 사용. 실제 배포 시엔 AWS RDS로 교체</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 2: WHY AWS -->
+  <div class="section">
+    <div class="section-title">02 · AWS를 쓰는 이유</div>
+
+    <div class="card aws">
+      <div class="card-header">
+        <div class="card-icon">☁️</div>
+        <div>
+          <div class="card-title">AWS란?</div>
+          <div class="card-subtitle">Amazon이 제공하는 클라우드 서버 서비스 — 내 PC를 24시간 켜두지 않아도 됨</div>
+        </div>
+      </div>
+      <div class="highlight-box">
+        💬 한 줄 요약 : 내 앱을 <strong>인터넷 어디서나 접근 가능한 서버</strong>에 올려두는 것입니다.
+      </div>
+    </div>
+
+    <!-- 3개 서비스 -->
+    <div class="two-col">
+      <div class="card aws">
+        <div class="card-header">
+          <div class="card-icon">🖥️</div>
+          <div>
+            <div class="card-title">EC2</div>
+            <div class="card-subtitle">가상 서버 (리눅스 컴퓨터)</div>
+          </div>
+        </div>
+        <ul class="clean">
+          <li>Docker 컨테이너를 <strong>실제 서버에서 실행</strong></li>
+          <li>Spring Boot(API) + React(정적파일) 호스팅</li>
+          <li>프리티어로 <strong>무료</strong> 사용 가능</li>
+        </ul>
+      </div>
+
+      <div class="card aws">
+        <div class="card-header">
+          <div class="card-icon">🗄️</div>
+          <div>
+            <div class="card-title">RDS</div>
+            <div class="card-subtitle">관리형 MySQL 데이터베이스</div>
+          </div>
+        </div>
+        <ul class="clean">
+          <li>MySQL을 <strong>AWS가 관리</strong>해주는 서비스</li>
+          <li>백업·보안·패치 자동화</li>
+          <li>EC2에서 직접 접속하여 사용</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card aws">
+      <div class="card-header">
+        <div class="card-icon">🪣</div>
+        <div>
+          <div class="card-title">S3</div>
+          <div class="card-subtitle">파일 저장소 (영수증 이미지 저장용)</div>
+        </div>
+      </div>
+      <ul class="clean">
+        <li><strong>영수증 이미지</strong>를 서버 디스크 대신 S3에 업로드·저장</li>
+        <li>DB에는 파일 경로(URL)만 저장 → <code>receipt.file_path</code></li>
+        <li>용량 걱정 없고 URL만으로 이미지 접근 가능</li>
+      </ul>
+      <div class="diagram" style="margin-top:14px; font-size:12px;">
+사용자 업로드 → <span class="box a">S3 버킷</span> 저장
+                ↓ URL 반환
+DB receipt.file_path = "https://s3.ap-northeast-2.amazonaws.com/..."
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 3: 전체 흐름 -->
+  <div class="section">
+    <div class="section-title">03 · 전체 배포 흐름</div>
+
+    <div class="card neutral">
+      <div class="card-header">
+        <div class="card-icon">🔄</div>
+        <div>
+          <div class="card-title">코드 작성 → 배포 흐름</div>
+          <div class="card-subtitle">개발자 PC에서 AWS 서버까지</div>
+        </div>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <strong>로컬 개발</strong>
+            <p>VSCode에서 코드 작성 → docker-compose up으로 로컬에서 전체 앱 실행 및 테스트</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <strong>Git Push</strong>
+            <p>GitHub에 코드 푸시 (main 브랜치 기준 관리)</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <strong>Docker 이미지 빌드</strong>
+            <p>Dockerfile로 이미지 생성 → 필요 시 ECR(AWS 이미지 저장소)에 Push</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-content">
+            <strong>EC2 서버에 배포</strong>
+            <p>EC2 접속 → docker-compose up -d 실행 → 앱 가동</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-content">
+            <strong>실제 서비스</strong>
+            <p>EC2 IP 주소로 외부 접근 가능 · RDS는 EC2에서만 접근 · 영수증은 S3 저장</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 시각적 흐름 -->
+      <div class="flow">
+        <div class="flow-box local">💻 로컬<br/>docker-compose</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box local">📦 Git Push<br/>GitHub</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box ec2">🖥️ EC2<br/>Docker 실행</div>
+        <div class="flow-arrow">⇄</div>
+        <div class="flow-box rds">🗄️ RDS<br/>MySQL</div>
+        <div class="flow-arrow">⇄</div>
+        <div class="flow-box s3">🪣 S3<br/>영수증</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 4: 로컬 vs 배포 비교 -->
+  <div class="section">
+    <div class="section-title">04 · 로컬 vs 배포 환경 비교</div>
+
+    <div class="card neutral">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>구분</th>
+            <th><span class="tag docker">로컬 개발</span></th>
+            <th><span class="tag aws">AWS 배포</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>서버</td>
+            <td>내 PC (docker-compose)</td>
+            <td>EC2 인스턴스 (docker-compose)</td>
+          </tr>
+          <tr>
+            <td>DB</td>
+            <td>mysql 컨테이너</td>
+            <td>AWS RDS (MySQL)</td>
+          </tr>
+          <tr>
+            <td>파일 저장</td>
+            <td>로컬 볼륨</td>
+            <td>AWS S3 버킷</td>
+          </tr>
+          <tr>
+            <td>접근</td>
+            <td>localhost:3000</td>
+            <td>EC2 공인 IP / 도메인</td>
+          </tr>
+          <tr>
+            <td>차이점</td>
+            <td>개발·테스트용</td>
+            <td>24시간 운영 가능</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    가계부 프로젝트 · 2026.05.08 ~ 2026.05.31
+  </div>
+
+</div>
+</body>
+</html>

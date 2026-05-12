@@ -1,10 +1,8 @@
-"""LangSmith 추적 설정"""
+"""LangSmith 설정 헬퍼 (선택)"""
 import os
-from src.config import LANGSMITH_API_KEY
 
 
-def configure_langsmith():
-    """LangSmith 추적 활성화"""
+def setup_langsmith():
     os.environ["LANGCHAIN_TRACING_V2"] = "true"
-    os.environ["LANGCHAIN_API_KEY"] = LANGSMITH_API_KEY or ""
-    os.environ["LANGCHAIN_PROJECT"] = "openfda-drug-info-rag"
+    os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGSMITH_API_KEY", "")
+    os.environ["LANGCHAIN_PROJECT"] = os.getenv("LANGCHAIN_PROJECT", "japantour")

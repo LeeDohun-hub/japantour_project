@@ -6,14 +6,9 @@ load_dotenv()
 
 # API Keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENFDA_API_KEY = os.getenv("OPENFDA_API")
 LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY")
 
-# OpenFDA Configuration
-OPENFDA_BASE_URL = "https://api.fda.gov/drug"
-OPENFDA_LABEL_ENDPOINT = "/label.json"
-
-# Search Configuration
+# Search (향후 벡터/RAG 검색 시 사용)
 SEARCH_LIMIT = 20
 
 # LLM Configuration
@@ -37,7 +32,7 @@ def validate_env():
 
 validate_env()
 
-# LangSmith Tracing
+# LangSmith Tracing (선택)
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_API_KEY"] = LANGSMITH_API_KEY or ""
-os.environ["LANGCHAIN_PROJECT"] = "openfda-drug-info-rag"
+os.environ["LANGCHAIN_PROJECT"] = os.getenv("LANGCHAIN_PROJECT", "japantour")

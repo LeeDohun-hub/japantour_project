@@ -79,7 +79,7 @@ class InputValidator:
             if pattern.search(user_input):
                 return ValidationResult(
                     is_valid=False,
-                    error_message="의약품 관련 질문만 입력해주세요.",
+                    error_message="보안상 제한된 패턴이 감지되었습니다. 여행 질문으로 다시 입력해 주세요.",
                     error_code="INJECTION_DETECTED"
                 )
 
