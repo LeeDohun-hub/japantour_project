@@ -4,40 +4,383 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#0a0f18" />
-  <title>韓国旅行案内 — ホーム</title>
+  <title>韓国旅行プランナー</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
-<body class="page-home">
+<body class="page-wizard">
+
   <header class="top-nav">
-    <span class="top-nav-brand">🛫 Japan Tour</span>
-    <a href="/chat/" class="btn btn-sm primary">AIチャット</a>
+    <span class="top-nav-brand">🛫 Korea Travel Planner</span>
+    <div class="nav-right">
+      <span class="nav-user-label" id="navUserLabel"></span>
+      <a href="/chat/" class="btn btn-sm secondary nav-chat-shortcut">💬 AIチャット</a>
+    </div>
   </header>
-  <main class="home-main">
-    <div class="jt-hero home-hero">
-      <span class="jt-badge">Korea · Japan Guide</span>
-      <h1>韓国旅行案内</h1>
-      <p class="home-lead">
-        日本人観光客向けの韓国旅行サポート。AIチャットで観光・交通・グルメ・マナーを<br />
-        日本語・한국어で質問できます。
-      </p>
-      <div class="home-actions">
-        <a href="/chat/" class="btn primary home-cta">💬 AIチャットを始める</a>
-      </div>
+
+  <div class="wizard-container">
+    <div class="wizard-progress-bar">
+      <div class="wizard-progress-fill" id="wizFill"></div>
     </div>
-    <div class="home-grid">
-      <div class="jt-home-card">
-        <h3>AIチャット</h3>
-        <p>ソウル・釜山などエリア、空港アクセス、季節の服装までガイドがお手伝いします。</p>
-      </div>
-      <div class="jt-home-card">
-        <h3>日・韓対応</h3>
-        <p>応答言語を選べます。日本語モードでは回答の下に韓国語訳を表示します。</p>
-      </div>
-      <div class="jt-home-card">
-        <h3>API</h3>
-        <p>このデモは Django + OpenAI で動作します。`.env` に <code>OPENAI_API_KEY</code> を設定してください。</p>
-      </div>
+
+    <div class="wizard-steps-row" id="wizStepsRow"></div>
+
+    <div class="wizard-stage" id="wizStage">
+
+      <!-- ① ログイン -->
+      <section class="wiz-card" data-step="1">
+        <div class="wiz-card-inner">
+          <div class="wiz-hero">
+            <span class="wiz-badge">Korea · Japan Guide</span>
+            <h2>韓国旅行へようこそ</h2>
+            <p class="wiz-lead">ログインしてパーソナライズされた旅行プランを作成しましょう。<br>ゲストとしても続けられます。</p>
+          </div>
+
+          <div id="authSection">
+            <div class="oauth-buttons">
+              <a href="/api/auth/oauth/google/" class="oauth-btn google-btn">
+                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                Googleでログイン
+              </a>
+              <a href="/api/auth/oauth/line/" class="oauth-btn line-btn">
+                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#06C755" d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63.349 0 .631.285.631.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.07 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/></svg>
+                LINEでログイン
+              </a>
+            </div>
+
+            <div class="auth-divider"><span>または</span></div>
+
+            <form class="auth-inline-form" id="step1Form" novalidate>
+              <div class="auth-inline-fields">
+                <input type="text" id="s1Username" placeholder="ユーザー名" autocomplete="username" />
+                <input type="password" id="s1Password" placeholder="パスワード" autocomplete="current-password" />
+              </div>
+              <div class="auth-inline-btns">
+                <button type="submit" class="btn primary">ログイン</button>
+                <button type="button" class="btn wiz-btn-outline" id="s1BtnSignup">新規登録</button>
+              </div>
+              <p class="auth-error" id="s1Error"></p>
+            </form>
+
+            <div id="oauthErrorMsg" class="auth-error" style="display:none;margin-top:.5rem">
+              ログインに失敗しました。もう一度お試しください。
+            </div>
+          </div>
+
+          <div id="loggedInSection" style="display:none">
+            <div class="logged-in-card">
+              <span class="logged-in-avatar" id="s1Avatar"></span>
+              <div>
+                <p class="logged-in-name" id="s1Name"></p>
+                <p class="logged-in-sub">ログイン済み · プランを作成できます</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="wiz-card-footer">
+            <button type="button" class="btn-ghost" id="btnGuest">ゲストとして続ける →</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ② フライト -->
+      <section class="wiz-card" data-step="2">
+        <div class="wiz-card-inner">
+          <div class="wiz-step-header">
+            <span class="wiz-step-num">✈ フライト</span>
+            <h2>どこから、どこへ？</h2>
+            <p class="wiz-lead">AviationStack API連動予定 · 現在は参考情報として使用されます</p>
+          </div>
+
+          <div class="wiz-flight-card">
+            <div class="flight-route">
+              <div class="flight-endpoint">
+                <label>出発地</label>
+                <select id="flightFrom">
+                  <option value="NRT">成田国際空港 (NRT)</option>
+                  <option value="HND">羽田空港 (HND)</option>
+                  <option value="KIX">関西国際空港 (KIX)</option>
+                  <option value="FUK">福岡空港 (FUK)</option>
+                  <option value="NGO">中部国際空港 (NGO)</option>
+                  <option value="CTS">新千歳空港 (CTS)</option>
+                  <option value="OKA">那覇空港 (OKA)</option>
+                </select>
+              </div>
+              <div class="flight-arrow">→</div>
+              <div class="flight-endpoint">
+                <label>目的地</label>
+                <select id="flightTo">
+                  <option value="ICN">仁川国際空港 (ICN)</option>
+                  <option value="GMP">金浦国際空港 (GMP)</option>
+                  <option value="PUS">金海国際空港 (PUS)</option>
+                  <option value="CJU">済州国際空港 (CJU)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="flight-dates">
+              <div class="field-sm">
+                <label>出発日</label>
+                <input type="date" id="flightDepart" />
+              </div>
+              <div class="field-sm">
+                <label>帰国日</label>
+                <input type="date" id="flightReturn" />
+              </div>
+              <div class="field-sm">
+                <label>人数</label>
+                <div class="stepper" id="passengerStepper">
+                  <button type="button" class="step-btn" data-action="dec">−</button>
+                  <span class="step-val">1</span>
+                  <button type="button" class="step-btn" data-action="inc">+</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="aviation-notice">
+              <span class="notice-badge">準備中</span>
+              실제 항공권 검색은 AviationStack API 연동 후 제공됩니다
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ③ 宿泊 -->
+      <section class="wiz-card" data-step="3">
+        <div class="wiz-card-inner">
+          <div class="wiz-step-header">
+            <span class="wiz-step-num">🏨 숙소</span>
+            <h2>宿泊はどちらですか？</h2>
+          </div>
+          <div class="option-cards" id="accomOptions">
+            <button class="option-card" data-val="decided">
+              <span class="option-icon">✅</span>
+              <strong>予約済み</strong>
+              <small>住所・エリアを入力</small>
+            </button>
+            <button class="option-card" data-val="undecided">
+              <span class="option-icon">🔍</span>
+              <strong>まだ未定</strong>
+              <small>宿泊おすすめ予定</small>
+            </button>
+            <button class="option-card" data-val="friend">
+              <span class="option-icon">🏠</span>
+              <strong>友人・家族の家</strong>
+              <small>おおよそのエリアのみ</small>
+            </button>
+          </div>
+          <div id="accomDetailDecided" class="accom-detail" style="display:none">
+            <label>住所または地域名</label>
+            <input type="text" id="accomAddress" placeholder="例：ソウル特別市 江南区" />
+          </div>
+          <div id="accomDetailUndecided" class="accom-detail" style="display:none">
+            <p class="wiz-notice">📋 宿泊おすすめ機能は실装予定です。AIチャットでご相談ください。</p>
+          </div>
+          <div id="accomDetailFriend" class="accom-detail" style="display:none">
+            <label>おおよそのエリア</label>
+            <input type="text" id="accomRegion" placeholder="例：釜山・海雲台あたり" />
+          </div>
+        </div>
+      </section>
+
+      <!-- ④ 交通 -->
+      <section class="wiz-card" data-step="4">
+        <div class="wiz-card-inner">
+          <div class="wiz-step-header">
+            <span class="wiz-step-num">🚌 교통</span>
+            <h2>空港からの交通手段は？</h2>
+            <p class="wiz-lead">複数選択可</p>
+          </div>
+          <div class="chip-grid" id="transportChips">
+            <button class="chip" data-val="arex">🚆 空港鉄道（AREX）</button>
+            <button class="chip" data-val="taxi">🚕 タクシー / KakaoTaxi</button>
+            <button class="chip" data-val="bus">🚌 空港バス・リムジン</button>
+            <button class="chip" data-val="rental">🚗 レンタカー</button>
+          </div>
+          <p class="wiz-sub">リアルタイム料金・時刻は各サービスでご確認ください</p>
+        </div>
+      </section>
+
+      <!-- ⑤ 観光 -->
+      <section class="wiz-card" data-step="5">
+        <div class="wiz-card-inner">
+          <div class="wiz-step-header">
+            <span class="wiz-step-num">🗺 관광</span>
+            <h2>どこを観光したいですか？</h2>
+          </div>
+          <div class="wiz-section-label">エリア（複数選択可）</div>
+          <div class="chip-grid" id="regionChips">
+            <button class="chip" data-val="seoul">🏙 ソウル</button>
+            <button class="chip" data-val="gyeonggi">🌳 京畿道</button>
+            <button class="chip" data-val="incheon">✈ 仁川</button>
+            <button class="chip" data-val="gangwon">⛰ 江原道</button>
+            <button class="chip" data-val="chungcheong">🌾 忠清道</button>
+            <button class="chip" data-val="jeolla">🌊 全羅道</button>
+            <button class="chip" data-val="gyeongsang">🏯 慶尚道</button>
+            <button class="chip" data-val="jeju">🌺 済州島</button>
+          </div>
+          <div class="wiz-section-label" style="margin-top:1.5rem">やりたいこと（複数選択可）</div>
+          <div class="chip-grid" id="activityChips">
+            <button class="chip" data-val="food">🍜 グルメ</button>
+            <button class="chip" data-val="shopping">🛍 ショッピング</button>
+            <button class="chip" data-val="nightview">🌃 夜景</button>
+            <button class="chip" data-val="tradition">🏛 伝統文化</button>
+            <button class="chip" data-val="hallyu">🎵 韓流・K-pop</button>
+            <button class="chip" data-val="nature">🌿 自然</button>
+            <button class="chip" data-val="photo">📸 フォトスポット</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ⑥ 予算 -->
+      <section class="wiz-card" data-step="6">
+        <div class="wiz-card-inner">
+          <div class="wiz-step-header">
+            <span class="wiz-step-num">💰 예산</span>
+            <h2>予算はどのくらいですか？</h2>
+          </div>
+          <div class="budget-section">
+            <div class="field-sm">
+              <label>総予算 <span class="req">*</span></label>
+              <div class="budget-input-row">
+                <select id="budgetCurrency" class="currency-sel">
+                  <option value="JPY">¥ 円</option>
+                  <option value="KRW">₩ ウォン</option>
+                </select>
+                <input type="number" id="budgetTotal" placeholder="例：150000" min="0" />
+              </div>
+              <p class="field-error" id="budgetTotalError"></p>
+            </div>
+            <div class="field-sm">
+              <label>1日の予算 <span class="opt">任意</span></label>
+              <div class="budget-input-row">
+                <span class="currency-sym" id="dailyCurrencySym">¥</span>
+                <input type="number" id="budgetDaily" placeholder="例：30000" min="0" />
+              </div>
+            </div>
+          </div>
+          <div class="wiz-section-label" style="margin-top:1.25rem">重視したい費目 <span class="opt">任意</span></div>
+          <div class="chip-grid" id="budgetPriorityChips">
+            <button class="chip" data-val="transport">🚌 交通</button>
+            <button class="chip" data-val="stay">🏨 宿泊</button>
+            <button class="chip" data-val="food">🍜 食費</button>
+          </div>
+          <div class="wiz-section-label" style="margin-top:1.25rem">旅行スタイル <span class="opt">任意</span></div>
+          <div class="chip-grid" id="budgetStyleChips">
+            <button class="chip" data-val="budget">💡 コスパ重視</button>
+            <button class="chip" data-val="normal">⚖ バランス</button>
+            <button class="chip" data-val="premium">✨ プレミアム</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ⑦ 追加情報 -->
+      <section class="wiz-card" data-step="7">
+        <div class="wiz-card-inner">
+          <div class="wiz-step-header">
+            <span class="wiz-step-num">📝 추가정보</span>
+            <h2>あなたについて教えてください</h2>
+            <p class="wiz-lead">より良いプランのために活用します（すべて任意）</p>
+          </div>
+          <div class="add-grid">
+            <div class="add-group">
+              <div class="wiz-section-label">同行タイプ</div>
+              <div class="chip-grid" id="companionChips">
+                <button class="chip" data-val="solo">🧍 一人旅</button>
+                <button class="chip" data-val="couple">💑 カップル</button>
+                <button class="chip" data-val="friends">👫 友人</button>
+                <button class="chip" data-val="family">👨‍👩‍👧 ファミリー</button>
+                <button class="chip" data-val="parents">👴 親孝行</button>
+              </div>
+            </div>
+            <div class="add-group">
+              <div class="wiz-section-label">移動について</div>
+              <div class="chip-grid" id="mobilityChips">
+                <button class="chip" data-val="any">🚶 歩き多くてもOK</button>
+                <button class="chip" data-val="stairs">⚠ 階段不便</button>
+                <button class="chip" data-val="wheelchair">♿ ベビーカー・車椅子</button>
+              </div>
+            </div>
+            <div class="add-group">
+              <div class="wiz-section-label">食事制限</div>
+              <div class="chip-grid" id="foodRestrictionChips">
+                <button class="chip" data-val="spicy">🌶 辛いもの苦手</button>
+                <button class="chip" data-val="allergy">⚕ アレルギーあり</button>
+                <button class="chip" data-val="vegan">🥗 ベジタリアン</button>
+              </div>
+            </div>
+            <div class="add-group">
+              <div class="wiz-section-label">スケジュールの好み</div>
+              <div class="chip-grid" id="paceChips">
+                <button class="chip" data-val="packed">⚡ びっしり詰め込む</button>
+                <button class="chip" data-val="relaxed">☁ のんびり余裕</button>
+              </div>
+            </div>
+            <div class="add-group">
+              <div class="wiz-section-label">韓流の関心</div>
+              <div class="chip-grid" id="hallyuChips">
+                <button class="chip" data-val="drama">🎭 ドラマ</button>
+                <button class="chip" data-val="kpop">🎵 K-pop</button>
+                <button class="chip" data-val="cafe">☕ カフェ巡り</button>
+                <button class="chip" data-val="traditional">🏛 伝統文化</button>
+              </div>
+            </div>
+            <div class="add-group">
+              <div class="wiz-section-label">言語の希望</div>
+              <div class="chip-grid" id="languageChips">
+                <button class="chip" data-val="jp_first">🇯🇵 日本語案内優先</button>
+                <button class="chip" data-val="kr_ok">🇰🇷 韓国語メニューも挑戦</button>
+              </div>
+            </div>
+            <div class="add-group">
+              <div class="wiz-section-label">その他（性別・趣味・関心など）</div>
+              <textarea id="additionalNote" rows="2" placeholder="例：30代女性、カフェ好き、BTS好き..." class="wiz-textarea"></textarea>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ⑧ プラン出力 -->
+      <section class="wiz-card" data-step="8">
+        <div class="wiz-card-inner">
+          <div class="wiz-step-header">
+            <span class="wiz-step-num">🗓 플랜</span>
+            <h2 id="planTitle">旅行プランを生成中...</h2>
+          </div>
+
+          <div id="planLoadingArea" class="plan-loading">
+            <div class="plan-bar-wrap">
+              <div class="plan-bar-track"><div class="plan-bar" id="planBar"></div></div>
+              <span class="plan-pct" id="planPct">0%</span>
+            </div>
+            <p class="plan-status" id="planStatus">情報を整理しています...</p>
+          </div>
+
+          <div id="planOutputArea" style="display:none">
+            <div class="plan-source-badge">
+              📚 K-Culture 관광 콘텐츠 특화 일본어 말뭉치 데이터 기반
+            </div>
+            <div class="plan-content" id="planContent"></div>
+            <div class="plan-actions">
+              <a href="/chat/" class="btn primary">💬 AIチャットで詳しく聞く</a>
+              <button class="btn wiz-btn-outline" id="btnRestart">最初からやり直す</button>
+            </div>
+          </div>
+
+          <div id="planErrorArea" style="display:none">
+            <p class="error">プランの生成中にエラーが発生しました。</p>
+            <button class="btn wiz-btn-outline" id="btnRetryPlan">再試行</button>
+          </div>
+        </div>
+      </section>
+
+    </div><!-- /.wizard-stage -->
+
+    <div class="wizard-nav-bar" id="wizNavBar">
+      <button class="btn wiz-btn-outline" id="wizBtnBack" style="visibility:hidden">← 戻る</button>
+      <button class="btn primary" id="wizBtnNext">次へ</button>
     </div>
-  </main>
+  </div><!-- /.wizard-container -->
+
+  <script src="/wizard.js"></script>
 </body>
 </html>

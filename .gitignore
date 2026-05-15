@@ -1,4 +1,15 @@
 /data
 .env
-/SKN22-3rd-1Team
 backend/db.sqlite3
+
+# Large local datasets (do not push to GitHub)
+/data.zip
+data.zip
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local IDE / agent settings
+.claude/

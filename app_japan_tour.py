@@ -185,14 +185,20 @@ def _render_places(title: str, places: list[NearbyPlace]) -> None:
         st.info("近くで条件に合う場所を見つけられませんでした。半径を広げてみてください。")
         return
 
-    for place in places[:5]:
+    for index, place in enumerate(places[:5], start=1):
         rating = f"⭐ {place.rating:.1f}" if place.rating else "評価なし"
         reviews = f" / {place.user_rating_count}件" if place.user_rating_count else ""
-        maps_link = f" [Google Maps]({place.google_maps_uri})" if place.google_maps_uri else ""
+        maps_section = ""
+        if place.google_maps_uri:
+            maps_section = (
+                f"Google Maps: [地図/経路を見る]({place.google_maps_uri})  \n"
+                f"URL: `{place.google_maps_uri}`"
+            )
         st.markdown(
-            f"**{place.name}**  \n"
-            f"{_format_distance(place)} · {rating}{reviews} · {_place_status(place)}{maps_link}  \n"
-            f"{place.address}"
+            f"**{index}. {place.name}**  \n"
+            f"特徴: {_format_distance(place)} · {rating}{reviews} · {_place_status(place)}  \n"
+            f"住所: {place.address or '住所未登録'}  \n"
+            f"{maps_section}"
         )
 
 
@@ -213,26 +219,7 @@ def render_nearby_recommendations() -> None:
     with col1:
         _render_places("観光スポット", recommendations.get("tourist_attractions", []))
     with col2:
-        _render_places("カフェ", recommendations.get("cafes", []))
-
-
-def build_system_prompt(reply_language: str) -> str:
-    if reply_language == "한국어":
-        return (
-            "당신은 한국을 여행하는 일본인 관광객을 돕는 전문 한국어 여행 가이드입니다. "
-            "질문은 한국어 또는 일본어로 들어올 수 있지만, 사용자가 선택한 언어인 **한국어**로만 대답해야 합니다. "
-            "말투는 친절하고 공손하게 유지하고, 처음 한국을 방문하는 일본인도 이해하기 쉽도록 설명하세요. "
-            "관광지, 맛집, 쇼핑, 교통수단, 계절별 옷차림, 문화/예절(마너) 등도 함께 제안해 주세요. "
-            "가능하다면 일본인이 읽기 쉬우도록 장소 이름 뒤에 일본어(가타카나)를 병기해도 좋습니다."
-        )
-    return (
-        "あなたは韓国を旅行する日本人観光客向けのプロの日本語ツアーガイドです。"
-        "質問は日本語または韓国語で届きますが、回答は必ず**日本語**で行ってください。"
-        "丁寧で親切な口調を使い、初めて韓国に来る人にも分かりやすく説明してください。"
-        "観光地・グルメ・ショッピング・交通手段・季節ごとの服装・マナーなども提案してください。"
-        "具体的な場所名やエリア名（例：明洞、弘大、江南、釜山、済州島 など）を挙げて説明するときは、"
-        "日本人が読んで分かりやすいように、できればカタカナ（＋必要ならハングル）も併記してください。"
-    )
+        _render_places("グルメ / カフェ", recommendations.get("cafes", []))
 
 
 def translate_to_korean(text: str) -> str:
@@ -256,31 +243,54 @@ def translate_to_korean(text: str) -> str:
         temperature=0.2,
     )
 
-    return completion.choices[0].message.content
+    return completion.choices[0].message.content or ""
 
 
 def chat_with_openai(user_message: str, reply_language: str) -> str:
+    """라우팅 파이프라인을 통해 답변을 생성합니다.
+
+    분류 → RAG(내부 지식) → Places API(위치 있을 때) → LLM 순으로 데이터 소스를 사용합니다.
+    """
     if client is None:
         return "OpenAI APIキーが設定されていないため、回答を生成できません。`.env` の `OPENAI_API_KEY` を設定してください。"
 
-    messages = [{"role": "system", "content": build_system_prompt(reply_language)}]
-    for msg in st.session_state.messages:
-        if msg["role"] in ("user", "assistant"):
-            messages.append(
-                {
-                    "role": msg["role"],
-                    "content": msg["content"],
-                }
-            )
-    messages.append({"role": "user", "content": user_message})
+    location = st.session_state.get("current_location")
 
-    completion = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=messages,
-        temperature=0.7,
-    )
-
-    return completion.choices[0].message.content
+    try:
+        from src.chain.router import route_and_answer
+        result = route_and_answer(
+            user_message=user_message,
+            reply_language=reply_language,
+            history=st.session_state.messages,
+            openai_client=client,
+            latitude=location["latitude"] if location else None,
+            longitude=location["longitude"] if location else None,
+        )
+        return result.reply
+    except Exception:
+        # 라우터 임포트·실행 실패 시 안전 폴백
+        lang_rule = (
+            "回答は必ず日本語で行ってください。"
+            if reply_language == "日本語"
+            else "반드시 한국어로만 답변해 주세요."
+        )
+        fallback_system = (
+            f"あなたは韓国旅行の案内ガイドです。{lang_rule}\n"
+            "具体的な店舗名・施設名・住所は確認できるデータがない場合は生成しないでください。"
+            "エリア名の紹介や一般的なアドバイスに留め、"
+            "具体的な場所はNaver MapやGoogle Mapsで検索するよう案内してください。"
+        )
+        messages = [{"role": "system", "content": fallback_system}]
+        for msg in st.session_state.messages[-12:]:
+            if msg["role"] in ("user", "assistant"):
+                messages.append({"role": msg["role"], "content": msg["content"]})
+        messages.append({"role": "user", "content": user_message})
+        completion = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=messages,
+            temperature=0.3,
+        )
+        return completion.choices[0].message.content or ""
 
 
 def render_sidebar() -> str:

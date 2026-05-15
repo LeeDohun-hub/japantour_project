@@ -97,6 +97,7 @@ VALID_CATEGORIES = {
     "lodging",
     "shopping",
     "leisure",
+    "itinerary",  # 일정/동선 계획형
     "general",
     "invalid",
 }

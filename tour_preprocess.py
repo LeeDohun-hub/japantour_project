@@ -68,10 +68,13 @@ def main() -> None:
 
     print(f"[INFO] Processed rows to write: {len(df)}")
 
-    # JSONL로 저장
+    # JSONL로 저장 (NaN → 빈 문자열로 변환하여 유효한 JSON 보장)
     with OUTPUT_JSONL.open("w", encoding="utf-8") as f:
         for _, row in df.iterrows():
-            record = {col: row[col] for col in df.columns}
+            record = {
+                col: ("" if (val := row[col]) != val else val)  # NaN check: NaN != NaN
+                for col in df.columns
+            }
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     print(f"[INFO] Saved JSONL to: {OUTPUT_JSONL}")

@@ -11,6 +11,7 @@ import requests
 
 
 PLACES_NEARBY_URL = "https://places.googleapis.com/v1/places:searchNearby"
+PLACES_TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 DEFAULT_FIELD_MASK = ",".join(
     [
         "places.id",
@@ -99,21 +100,65 @@ class GooglePlacesClient:
         response.raise_for_status()
         data = response.json()
         return [
-            self._normalize_place(place, latitude, longitude)
+            self._normalize_place(place, origin_latitude=latitude, origin_longitude=longitude)
+            for place in data.get("places", [])
+        ]
+
+    def search_by_text(
+        self,
+        text_query: str,
+        max_results: int = 5,
+        language_code: str = "ja",
+        region_code: str = "KR",
+    ) -> list[NearbyPlace]:
+        """텍스트 쿼리로 장소 검색 (예: '성수동 맛집', '명동 카페').
+
+        위치 정보 없이도 사용 가능. 위치 기반 nearby search의 대안.
+        """
+        if not self.api_key:
+            raise ValueError("GOOGLE_MAPS_API_KEY is not configured.")
+
+        body = {
+            "textQuery": text_query,
+            "maxResultCount": max(1, min(int(max_results), 20)),
+            "languageCode": language_code,
+            "regionCode": region_code,
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": self.api_key,
+            "X-Goog-FieldMask": DEFAULT_FIELD_MASK,
+        }
+
+        response = requests.post(
+            PLACES_TEXT_SEARCH_URL,
+            json=body,
+            headers=headers,
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        data = response.json()
+        return [
+            self._normalize_place(place)
             for place in data.get("places", [])
         ]
 
     def _normalize_place(
         self,
         place: dict,
-        origin_latitude: float,
-        origin_longitude: float,
+        origin_latitude: float | None = None,
+        origin_longitude: float | None = None,
     ) -> NearbyPlace:
         location = place.get("location") or {}
         place_latitude = location.get("latitude")
         place_longitude = location.get("longitude")
         distance = None
-        if place_latitude is not None and place_longitude is not None:
+        if (
+            place_latitude is not None
+            and place_longitude is not None
+            and origin_latitude is not None
+            and origin_longitude is not None
+        ):
             distance = round(
                 _haversine_meters(
                     origin_latitude,
@@ -144,7 +189,7 @@ def recommend_nearby_places(
     radius_meters: int = 1000,
     language_code: str = "ja",
 ) -> dict[str, list[NearbyPlace]]:
-    """Return tourist attractions and cafes near the given coordinates."""
+    """Return tourist attractions and food/cafe spots near the given coordinates."""
     client = GooglePlacesClient()
     attractions = client.search_nearby(
         latitude=latitude,
@@ -157,7 +202,7 @@ def recommend_nearby_places(
     cafes = client.search_nearby(
         latitude=latitude,
         longitude=longitude,
-        included_types=["cafe"],
+        included_types=["restaurant", "cafe"],
         radius_meters=radius_meters,
         max_results=6,
         language_code=language_code,

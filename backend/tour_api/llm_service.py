@@ -1,14 +1,28 @@
-"""OpenAI 채팅·번역 (Django 뷰에서 사용)."""
+"""OpenAI 채팅·번역 서비스 (Django 뷰에서 사용).
+
+채팅 경로:
+  run_chat() → src/chain/router.route_and_answer() → 분류 + RAG + Places API + LLM
+번역 경로:
+  translate_to_korean() → 단순 번역 LLM 호출
+"""
 
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from typing import Any
 
 from openai import OpenAI
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY".upper())
 _client: OpenAI | None = None
+
+
+@dataclass
+class ChatRunResult:
+    reply: str
+    translated_ko: str | None
+    route_result: Any | None = None
 
 
 def get_client() -> OpenAI | None:
@@ -18,25 +32,6 @@ def get_client() -> OpenAI | None:
     if _client is None:
         _client = OpenAI(api_key=OPENAI_API_KEY)
     return _client
-
-
-def build_system_prompt(reply_language: str) -> str:
-    if reply_language == "한국어":
-        return (
-            "당신은 한국을 여행하는 일본인 관광객을 돕는 전문 한국어 여행 가이드입니다. "
-            "질문은 한국어 또는 일본어로 들어올 수 있지만, 사용자가 선택한 언어인 **한국어**로만 대답해야 합니다. "
-            "말투는 친절하고 공손하게 유지하고, 처음 한국을 방문하는 일본인도 이해하기 쉽도록 설명하세요. "
-            "관광지, 맛집, 쇼핑, 교통수단, 계절별 옷차림, 문화/예절(마너) 등도 함께 제안해 주세요. "
-            "가능하다면 일본인이 읽기 쉬우도록 장소 이름 뒤에 일본어(가타카나)를 병기해도 좋습니다."
-        )
-    return (
-        "あなたは韓国を旅行する日本人観光客向けのプロの日本語ツアーガイドです。"
-        "質問は日本語または韓国語で届きますが、回答は必ず**日本語**で行ってください。"
-        "丁寧で親切な口調を使い、初めて韓国に来る人にも分かりやすく説明してください。"
-        "観光地・グルメ・ショッピング・交通手段・季節ごとの服装・マナーなども提案してください。"
-        "具体的な場所名やエリア名（例：明洞、弘大、江南、釜山、済州島 など）を挙げて説明するときは、"
-        "日本人が読んで分かりやすいように、できればカタカナ（＋必要ならハングル）も併記してください。"
-    )
 
 
 def translate_to_korean(text: str) -> str:
@@ -66,17 +61,69 @@ def run_chat(
     message: str,
     reply_language: str,
     history: list[dict[str, Any]],
-) -> tuple[str, str | None]:
-    """Returns (reply, translated_ko or None)."""
+    latitude: float | None = None,
+    longitude: float | None = None,
+    radius_meters: int = 1000,
+) -> ChatRunResult:
+    """분류 → RAG → Places API → LLM 라우팅 파이프라인으로 응답 생성.
+
+    Returns:
+        reply, 번역, 라우팅 메타데이터
+    """
     client = get_client()
     if client is None:
-        return (
-            "OpenAI APIキーが設定されていないため、回答を生成できません。`.env` の `OPENAI_API_KEY` を設定してください。",
-            None,
+        return ChatRunResult(
+            reply=(
+                "OpenAI APIキーが設定されていないため、回答を生成できません。"
+                "`.env` の `OPENAI_API_KEY` を設定してください。"
+            ),
+            translated_ko=None,
         )
 
-    messages: list[dict[str, str]] = [{"role": "system", "content": build_system_prompt(reply_language)}]
-    for turn in history:
+    route_result = None
+    try:
+        from src.chain.router import route_and_answer
+        route_result = route_and_answer(
+            user_message=message,
+            reply_language=reply_language,
+            history=history,
+            openai_client=client,
+            latitude=latitude,
+            longitude=longitude,
+            radius_meters=radius_meters,
+        )
+        reply = route_result.reply
+    except Exception:
+        # 라우터 오류 시 안전 폴백 (최소한의 LLM 응답)
+        reply = _fallback_chat(message, reply_language, history, client)
+
+    translated_ko: str | None = None
+    if reply_language == "日本語":
+        translated_ko = translate_to_korean(reply)
+
+    return ChatRunResult(reply=reply, translated_ko=translated_ko, route_result=route_result)
+
+
+def _fallback_chat(
+    message: str,
+    reply_language: str,
+    history: list[dict[str, Any]],
+    client: OpenAI,
+) -> str:
+    """라우터 오류 시 기본 LLM 폴백 (환각 방지 규칙 포함)."""
+    lang_rule = (
+        "回答は必ず日本語で行ってください。"
+        if reply_language == "日本語"
+        else "반드시 한국어로만 답변해 주세요."
+    )
+    system = (
+        f"あなたは韓国旅行の案内ガイドです。{lang_rule}\n"
+        "具体的な店舗名・施設名・住所は、確認できるデータがない場合は生成しないでください。"
+        "エリア名の紹介や一般的なアドバイスに留め、具体的な場所はNaver MapやGoogle Mapsで検索するよう案内してください。"
+        "不確かな情報は「公式サイトや現地でご確認ください」と明示してください。"
+    )
+    messages: list[dict] = [{"role": "system", "content": system}]
+    for turn in history[-6:]:
         role = turn.get("role")
         content = turn.get("content")
         if role in ("user", "assistant") and isinstance(content, str):
@@ -86,12 +133,6 @@ def run_chat(
     completion = client.chat.completions.create(
         model="gpt-4.1-mini",
         messages=messages,
-        temperature=0.7,
+        temperature=0.3,
     )
-    reply = completion.choices[0].message.content or ""
-
-    translated_ko: str | None = None
-    if reply_language == "日本語":
-        translated_ko = translate_to_korean(reply)
-
-    return reply, translated_ko
+    return completion.choices[0].message.content or ""
