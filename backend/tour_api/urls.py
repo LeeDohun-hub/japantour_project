@@ -4,6 +4,8 @@ from tour_api import views
 
 urlpatterns = [
     path("health/", views.api_health, name="api_health"),
+    path("photo/", views.api_photo, name="api_photo"),
+    path("places-debug/", views.api_places_debug, name="api_places_debug"),
     path("chat/", views.api_chat, name="api_chat"),
     path("auth/register/", views.api_register, name="api_register"),
     path("auth/login/", views.api_login, name="api_login"),

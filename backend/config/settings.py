@@ -1,6 +1,7 @@
 """Django settings — Japan Tour API + 정적 프론트."""
 
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -8,6 +9,11 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 _REPO_ROOT = BASE_DIR.parent
 load_dotenv(_REPO_ROOT / ".env")
+
+# src/ package는 프로젝트 루트에 있으므로 sys.path에 추가
+_REPO_ROOT_STR = str(_REPO_ROOT)
+if _REPO_ROOT_STR not in sys.path:
+    sys.path.insert(0, _REPO_ROOT_STR)
 
 SECRET_KEY = os.environ.get(
     "DJANGO_SECRET_KEY",
@@ -80,3 +86,20 @@ DATABASES = {"default": _build_database_config()}
 
 STATIC_URL = "static/"
 FRONTEND_DIR = _REPO_ROOT / "frontend"
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "simple": {"format": "[%(levelname)s] %(name)s: %(message)s"},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "simple"},
+    },
+    "root": {"handlers": ["console"], "level": "INFO"},
+    "loggers": {
+        "django": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "src": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "tour_api": {"handlers": ["console"], "level": "INFO", "propagate": False},
+    },
+}

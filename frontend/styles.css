@@ -206,19 +206,24 @@ select:focus {
   background: var(--bot-bg);
 }
 
-.bubble.assistant.collapsed {
-  max-height: 200px;
+/* Guide 본문만 접기 — 번역(.translation)과 もっと見る 버튼은 잘리지 않음 */
+.bubble.assistant .bubble-body {
+  min-width: 0;
+}
+
+.bubble.assistant .bubble-body.collapsed {
+  max-height: 220px;
   overflow: hidden;
   position: relative;
 }
 
-.bubble.assistant.collapsed::after {
+.bubble.assistant .bubble-body.collapsed::after {
   content: '';
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  height: 64px;
+  height: 56px;
   background: linear-gradient(to bottom, transparent, rgba(18, 28, 48, 0.97));
   pointer-events: none;
 }
@@ -1122,4 +1127,317 @@ a.btn {
   .flight-dates       { grid-template-columns: 1fr 1fr; }
   .wiz-dot-label      { display: none; }
   .wizard-nav-bar     { padding: .7rem 1rem; }
+}
+
+/* ── Nav logout button ── */
+.nav-logout-btn {
+  font-size: .78rem;
+  padding: .3rem .75rem;
+  opacity: .8;
+}
+.nav-logout-btn:hover { opacity: 1; }
+
+/* ── Logged-in section logout row ── */
+.logout-row {
+  margin-top: .85rem;
+  display: flex;
+  justify-content: center;
+}
+
+/* ── Place cards (Google Places 결과) ── */
+.place-cards-section {
+  margin-top: .75rem;
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  white-space: normal; /* .bubble pre-wrap 줄바꿈 간격 방지 */
+}
+
+.place-cards-title {
+  font-size: .82rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-bottom: .15rem;
+}
+.place-cards-title strong {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+/* 컴팩트 카드: 썸네일 + 텍스트 한 줄, 클릭 시 Maps */
+a.place-card,
+.place-card {
+  display: flex;
+  align-items: stretch;
+  gap: .55rem;
+  padding: .45rem .55rem;
+  background: rgba(18, 28, 50, 0.88);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color .2s, background .2s;
+}
+a.place-card:hover {
+  border-color: rgba(212, 168, 83, 0.45);
+  background: rgba(22, 34, 58, 0.95);
+}
+
+.place-thumb-wrap {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+}
+.place-thumb {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  display: block;
+}
+.place-thumb--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  line-height: 56px;
+  text-align: center;
+  opacity: .7;
+}
+img.place-thumb.place-thumb--fallback {
+  object-fit: none;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.place-card-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .12rem;
+  justify-content: center;
+}
+.place-name {
+  font-size: .84rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.place-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .35rem;
+  font-size: .75rem;
+  line-height: 1.2;
+}
+.place-rating {
+  font-weight: 600;
+  color: var(--gold);
+}
+.place-reviews {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.place-open {
+  font-size: .68rem;
+  font-weight: 600;
+  color: #34c759;
+}
+.place-closed {
+  font-size: .68rem;
+  font-weight: 600;
+  color: #ff9f0a;
+}
+.place-badge {
+  display: inline-block;
+  padding: .1rem .4rem;
+  border-radius: 999px;
+  font-size: .65rem;
+  font-weight: 600;
+}
+.price-badge {
+  background: rgba(255, 255, 255, .05);
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, .12);
+}
+.place-addr {
+  font-size: .7rem;
+  color: var(--text-muted);
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.place-maps-hint {
+  font-size: .68rem;
+  font-weight: 600;
+  color: #4285f4;
+}
+a.place-card:hover .place-maps-hint {
+  text-decoration: underline;
+}
+
+/* ── Flight cards (AviationStack 결과) ─────────────────────────────── */
+.flight-cards-section {
+  margin-top: .75rem;
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  white-space: normal;
+}
+
+.flight-cards-title {
+  font-size: .82rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-bottom: .1rem;
+}
+.flight-cards-title strong {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.flight-card {
+  display: flex;
+  flex-direction: column;
+  gap: .32rem;
+  padding: .55rem .7rem;
+  background: rgba(18, 28, 50, 0.88);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.flight-card-header {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  flex-wrap: wrap;
+}
+
+.flight-airline {
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.flight-num {
+  font-family: var(--font-display);
+  font-size: .8rem;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.flight-codeshare {
+  font-size: .68rem;
+  color: var(--text-muted);
+  padding: .1rem .35rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.flight-status-badge {
+  font-size: .65rem;
+  font-weight: 700;
+  padding: .12rem .45rem;
+  border-radius: 999px;
+  margin-left: auto;
+}
+.status-scheduled { background: rgba(100, 140, 220, .15); color: #7aaff0; border: 1px solid rgba(100, 140, 220, .3); }
+.status-active    { background: rgba(52, 199, 89, .15);   color: #34c759; border: 1px solid rgba(52, 199, 89, .3); }
+.status-landed    { background: rgba(90, 160, 230, .15);  color: #5aa0e6; border: 1px solid rgba(90, 160, 230, .3); }
+.status-cancelled { background: rgba(232, 90, 107, .15);  color: var(--accent); border: 1px solid rgba(232, 90, 107, .3); }
+.status-incident  { background: rgba(255, 149, 0, .15);   color: #ff9500; border: 1px solid rgba(255, 149, 0, .3); }
+.status-diverted  { background: rgba(212, 168, 83, .15);  color: var(--gold); border: 1px solid rgba(212, 168, 83, .3); }
+.status-unknown   { background: rgba(150, 160, 180, .1);  color: var(--text-muted); border: 1px solid var(--border); }
+
+.flight-route-row {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+}
+
+.flight-endpoint {
+  display: flex;
+  flex-direction: column;
+  gap: .06rem;
+}
+.flight-endpoint--arr {
+  text-align: right;
+  align-items: flex-end;
+}
+
+.flight-iata-code {
+  font-family: var(--font-display);
+  font-size: .92rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: .05em;
+}
+
+.flight-time {
+  font-family: var(--font-display);
+  font-size: .88rem;
+  font-weight: 600;
+  color: var(--gold);
+}
+
+.flight-terminal {
+  font-size: .67rem;
+  color: var(--text-muted);
+}
+
+.flight-arrow {
+  flex: 1;
+  text-align: center;
+  font-size: .9rem;
+  color: var(--text-muted);
+  opacity: .7;
+}
+
+.flight-delay {
+  font-size: .72rem;
+  color: #ff9500;
+  font-weight: 600;
+}
+
+/* ── Airport info card ────────────────────────────────────────────── */
+.airport-info-card {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  padding: .75rem .9rem;
+  background: rgba(18, 28, 50, 0.88);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.airport-name {
+  font-size: .9rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.airport-iata {
+  font-family: var(--font-display);
+  font-size: .8rem;
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: .06em;
+}
+
+.airport-details {
+  display: flex;
+  flex-direction: column;
+  gap: .18rem;
+  font-size: .75rem;
+  color: var(--text-muted);
+  margin-top: .15rem;
 }

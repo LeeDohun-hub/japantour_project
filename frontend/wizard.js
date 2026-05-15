@@ -195,6 +195,9 @@ function chips(id) {
 
 // ── STEP 1: AUTH ──────────────────────────────────────────────────────────
 function setupStep1() {
+  $("btnLogout")?.addEventListener("click", handleLogout);
+  $("btnNavLogout")?.addEventListener("click", handleLogout);
+
   $("step1Form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const username = $("s1Username").value.trim();
@@ -246,6 +249,26 @@ function setLoggedIn(user) {
   $("s1Name").textContent = `${user.username} さん`;
   const lbl = $("navUserLabel");
   if (lbl) lbl.textContent = user.username;
+  const navLogout = $("btnNavLogout");
+  if (navLogout) navLogout.style.display = "inline-flex";
+}
+
+async function handleLogout() {
+  try {
+    await fetch("/api/auth/logout/", { method: "POST" });
+  } catch (_) {}
+  currentUser = null;
+  delete wizardData.user;
+  // UI 리셋
+  const authSec = $("authSection");
+  const loggedSec = $("loggedInSection");
+  if (authSec) authSec.style.display = "block";
+  if (loggedSec) loggedSec.style.display = "none";
+  const lbl = $("navUserLabel");
+  if (lbl) lbl.textContent = "";
+  const navLogout = $("btnNavLogout");
+  if (navLogout) navLogout.style.display = "none";
+  goToStep(1);
 }
 
 async function checkAuthState() {

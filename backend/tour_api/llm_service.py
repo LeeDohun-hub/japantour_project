@@ -3,14 +3,20 @@
 채팅 경로:
   run_chat() → src/chain/router.route_and_answer() → 분류 + RAG + Places API + LLM
 번역 경로:
-  translate_to_korean() → 단순 번역 LLM 호출
+  응답 언어가「한국어」이고 본문에 가타카나·히라가나가 섞인 경우에만
+  translate_to_korean() 호출 → 보조 한국어 블록(translated_ko)
+  「日本語」모드에서는 번역 블록을 만들지 않음.
 """
 
 from __future__ import annotations
 
+import dataclasses
+import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from openai import OpenAI
 
@@ -23,6 +29,10 @@ class ChatRunResult:
     reply: str
     translated_ko: str | None
     route_result: Any | None = None
+    places: list = field(default_factory=list)
+    flights: list = field(default_factory=list)
+    airport: dict | None = None
+    flight_subtype: str = ""
 
 
 def get_client() -> OpenAI | None:
@@ -32,6 +42,16 @@ def get_client() -> OpenAI | None:
     if _client is None:
         _client = OpenAI(api_key=OPENAI_API_KEY)
     return _client
+
+
+def _reply_has_japanese_kana(text: str) -> bool:
+    """답변에 히라가나·가타카나가 있으면 True (한국어 모드에서 일본어 혼용 시 번역용)."""
+    for ch in text:
+        if "\u3040" <= ch <= "\u309f":  # Hiragana
+            return True
+        if "\u30a0" <= ch <= "\u30ff":  # Katakana
+            return True
+    return False
 
 
 def translate_to_korean(text: str) -> str:
@@ -93,15 +113,40 @@ def run_chat(
             radius_meters=radius_meters,
         )
         reply = route_result.reply
-    except Exception:
-        # 라우터 오류 시 안전 폴백 (최소한의 LLM 응답)
+    except Exception as exc:
+        logger.exception("route_and_answer failed: %s", exc)
         reply = _fallback_chat(message, reply_language, history, client)
 
     translated_ko: str | None = None
-    if reply_language == "日本語":
+    if reply_language == "한국어" and _reply_has_japanese_kana(reply):
         translated_ko = translate_to_korean(reply)
 
-    return ChatRunResult(reply=reply, translated_ko=translated_ko, route_result=route_result)
+    places: list = []
+    flights: list = []
+    airport: dict | None = None
+    flight_subtype: str = ""
+
+    if route_result is not None:
+        if route_result.places:
+            places = [dataclasses.asdict(p) for p in route_result.places]
+            reply = ""
+        if route_result.flights:
+            flights = [dataclasses.asdict(f) for f in route_result.flights]
+            reply = ""
+        if route_result.airport is not None:
+            airport = dataclasses.asdict(route_result.airport)
+            reply = ""
+        flight_subtype = route_result.flight_subtype
+
+    return ChatRunResult(
+        reply=reply,
+        translated_ko=translated_ko,
+        route_result=route_result,
+        places=places,
+        flights=flights,
+        airport=airport,
+        flight_subtype=flight_subtype,
+    )
 
 
 def _fallback_chat(

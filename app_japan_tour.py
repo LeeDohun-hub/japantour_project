@@ -222,6 +222,14 @@ def render_nearby_recommendations() -> None:
         _render_places("グルメ / カフェ", recommendations.get("cafes", []))
 
 
+def _reply_has_japanese_kana(text: str) -> bool:
+    """답변에 히라가나·가타카나가 있으면 True (한국어 모드에서 일본어 혼용 시 번역용)."""
+    for ch in text:
+        if "\u3040" <= ch <= "\u309f" or "\u30a0" <= ch <= "\u30ff":
+            return True
+    return False
+
+
 def translate_to_korean(text: str) -> str:
     """LLM을 사용해 임의의 텍스트를 자연스러운 한국어로 번역."""
     if client is None:
@@ -314,6 +322,7 @@ def render_sidebar() -> str:
             "응답 언어 / Response language",
             options=["日本語", "한국어"],
             index=0,
+            help="日本語: 回答は日本語のみ（韓国語の副表示なし）。한국어: 回答は韓国語。日本語が混じった場合のみ「한국어 번역」を表示します。",
         )
 
         if st.session_state.ui_page == "chat":
@@ -480,7 +489,7 @@ def render_chat(reply_language: str) -> None:
                 st.markdown(reply)
 
                 translated_ko = None
-                if reply_language == "日本語":
+                if reply_language == "한국어" and _reply_has_japanese_kana(reply):
                     st.markdown("---")
                     st.markdown("### 한국어 번역")
                     translated_ko = translate_to_korean(reply)

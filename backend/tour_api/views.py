@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import secrets
 import urllib.parse
@@ -12,7 +13,7 @@ from django.contrib.auth import authenticate
 from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
 from django.contrib.auth.models import User
-from django.http import FileResponse, JsonResponse
+from django.http import FileResponse, HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
@@ -25,6 +26,83 @@ from tour_api.chat_persistence import (
 from tour_api.llm_service import get_client, run_chat
 
 _FRONTEND: Path = settings.FRONTEND_DIR
+
+
+@require_GET
+def api_places_debug(request):
+    """Places API 직접 테스트 (DEBUG=true 전용). 브라우저에서 /api/places-debug/?q=명동 호텔 로 호출."""
+    from django.conf import settings as _settings
+    if not _settings.DEBUG:
+        return JsonResponse({"detail": "DEBUG mode only"}, status=403)
+
+    query = request.GET.get("q", "명동 호텔")
+    itype = request.GET.get("type", "hotel")
+    api_key = os.getenv("GOOGLE_HOTELS_API_KEY") or os.getenv("GOOGLE_MAPS_API_KEY")
+
+    result: dict = {
+        "query": query,
+        "included_type": itype,
+        "api_key_set": bool(api_key),
+        "api_key_prefix": (api_key[:12] + "...") if api_key else None,
+    }
+
+    if not api_key:
+        result["error"] = "no API key configured"
+        return JsonResponse(result)
+
+    import requests as _req
+    url = "https://places.googleapis.com/v1/places:searchText"
+    body: dict = {
+        "textQuery": query,
+        "maxResultCount": 3,
+        "languageCode": "ko",
+        "regionCode": "KR",
+    }
+    if itype:
+        body["includedType"] = itype
+
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": api_key,
+        "X-Goog-FieldMask": "places.id,places.displayName,places.rating,places.formattedAddress,places.googleMapsUri,places.starRating",
+    }
+
+    try:
+        resp = _req.post(url, json=body, headers=headers, timeout=10)
+        result["http_status"] = resp.status_code
+        result["response"] = resp.json()
+    except Exception as exc:
+        result["error"] = str(exc)
+
+    return JsonResponse(result)
+
+
+@require_GET
+def api_photo(request):
+    """Google Places 사진 프록시 — API 키를 서버에서 처리해 클라이언트에 노출 방지."""
+    name = request.GET.get("name", "").strip()
+    if not name or not name.startswith("places/"):
+        return JsonResponse({"detail": "invalid name"}, status=400)
+
+    api_key = os.getenv("GOOGLE_HOTELS_API_KEY") or os.getenv("GOOGLE_MAPS_API_KEY")
+    if not api_key:
+        return JsonResponse({"detail": "API key not configured"}, status=503)
+
+    photo_url = f"https://places.googleapis.com/v1/{name}/media"
+    try:
+        resp = http_requests.get(
+            photo_url,
+            params={"maxWidthPx": 400, "key": api_key},
+            timeout=10,
+            allow_redirects=True,
+        )
+        resp.raise_for_status()
+        content_type = resp.headers.get("content-type", "image/jpeg")
+        response = HttpResponse(resp.content, content_type=content_type)
+        response["Cache-Control"] = "public, max-age=86400"
+        return response
+    except Exception:
+        return JsonResponse({"detail": "photo fetch failed"}, status=502)
 
 
 @require_GET
@@ -119,9 +197,24 @@ def api_chat(request):
     if chat_result.translated_ko is not None:
         payload["translated_ko"] = chat_result.translated_ko
     if chat_result.route_result is not None:
-        payload["category"] = chat_result.route_result.category
-        payload["keyword"] = chat_result.route_result.keyword
-        payload["sources_used"] = chat_result.route_result.sources_used
+        rr = chat_result.route_result
+        payload["category"] = rr.category
+        payload["keyword"] = rr.keyword
+        payload["sources_used"] = rr.sources_used
+        payload["places_count"] = rr.places_count
+        if rr.places_error:
+            payload["places_error"] = rr.places_error
+        # 진단용 — 원인 파악 후 제거
+        print(f"[DIAG] category={rr.category!r} keyword={rr.keyword!r} "
+              f"places={rr.places_count} error={rr.places_error!r}")
+    if chat_result.places:
+        payload["places"] = chat_result.places
+    if chat_result.flights:
+        payload["flights"] = chat_result.flights
+        payload["flight_subtype"] = chat_result.flight_subtype
+    if chat_result.airport:
+        payload["airport"] = chat_result.airport
+        payload["flight_subtype"] = chat_result.flight_subtype
     return JsonResponse(payload)
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 from dataclasses import dataclass
@@ -9,9 +10,13 @@ from typing import Iterable
 
 import requests
 
+logger = logging.getLogger(__name__)
+
 
 PLACES_NEARBY_URL = "https://places.googleapis.com/v1/places:searchNearby"
 PLACES_TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
+PHOTO_BASE_URL = "https://places.googleapis.com/v1/{name}/media"
+
 DEFAULT_FIELD_MASK = ",".join(
     [
         "places.id",
@@ -24,8 +29,20 @@ DEFAULT_FIELD_MASK = ",".join(
         "places.currentOpeningHours",
         "places.googleMapsUri",
         "places.businessStatus",
+        "places.priceLevel",
+        "places.photos",
+        "places.servesBreakfast",
+        "places.dineIn",
     ]
 )
+
+_PRICE_DISPLAY: dict[str, str] = {
+    "PRICE_LEVEL_FREE": "무료",
+    "PRICE_LEVEL_INEXPENSIVE": "¥",
+    "PRICE_LEVEL_MODERATE": "¥¥",
+    "PRICE_LEVEL_EXPENSIVE": "¥¥¥",
+    "PRICE_LEVEL_VERY_EXPENSIVE": "¥¥¥¥",
+}
 
 
 @dataclass(frozen=True)
@@ -42,13 +59,26 @@ class NearbyPlace:
     google_maps_uri: str | None
     is_open_now: bool | None
     distance_meters: int | None
+    price_level: str | None = None       # e.g. "¥¥" (변환 후 표시용)
+    photo_name: str | None = None        # places/.../photos/... (proxy용)
+    serves_breakfast: bool | None = None
+    has_restaurant: bool | None = None   # dineIn 필드
+
+
+def _resolve_api_key(explicit: str | None = None) -> str | None:
+    """GOOGLE_HOTELS_API_KEY 우선, 없으면 GOOGLE_MAPS_API_KEY."""
+    return (
+        explicit
+        or os.getenv("GOOGLE_HOTELS_API_KEY")
+        or os.getenv("GOOGLE_MAPS_API_KEY")
+    )
 
 
 class GooglePlacesClient:
     """Small wrapper around Places API Nearby Search (New)."""
 
     def __init__(self, api_key: str | None = None, timeout: int = 12):
-        self.api_key = api_key or os.getenv("GOOGLE_MAPS_API_KEY")
+        self.api_key = _resolve_api_key(api_key)
         self.timeout = timeout
 
     @property
@@ -66,7 +96,7 @@ class GooglePlacesClient:
     ) -> list[NearbyPlace]:
         """Search nearby places and normalize the response."""
         if not self.api_key:
-            raise ValueError("GOOGLE_MAPS_API_KEY is not configured.")
+            raise ValueError("Google API key is not configured.")
 
         radius = max(1, min(int(radius_meters), 50000))
         body = {
@@ -77,10 +107,7 @@ class GooglePlacesClient:
             "regionCode": "KR",
             "locationRestriction": {
                 "circle": {
-                    "center": {
-                        "latitude": latitude,
-                        "longitude": longitude,
-                    },
+                    "center": {"latitude": latitude, "longitude": longitude},
                     "radius": float(radius),
                 }
             },
@@ -92,10 +119,7 @@ class GooglePlacesClient:
         }
 
         response = requests.post(
-            PLACES_NEARBY_URL,
-            json=body,
-            headers=headers,
-            timeout=self.timeout,
+            PLACES_NEARBY_URL, json=body, headers=headers, timeout=self.timeout
         )
         response.raise_for_status()
         data = response.json()
@@ -110,20 +134,25 @@ class GooglePlacesClient:
         max_results: int = 5,
         language_code: str = "ja",
         region_code: str = "KR",
+        included_type: str | None = None,
     ) -> list[NearbyPlace]:
-        """텍스트 쿼리로 장소 검색 (예: '성수동 맛집', '명동 카페').
+        """텍스트 쿼리로 장소 검색 (예: '성수동 맛집', '명동 호텔').
 
-        위치 정보 없이도 사용 가능. 위치 기반 nearby search의 대안.
+        위치 정보 없이도 사용 가능.
+        included_type: Places API (New) 단일 타입 필터 (선택)
         """
         if not self.api_key:
-            raise ValueError("GOOGLE_MAPS_API_KEY is not configured.")
+            raise ValueError("Google API key is not configured.")
 
-        body = {
+        body: dict = {
             "textQuery": text_query,
             "maxResultCount": max(1, min(int(max_results), 20)),
             "languageCode": language_code,
             "regionCode": region_code,
         }
+        if included_type:
+            body["includedType"] = included_type
+
         headers = {
             "Content-Type": "application/json",
             "X-Goog-Api-Key": self.api_key,
@@ -131,17 +160,16 @@ class GooglePlacesClient:
         }
 
         response = requests.post(
-            PLACES_TEXT_SEARCH_URL,
-            json=body,
-            headers=headers,
-            timeout=self.timeout,
+            PLACES_TEXT_SEARCH_URL, json=body, headers=headers, timeout=self.timeout
         )
+        logger.info("Places textSearch HTTP %d — query=%r", response.status_code, text_query)
+        if not response.ok:
+            logger.warning("Places textSearch error body: %s", response.text[:400])
         response.raise_for_status()
         data = response.json()
-        return [
-            self._normalize_place(place)
-            for place in data.get("places", [])
-        ]
+        raw_places = data.get("places", [])
+        logger.info("Places textSearch returned %d places", len(raw_places))
+        return [self._normalize_place(place) for place in raw_places]
 
     def _normalize_place(
         self,
@@ -161,14 +189,18 @@ class GooglePlacesClient:
         ):
             distance = round(
                 _haversine_meters(
-                    origin_latitude,
-                    origin_longitude,
-                    place_latitude,
-                    place_longitude,
+                    origin_latitude, origin_longitude,
+                    place_latitude, place_longitude,
                 )
             )
 
         opening_hours = place.get("currentOpeningHours") or {}
+        raw_price = place.get("priceLevel")
+
+        # 첫 번째 사진 이름 추출
+        photos = place.get("photos") or []
+        photo_name = photos[0].get("name") if photos else None
+
         return NearbyPlace(
             name=(place.get("displayName") or {}).get("text", "이름 없음"),
             category=place.get("primaryType", "place"),
@@ -180,6 +212,10 @@ class GooglePlacesClient:
             google_maps_uri=place.get("googleMapsUri"),
             is_open_now=opening_hours.get("openNow"),
             distance_meters=distance,
+            price_level=_PRICE_DISPLAY.get(raw_price) if raw_price else None,
+            photo_name=photo_name,
+            serves_breakfast=place.get("servesBreakfast"),
+            has_restaurant=place.get("dineIn"),
         )
 
 
