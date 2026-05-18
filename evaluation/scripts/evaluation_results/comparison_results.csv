@@ -1,0 +1,9 @@
+﻿설정,faithfulness,answer_relevancy,context_precision,context_recall,평균
+baseline,,,,,
+v1_gpt4,,,,,
+v2_dedup,,,,,
+v3_twostage,,,,,
+v4_gpt4_dedup,,,,,
+v5_gpt4_twostage,,,,,
+v6_dedup_twostage,,,,,
+v7_all,,,,,

@@ -218,16 +218,17 @@ function renderPlaceCards(places, category, keyword, lang) {
   return `<div class="place-cards-section"><div class="place-cards-title">${headerHtml}</div>${cards.join("")}</div>`;
 }
 
-/** ISO 8601 시간을 KST/JST (UTC+9) HH:MM 로 변환 */
+/** 시간 문자열을 HH:MM 형식으로 반환 (HH:MM 직접 또는 ISO 8601 → KST 변환) */
 function formatFlightTime(isoStr) {
   if (!isoStr) return "--:--";
+  if (/^\d{2}:\d{2}$/.test(isoStr)) return isoStr;
   try {
     const d = new Date(isoStr);
     const utcMs = d.getTime() + d.getTimezoneOffset() * 60000;
     const kst = new Date(utcMs + 9 * 3600000);
     return String(kst.getHours()).padStart(2, "0") + ":" + String(kst.getMinutes()).padStart(2, "0");
   } catch {
-    return (isoStr.slice(11, 16)) || "--:--";
+    return isoStr.slice(11, 16) || "--:--";
   }
 }
 
@@ -326,6 +327,17 @@ function renderFlightCards(flights, airport, flightSubtype, keyword, lang) {
       ? `<span class="flight-codeshare">${escapeHtml(f.codeshared_iata)}</span>`
       : "";
 
+    // 정기편 스케줄 전용 메타정보 (운항요일 / 기간)
+    const days = f.operating_days || "";
+    const daysLabel = isJa ? "運航曜日" : "운항요일";
+    const periodLabel = isJa ? "運航期間" : "운항기간";
+    const daysHtml = days
+      ? `<div class="flight-schedule-meta">${daysLabel}: ${escapeHtml(days)}</div>`
+      : "";
+    const periodHtml = (f.schedule_start || f.schedule_end)
+      ? `<div class="flight-schedule-meta">${periodLabel}: ${escapeHtml(f.schedule_start || "?")} ~ ${escapeHtml(f.schedule_end || "?")}</div>`
+      : "";
+
     return `<div class="flight-card">
   <div class="flight-card-header">
     <span class="flight-airline">${escapeHtml(f.airline_name)}</span>
@@ -346,7 +358,7 @@ function renderFlightCards(flights, airport, flightSubtype, keyword, lang) {
       ${arrTermGate ? `<div class="flight-terminal">${arrTermGate}</div>` : ""}
     </div>
   </div>
-  ${delayHtml}
+  ${delayHtml}${daysHtml}${periodHtml}
 </div>`;
   });
 

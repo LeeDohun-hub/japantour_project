@@ -122,6 +122,7 @@ Examples:
 - "하네다공항 알려줘" -> {"category": "flight", "keyword": "airport:HND"}
 - "成田空港の情報" -> {"category": "flight", "keyword": "airport:NRT"}
 - "インチョンから羽田への便" -> {"category": "flight", "keyword": "route:ICN:HND"}
+- "제주도에서 하루 여행 코스 추천해줘" -> {"category": "itinerary", "keyword": "제주도 1일 여행 코스"}
 """
 
 
@@ -429,13 +430,18 @@ def _fmt_flights(flights: list) -> str:
         return "(フライトデータなし)"
     lines = []
     for i, f in enumerate(flights[:5], 1):
-        dep_time = (f.dep_scheduled or "")[:16].replace("T", " ")
-        arr_time = (f.arr_scheduled or "")[:16].replace("T", " ")
-        delay_str = f"遅延{f.dep_delay}分" if f.dep_delay else "遅延なし"
+        schedule_range = ""
+        if getattr(f, "schedule_start", None) or getattr(f, "schedule_end", None):
+            s = f.schedule_start or "?"
+            e = f.schedule_end or "?"
+            schedule_range = f"  運航期間: {s}〜{e}"
+        days = getattr(f, "operating_days", "") or ""
+        dep_t = f.dep_scheduled or "-"
+        arr_t = f.arr_scheduled or "-"
         line = (
-            f"[{i}] {f.airline_name} {f.flight_iata} | {f.status}\n"
-            f"    {f.dep_iata}({f.dep_airport}) T{f.dep_terminal or '-'} G{f.dep_gate or '-'} 出発 {dep_time}\n"
-            f"    {f.arr_iata}({f.arr_airport}) T{f.arr_terminal or '-'} 到着 {arr_time} | {delay_str}"
+            f"[{i}] {f.airline_name} ({f.airline_iata}) {f.flight_iata}\n"
+            f"    {f.dep_iata}({dep_t}) → {f.arr_iata}({arr_t})\n"
+            f"    運航曜日: {days or '-'}{schedule_range}"
         )
         lines.append(line)
     return "\n".join(lines)
@@ -511,7 +517,8 @@ def _classify(question: str, client: OpenAI) -> ClassificationResult:
         )
         raw = completion.choices[0].message.content or ""
         return validator.validate_classification(raw, question)
-    except Exception:
+    except Exception as _exc:
+        logger.warning("_classify failed for %r: %s", question[:60], _exc)
         return ClassificationResult(
             category=SAFE_FALLBACK_CATEGORY,
             keyword=SAFE_FALLBACK_KEYWORD,
@@ -639,8 +646,8 @@ def route_and_answer(
                     logger.warning("Unknown flight keyword format: %r", kw)
                     flights_error = f"unrecognized keyword format: {kw!r}"
             else:
-                flights_error = "AviationStack API key not configured"
-                logger.warning("AviationStack API key not configured")
+                flights_error = "INCHEONTRANSPORT_API_KEY not configured"
+                logger.warning("INCHEONTRANSPORT_API_KEY not configured")
         except Exception as exc:
             flights_error = str(exc)
             logger.warning("Aviation API error [%s]: %s", keyword, exc, exc_info=True)
@@ -662,7 +669,7 @@ def route_and_answer(
     # ── 5단계: 컨텍스트 조립 ──────────────────────────────────────────
     ctx_parts: list[str] = []
     if flights_results:
-        ctx_parts.append(f"=== AviationStack フライト結果 ===\n{_fmt_flights(flights_results)}")
+        ctx_parts.append(f"=== 仁川空港 定期便スケジュール ===\n{_fmt_flights(flights_results)}")
     if airport_result is not None:
         ctx_parts.append(f"=== 空港情報 ===\n{_fmt_airport(airport_result)}")
     if has_places:
@@ -691,12 +698,16 @@ def route_and_answer(
     )
     messages.append({"role": "user", "content": user_content})
 
-    completion = openai_client.chat.completions.create(
-        model=ANSWER_MODEL,
-        messages=messages,
-        temperature=ANSWER_TEMPERATURE,
-    )
-    reply = completion.choices[0].message.content or ""
+    try:
+        completion = openai_client.chat.completions.create(
+            model=ANSWER_MODEL,
+            messages=messages,
+            temperature=ANSWER_TEMPERATURE,
+        )
+        reply = completion.choices[0].message.content or ""
+    except Exception as _ans_exc:
+        logger.error("Answer generation failed (model=%s): %s", ANSWER_MODEL, _ans_exc)
+        raise
 
     sources_used = []
     if flights_results or airport_result:

@@ -1,0 +1,90 @@
+[
+  {
+    "id": "T004",
+    "question": "제주도에서 하루 여행 코스 추천해줘",
+    "expected_category": "itinerary",
+    "got_category": "itinerary",
+    "category_ok": true,
+    "got_keyword": "제주도 하루 여행 코스",
+    "keyword_ok": true,
+    "is_fallback": false,
+    "elapsed_ms": 7083
+  },
+  {
+    "id": "T005",
+    "question": "서울 지하철에서 티머니는 어떻게 써?",
+    "expected_category": "transport",
+    "got_category": "transport",
+    "category_ok": true,
+    "got_keyword": "서울 지하철 티머니 사용법",
+    "keyword_ok": true,
+    "is_fallback": false,
+    "elapsed_ms": 3027
+  },
+  {
+    "id": "T007",
+    "question": "부산 해운대 근처 관광지 추천",
+    "expected_category": "leisure",
+    "got_category": "leisure",
+    "category_ok": true,
+    "got_keyword": "부산 해운대 관광지",
+    "keyword_ok": true,
+    "is_fallback": false,
+    "elapsed_ms": 2579
+  },
+  {
+    "id": "T008",
+    "question": "경주 역사 관광지 추천해줘",
+    "expected_category": "culture",
+    "got_category": "culture",
+    "category_ok": true,
+    "got_keyword": "경주 역사 관광지",
+    "keyword_ok": true,
+    "is_fallback": false,
+    "elapsed_ms": 3819
+  },
+  {
+    "id": "T009",
+    "question": "서귀포 여행 코스 알려줘",
+    "expected_category": "leisure",
+    "got_category": "itinerary",
+    "category_ok": false,
+    "got_keyword": "서귀포 여행 코스",
+    "keyword_ok": true,
+    "is_fallback": false,
+    "elapsed_ms": 3490
+  },
+  {
+    "id": "T010",
+    "question": "인천공항에서 서울역 가는 방법",
+    "expected_category": "transport",
+    "got_category": "transport",
+    "category_ok": true,
+    "got_keyword": "인천공항 서울역",
+    "keyword_ok": true,
+    "is_fallback": false,
+    "elapsed_ms": 3315
+  },
+  {
+    "id": "T011",
+    "question": "한복 입고 가면 좋은 궁궐 어디야?",
+    "expected_category": "culture",
+    "got_category": "culture",
+    "category_ok": true,
+    "got_keyword": "한복 궁궐 추천",
+    "keyword_ok": true,
+    "is_fallback": false,
+    "elapsed_ms": 2592
+  },
+  {
+    "id": "T012",
+    "question": "한국에서 환전은 어디서 하는 게 좋아?",
+    "expected_category": "general",
+    "got_category": "general",
+    "category_ok": true,
+    "got_keyword": "한국 환전 장소 추천",
+    "keyword_ok": true,
+    "is_fallback": false,
+    "elapsed_ms": 2246
+  }
+]

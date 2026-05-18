@@ -75,7 +75,7 @@
     "id": "T009",
     "question": "서귀포 여행 코스 알려줘",
     "reply_language": "日本語",
-    "expected_category": "leisure",
+    "expected_category": "itinerary",
     "expected_keyword_contains": ["서귀포", "여행", "코스"],
     "expected_area": "Seogwipo",
     "expected_result_keywords": ["西帰浦", "済州", "旅行"]

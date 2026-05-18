@@ -997,13 +997,20 @@ a.btn {
   background: var(--bg-card); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 1.35rem;
 }
-.flight-route { display: flex; align-items: flex-end; gap: .85rem; margin-bottom: 1.1rem; }
+.flight-route { display: flex; align-items: flex-end; gap: .6rem; margin-bottom: 1.1rem; }
 .flight-endpoint { flex: 1; display: flex; flex-direction: column; gap: .4rem; }
 .flight-endpoint label, .field-sm label {
   font-size: .75rem; font-weight: 600; color: var(--text-muted);
   text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: .35rem;
 }
 .flight-arrow { font-size: 1.3rem; color: var(--gold); padding-bottom: .45rem; flex-shrink: 0; }
+.swap-btn {
+  flex-shrink: 0; padding: .35rem .55rem; margin-bottom: .45rem;
+  background: rgba(212,175,55,.12); border: 1px solid rgba(212,175,55,.3);
+  border-radius: var(--radius-sm); color: var(--gold); font-size: 1rem;
+  cursor: pointer; transition: background .15s;
+}
+.swap-btn:hover { background: rgba(212,175,55,.25); }
 .flight-dates { display: grid; grid-template-columns: 1fr 1fr auto; gap: .65rem; align-items: end; }
 
 .flight-dates input[type="date"] {
@@ -1017,11 +1024,73 @@ a.btn {
   background: rgba(232,90,107,.07); border: 1px solid rgba(232,90,107,.2);
   font-size: .78rem; color: var(--text-muted);
 }
+.aviation-notice--active {
+  background: rgba(100,200,120,.07); border-color: rgba(100,200,120,.25);
+}
 .notice-badge {
   display: inline-block; font-size: .62rem; font-weight: 600;
   padding: .12rem .4rem; border-radius: 999px;
   background: rgba(232,90,107,.2); color: var(--accent); margin-right: .35rem;
 }
+.notice-badge--active {
+  background: rgba(100,200,120,.2); color: #6dc87a;
+}
+/* ── Wizard Step2 항공편 선택 목록 ─────────────────────────────────── */
+.flight-list-section {
+  margin-top: 1rem;
+}
+.flight-list-header {
+  font-size: .78rem; color: var(--text-muted);
+  margin-bottom: .5rem; display: flex; align-items: center; gap: .5rem;
+}
+.flight-list-spinner { font-size: .72rem; opacity: .7; }
+.flight-list-cards {
+  display: flex; flex-direction: column; gap: .4rem;
+  max-height: 340px; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.flight-list-empty { font-size: .78rem; color: var(--text-muted); padding: .4rem 0; }
+
+.flight-sel-card {
+  padding: .55rem .8rem; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: rgba(255,255,255,.03);
+  cursor: pointer; transition: border-color .15s, background .15s;
+}
+.flight-sel-card:hover   { border-color: var(--gold); background: rgba(212,175,55,.06); }
+.flight-sel-card.selected {
+  border-color: var(--gold); background: rgba(212,175,55,.1);
+  box-shadow: 0 0 0 1px var(--gold);
+}
+.fsc-airline {
+  font-size: .8rem; font-weight: 600; color: var(--text);
+  display: flex; align-items: center; gap: .4rem; margin-bottom: .25rem;
+}
+.fsc-num   { font-size: .75rem; color: var(--gold); font-weight: 700; }
+.fsc-days    { font-size: .65rem; color: var(--text-muted); font-weight: 400; margin-left: auto; }
+.fsc-aliases { font-size: .65rem; color: var(--text-muted); font-weight: 400; }
+.fsc-route {
+  display: flex; align-items: center; gap: .35rem;
+  font-size: .82rem; color: var(--text);
+}
+.fsc-ap    { font-size: .72rem; color: var(--text-muted); }
+.fsc-time  { font-weight: 600; }
+.fsc-arrow { color: var(--text-muted); font-size: .75rem; }
+.fsc-meta  { font-size: .68rem; color: var(--text-muted); margin-left: auto; }
+.fsc-delay { display: block; font-size: .68rem; color: #ff9500; margin-top: .15rem; }
+
+/* ── 페이지네이션 ──────────────────────────────────────────────────── */
+.flight-list-pager {
+  display: flex; align-items: center; justify-content: center;
+  gap: .75rem; margin-top: .6rem;
+}
+.pager-btn {
+  padding: .3rem .75rem; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: rgba(255,255,255,.04);
+  color: var(--text); font-size: .78rem; cursor: pointer; transition: background .15s;
+}
+.pager-btn:hover:not(:disabled) { background: rgba(212,175,55,.15); border-color: var(--gold); color: var(--gold); }
+.pager-btn:disabled { opacity: .35; cursor: default; }
+.pager-info { font-size: .78rem; color: var(--text-muted); min-width: 3.5rem; text-align: center; }
 
 /* ── Stepper ── */
 .stepper {
@@ -1406,6 +1475,12 @@ a.place-card:hover .place-maps-hint {
   font-size: .72rem;
   color: #ff9500;
   font-weight: 600;
+}
+
+.flight-schedule-meta {
+  font-size: .68rem;
+  color: var(--text-muted);
+  margin-top: .2rem;
 }
 
 /* ── Airport info card ────────────────────────────────────────────── */

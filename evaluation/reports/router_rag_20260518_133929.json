@@ -1,0 +1,167 @@
+{
+  "metadata": {
+    "dataset": "unseen",
+    "timestamp": "2026-05-18T13:40:12.951838",
+    "total_cases": 7,
+    "check_reply_keywords": true,
+    "note": "route_and_answer() — ground_truth 미사용 (프로덕션 경로)"
+  },
+  "summary": {
+    "category_acc": 85.7,
+    "keyword_acc": 100.0,
+    "rag_used_rate": 100.0,
+    "places_used_rate": 0.0,
+    "avg_latency_ms": 3676,
+    "reply_keyword_acc": 85.7,
+    "error_count": 0
+  },
+  "results": [
+    {
+      "id": "T005",
+      "question": "서울 지하철에서 티머니는 어떻게 써?",
+      "reply_language": "日本語",
+      "expected_category": "transport",
+      "got_category": "transport",
+      "category_ok": true,
+      "got_keyword": "서울 지하철 티머니 사용법",
+      "keyword_ok": true,
+      "reply_keyword_ok": true,
+      "reply_keyword_ratio": 1.0,
+      "sources_used": [
+        "rag",
+        "llm"
+      ],
+      "rag_count": 1,
+      "places_count": 0,
+      "reply": "서울（ソウル）地下鉄でのティ머니（T-money）カードの使い方は簡単です。改札口の読み取り機にカードをタッチするだけで乗車できます。乗車時と降車時にタッチすると正確な運賃が自動で計算されます。チャージは地下鉄駅やコンビニで可能です。リアルタイムの路線や乗り換え案内はNaver MapやKakaoMapアプリがおすすめです。詳細な料金や営業時間は現地または公式情報でご確認ください。",
+      "is_fallback": false,
+      "latency_ms": 5755
+    },
+    {
+      "id": "T007",
+      "question": "부산 해운대 근처 관광지 추천",
+      "reply_language": "日本語",
+      "expected_category": "leisure",
+      "got_category": "leisure",
+      "category_ok": true,
+      "got_keyword": "부산 해운대 관광지",
+      "keyword_ok": true,
+      "reply_keyword_ok": true,
+      "reply_keyword_ratio": 1.0,
+      "sources_used": [
+        "rag",
+        "llm"
+      ],
+      "rag_count": 5,
+      "places_count": 0,
+      "reply": "釜山（プサン）海雲台（ヘウンデ）周辺の観光地としては、海雲台ビーチが有名で、美しい海岸線と多彩なレストラン、カフェが楽しめます。また、近くにはオリンピック公園もあり、憩いの場として散策やイベント参加が可能です。その他、周辺の観光スポットはNaver MapやGoogle Mapsで最新情報を確認されると良いでしょう。現地の営業時間や料金は公式情報でご確認ください。楽しい旅を！",
+      "is_fallback": false,
+      "latency_ms": 3107
+    },
+    {
+      "id": "T008",
+      "question": "경주 역사 관광지 추천해줘",
+      "reply_language": "日本語",
+      "expected_category": "culture",
+      "got_category": "culture",
+      "category_ok": true,
+      "got_keyword": "경주 역사 관광지",
+      "keyword_ok": true,
+      "reply_keyword_ok": true,
+      "reply_keyword_ratio": 1.0,
+      "sources_used": [
+        "rag",
+        "llm"
+      ],
+      "rag_count": 5,
+      "places_count": 0,
+      "reply": "慶州（キョンジュ）は歴史的な観光地が豊富で、日本の皆様にも人気です。おすすめの歴史観光スポットをいくつかご紹介します。\n\n1. 仏国寺（プルグクサ） - 新羅時代の代表的な仏教寺院で、世界遺産にも登録されています。\n2. 石窟庵（ソックラム） - 仏国寺とともに新羅時代の仏教文化を感じられる石窟寺院です。\n3. 慶州歴史地区 - 古墳群や古代遺跡が点在し、新羅の歴史を体感できます。\n4. 敷地里ケヤキ（シクチリケヤキ） - 樹齢千年以上のケヤキの木で、高麗時代からの歴史を持ち、重要な文化財です。\n\nこれらの場所は歴史好きの方に特におすすめです。訪問時の詳細な営業時間や入場料は現地または公式情報でご確認ください。楽しい旅を！",
+      "is_fallback": false,
+      "latency_ms": 3468
+    },
+    {
+      "id": "T009",
+      "question": "서귀포 여행 코스 알려줘",
+      "reply_language": "日本語",
+      "expected_category": "leisure",
+      "got_category": "itinerary",
+      "category_ok": false,
+      "got_keyword": "서귀포 여행 코스",
+      "keyword_ok": true,
+      "reply_keyword_ok": false,
+      "reply_keyword_ratio": 0.3333333333333333,
+      "sources_used": [
+        "rag",
+        "llm"
+      ],
+      "rag_count": 1,
+      "places_count": 0,
+      "reply": "서귀포（ソグィポ）旅行のおすすめコースをご案内します。\n\n自然を楽しみたい場合は、雷岩棒（ペギョクバウィボン）登山コースがおすすめです。自然休養林のチケット販売所からスタートし、山道を通って峠や尾根を越え、岩洞のある산파암（サンパアム）を経て頂上へ。頂上からは北峰を通りヘリポートを経て事務所方面へ下山します。所要時間は約3～4時間です。\n\nまた、서귀포市内や近郊には美しい海岸線や滝、カフェや市場も多いので、Naver Mapで「서귀포」周辺の観光スポットやグルメを検索してみてください。\n\n詳しい営業時間や交通情報は現地や公式情報でご確認ください。楽しい旅を！",
+      "is_fallback": false,
+      "latency_ms": 4158
+    },
+    {
+      "id": "T010",
+      "question": "인천공항에서 서울역 가는 방법",
+      "reply_language": "日本語",
+      "expected_category": "transport",
+      "got_category": "transport",
+      "category_ok": true,
+      "got_keyword": "인천공항 서울역 가는 방법",
+      "keyword_ok": true,
+      "reply_keyword_ok": true,
+      "reply_keyword_ratio": 1.0,
+      "sources_used": [
+        "rag",
+        "llm"
+      ],
+      "rag_count": 1,
+      "places_count": 0,
+      "reply": "仁川空港（インチョンコンハン）からソウル駅（ソウルヨク）へは、空港鉄道（AREX）直通列車が便利です。空港鉄道の直通列車で約43分で到着します。一般列車もありますが、直通列車のほうが速いです。\n\nまた、空港リムジンバスも利用可能ですが、交通状況によって所要時間が変わるため、空港鉄道の利用をおすすめします。\n\n交通カード「T-money（ティーマネー）」を使うと便利です。リアルタイムのルートや時刻は、Naver MapやKakaoMapアプリでご確認ください。\n\n※運行時間や料金は変わることがあるので、現地または公式情報でご確認ください。",
+      "is_fallback": false,
+      "latency_ms": 3625
+    },
+    {
+      "id": "T011",
+      "question": "한복 입고 가면 좋은 궁궐 어디야?",
+      "reply_language": "日本語",
+      "expected_category": "culture",
+      "got_category": "culture",
+      "category_ok": true,
+      "got_keyword": "한복 궁궐 추천",
+      "keyword_ok": true,
+      "reply_keyword_ok": true,
+      "reply_keyword_ratio": 1.0,
+      "sources_used": [
+        "rag",
+        "llm"
+      ],
+      "rag_count": 5,
+      "places_count": 0,
+      "reply": "韓服（ハンボク）を着て訪れるのにおすすめの宮殿は、ソウルの景福宮（キョンボックン）です。景福宮は韓国で最も有名で美しい宮殿の一つで、韓服を着ての入場が無料になる特典もあります。明洞（ミョンドン）や仁寺洞（インサドン）からもアクセスが良いので便利です。\n\n他にも昌徳宮（チャンドックン）や徳寿宮（トクスグン）も韓服での観光に人気です。韓服を着て宮殿を歩くと、より韓国の歴史と文化を感じられますよ。\n\nなお、営業時間や韓服レンタルの詳細は現地や公式サイトでご確認ください。楽しい旅を！",
+      "is_fallback": false,
+      "latency_ms": 3311
+    },
+    {
+      "id": "T012",
+      "question": "한국에서 환전은 어디서 하는 게 좋아?",
+      "reply_language": "日本語",
+      "expected_category": "general",
+      "got_category": "general",
+      "category_ok": true,
+      "got_keyword": "한국 환전 장소 추천",
+      "keyword_ok": true,
+      "reply_keyword_ok": true,
+      "reply_keyword_ratio": 1.0,
+      "sources_used": [
+        "rag",
+        "llm"
+      ],
+      "rag_count": 1,
+      "places_count": 0,
+      "reply": "韓国での両替は、空港の両替所や銀行、主要な観光地の両替所が一般的です。特に明洞（ミョンドン）や仁寺洞（インサドン）などの観光地には多くの両替所があります。レートは場所によって異なるため、複数の両替所を比較すると良いでしょう。なお、最新のレートや営業時間は現地または公式情報でご確認ください。",
+      "is_fallback": false,
+      "latency_ms": 2307
+    }
+  ]
+}

@@ -45,26 +45,42 @@ def matched_keywords(results: list[dict], expected_keywords: list[str]) -> bool:
     return False
 
 
-def run_case(store, case: dict, top_k: int) -> dict:
+def run_case(store, case: dict, top_k: int, production_classify=None) -> dict:  # noqa: C901
     query = case["question"]
-    rag_category = RAG_CATEGORY_MAP.get(case.get("expected_category", ""), "")
+    oracle_category = RAG_CATEGORY_MAP.get(case.get("expected_category", ""), "")
     area = case.get("expected_area", "") or ""
     expected_keywords = case.get("expected_result_keywords") or case.get("expected_keyword_contains") or []
 
     scenarios = [
         ("no_filter", "", ""),
-        ("category", rag_category, ""),
-        ("category_area", rag_category, area),
+        ("category", oracle_category, ""),
+        ("category_area", oracle_category, area),
     ]
+
+    # production 모드: 분류기가 예측한 카테고리로 필터
+    if production_classify is not None:
+        try:
+            clf_result = production_classify(query)
+            prod_category = RAG_CATEGORY_MAP.get(clf_result.category, "")
+        except Exception as e:
+            prod_category = ""
+            print(f"  [production classify error] {e}")
+        scenarios.append(("production", prod_category, ""))
 
     results = []
     for name, category_filter, area_filter in scenarios:
-        search_results = store.search(
-            query=query,
-            category=category_filter,
-            area=area_filter,
-            top_k=top_k,
-        )
+        try:
+            search_results = store.search(
+                query=query,
+                category=category_filter,
+                area=area_filter,
+                top_k=top_k,
+            )
+        except Exception as e:
+            import traceback
+            print(f"\n[ERROR] {case['id']} backend={store.backend_name} mode={name}: {e}")
+            traceback.print_exc()
+            raise
         results.append(
             {
                 "mode": name,
@@ -82,8 +98,20 @@ def run_case(store, case: dict, top_k: int) -> dict:
     }
 
 
-def print_report(rows: list[dict]) -> None:
+def build_summary(rows: list[dict]) -> dict[str, dict]:
     summary: dict[str, dict[str, int]] = {}
+    for row in rows:
+        for item in row["results"]:
+            key = f"{row['backend']}::{item['mode']}"
+            bucket = summary.setdefault(key, {"cases": 0, "hit1": 0, "hitk": 0})
+            bucket["cases"] += 1
+            bucket["hit1"] += int(item["hit_at_1"])
+            bucket["hitk"] += int(item["hit_at_k"])
+    return summary
+
+
+def print_report(rows: list[dict]) -> None:
+    summary = build_summary(rows)
 
     for row in rows:
         print(f"\n[{row['backend']}] {row['id']}  {row['question']}")
@@ -94,29 +122,37 @@ def print_report(rows: list[dict]) -> None:
                 f"  - {item['mode']:<14} hit@1={hit1}  hit@k={hitk}  count={item['count']:<2d}  "
                 f"top={item['top_result']}"
             )
-            backend_summary = summary.setdefault(
-                f"{row['backend']}::{item['mode']}",
-                {"cases": 0, "hit1": 0, "hitk": 0},
-            )
-            backend_summary["cases"] += 1
-            backend_summary["hit1"] += int(item["hit_at_1"])
-            backend_summary["hitk"] += int(item["hit_at_k"])
 
     print("\n" + "=" * 70)
     print("Summary")
     for key, stats in sorted(summary.items()):
         cases = stats["cases"]
         print(
-            f"{key:<26}  hit@1={stats['hit1']}/{cases} ({stats['hit1'] / cases * 100:.1f}%)"
+            f"{key:<30}  hit@1={stats['hit1']}/{cases} ({stats['hit1'] / cases * 100:.1f}%)"
             f"  hit@k={stats['hitk']}/{cases} ({stats['hitk'] / cases * 100:.1f}%)"
         )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="벡터 검색 백엔드 벤치마크")
-    parser.add_argument("--backend", choices=["faiss", "pgvector", "both"], default="both")
+    parser.add_argument("--backend", choices=["faiss", "pgvector", "both"], default="pgvector")
     parser.add_argument("--top-k", type=int, default=3)
+    parser.add_argument(
+        "--production",
+        action="store_true",
+        help="분류기 예측 카테고리로 필터하는 production 모드 추가 (OpenAI API 필요)",
+    )
+    parser.add_argument("--output", type=str, help="결과 JSON 저장 경로")
     args = parser.parse_args()
+
+    production_classify = None
+    if args.production:
+        from openai import OpenAI
+        from src.chain.router import _classify as _router_classify
+        _client = OpenAI()
+
+        def production_classify(question: str):
+            return _router_classify(question, _client)
 
     stores = []
     if args.backend in {"faiss", "both"}:
@@ -132,13 +168,53 @@ def main() -> None:
             print(f"[SKIP] backend={store.backend_name} 는 아직 준비되지 않았습니다.")
             continue
         for case in cases:
-            rows.append(run_case(store, case, top_k=args.top_k))
+            rows.append(run_case(store, case, top_k=args.top_k, production_classify=production_classify))
 
     if not rows:
-        print("실행 가능한 백엔드가 없습니다. FAISS 인덱스 또는 pgvector 적재를 먼저 준비하세요.")
-        return
+        msg = (
+            "[SKIP] 실행 가능한 벡터 백엔드 없음 — 벤치마크 건너뜀.\n"
+            "  pgvector: Django ORM + postgresql + pgvector 설정 및 KnowledgeChunk.embedding 채우기 필요.\n"
+            "  FAISS: data/vector/tour_knowledge.faiss 빌드 필요 (faiss-cpu 패키지 설치 후 --build)."
+        )
+        print(msg)
+        if args.output:
+            out_path = Path(args.output)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(
+                json.dumps({"note": "no_backends_ready — skip", "summary": {}}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        sys.exit(0)
 
     print_report(rows)
+
+    if args.output:
+        from datetime import datetime
+        summary = build_summary(rows)
+        out = {
+            "metadata": {
+                "timestamp": datetime.now().isoformat(),
+                "backend": args.backend,
+                "top_k": args.top_k,
+                "production_mode": args.production,
+                "total_cases": len(cases),
+            },
+            "summary": {
+                k: {
+                    "hit1": v["hit1"],
+                    "hitk": v["hitk"],
+                    "cases": v["cases"],
+                    "hit1_pct": round(v["hit1"] / v["cases"] * 100, 1) if v["cases"] else 0,
+                    "hitk_pct": round(v["hitk"] / v["cases"] * 100, 1) if v["cases"] else 0,
+                }
+                for k, v in summary.items()
+            },
+            "cases": rows,
+        }
+        out_path = Path(args.output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"\n결과 저장: {out_path}")
 
 
 if __name__ == "__main__":

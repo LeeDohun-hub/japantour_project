@@ -1,0 +1,370 @@
+{
+  "metadata": {
+    "timestamp": "2026-05-18T14:47:38.613970",
+    "backend": "pgvector",
+    "top_k": 5,
+    "production_mode": false,
+    "total_cases": 12
+  },
+  "summary": {
+    "pgvector::no_filter": {
+      "hit1": 6,
+      "hitk": 9,
+      "cases": 12,
+      "hit1_pct": 50.0,
+      "hitk_pct": 75.0
+    },
+    "pgvector::category": {
+      "hit1": 3,
+      "hitk": 8,
+      "cases": 12,
+      "hit1_pct": 25.0,
+      "hitk_pct": 66.7
+    },
+    "pgvector::category_area": {
+      "hit1": 3,
+      "hitk": 7,
+      "cases": 12,
+      "hit1_pct": 25.0,
+      "hitk_pct": 58.3
+    }
+  },
+  "cases": [
+    {
+      "id": "T001",
+      "question": "성수동 맛집 추천해줘",
+      "backend": "pgvector",
+      "results": [
+        {
+          "mode": "no_filter",
+          "hit_at_1": false,
+          "hit_at_k": false,
+          "count": 5,
+          "top_result": "このお店に行くことをおすすめしますか？"
+        },
+        {
+          "mode": "category",
+          "hit_at_1": false,
+          "hit_at_k": false,
+          "count": 5,
+          "top_result": "このお店に行くことをおすすめしますか？"
+        },
+        {
+          "mode": "category_area",
+          "hit_at_1": false,
+          "hit_at_k": false,
+          "count": 5,
+          "top_result": "この店のおすすめメニューはありますか？"
+        }
+      ]
+    },
+    {
+      "id": "T002",
+      "question": "한국 식당 예절 알려줘",
+      "backend": "pgvector",
+      "results": [
+        {
+          "mode": "no_filter",
+          "hit_at_1": true,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "この店はどんな料理を提供していますか？"
+        },
+        {
+          "mode": "category",
+          "hit_at_1": false,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "都市型韓屋外出「建陽師に会う」とは何ですか？"
+        },
+        {
+          "mode": "category_area",
+          "hit_at_1": false,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "都市型韓屋外出「建陽師に会う」とは何ですか？"
+        }
+      ]
+    },
+    {
+      "id": "T003",
+      "question": "명동에서 쇼핑하기 좋은 곳이 뭐야",
+      "backend": "pgvector",
+      "results": [
+        {
+          "mode": "no_filter",
+          "hit_at_1": true,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "店内でショッピングもできますか？"
+        },
+        {
+          "mode": "category",
+          "hit_at_1": false,
+          "hit_at_k": false,
+          "count": 5,
+          "top_result": "このバッグはどこで購入することができますか？"
+        },
+        {
+          "mode": "category_area",
+          "hit_at_1": false,
+          "hit_at_k": false,
+          "count": 0,
+          "top_result": ""
+        }
+      ]
+    },
+    {
+      "id": "T004",
+      "question": "제주도에서 하루 여행 코스 추천해줘",
+      "backend": "pgvector",
+      "results": [
+        {
+          "mode": "no_filter",
+          "hit_at_1": true,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "出張や旅行におすすめの宿ですか？"
+        },
+        {
+          "mode": "category",
+          "hit_at_1": true,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "出張や旅行におすすめの宿ですか？"
+        },
+        {
+          "mode": "category_area",
+          "hit_at_1": true,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "加波島で何ができますか？"
+        }
+      ]
+    },
+    {
+      "id": "T005",
+      "question": "서울 지하철에서 티머니는 어떻게 써?",
+      "backend": "pgvector",
+      "results": [
+        {
+          "mode": "no_filter",
+          "hit_at_1": false,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "この場所へのアクセス方法はどうすればいいですか？"
+        },
+        {
+          "mode": "category",
+          "hit_at_1": false,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "この場所へのアクセス方法はどうすればいいですか？"
+        },
+        {
+          "mode": "category_area",
+          "hit_at_1": true,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "場所について教えてください。"
+        }
+      ]
+    },
+    {
+      "id": "T006",
+      "question": "겨울 서울 여행 옷차림 알려줘",
+      "backend": "pgvector",
+      "results": [
+        {
+          "mode": "no_filter",
+          "hit_at_1": false,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "韓服はどこに位置していますか？"
+        },
+        {
+          "mode": "category",
+          "hit_at_1": false,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "韓服はどこに位置していますか？"
+        },
+        {
+          "mode": "category_area",
+          "hit_at_1": false,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "このお店ではどのような料理が提供されますか？"
+        }
+      ]
+    },
+    {
+      "id": "T007",
+      "question": "부산 해운대 근처 관광지 추천",
+      "backend": "pgvector",
+      "results": [
+        {
+          "mode": "no_filter",
+          "hit_at_1": true,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "周辺にはどんな観光地がありますか？"
+        },
+        {
+          "mode": "category",
+          "hit_at_1": true,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "周辺にはどんな観光地がありますか？"
+        },
+        {
+          "mode": "category_area",
+          "hit_at_1": false,
+          "hit_at_k": false,
+          "count": 5,
+          "top_result": "オリンピック公園では何ができますか？"
+        }
+      ]
+    },
+    {
+      "id": "T008",
+      "question": "경주 역사 관광지 추천해줘",
+      "backend": "pgvector",
+      "results": [
+        {
+          "mode": "no_filter",
+          "hit_at_1": true,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "この博物館はどのような人々におすすめですか？"
+        },
+        {
+          "mode": "category",
+          "hit_at_1": false,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "この博物館はどのような方におすすめですか？"
+        },
+        {
+          "mode": "category_area",
+          "hit_at_1": true,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "仏国寺はどのような価値があるのですか？"
+        }
+      ]
+    },
+    {
+      "id": "T009",
+      "question": "서귀포 여행 코스 알려줘",
+      "backend": "pgvector",
+      "results": [
+        {
+          "mode": "no_filter",
+          "hit_at_1": true,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "チェックイン方法について詳しく教えてください。"
+        },
+        {
+          "mode": "category",
+          "hit_at_1": true,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "チェックイン方法について詳しく教えてください。"
+        },
+        {
+          "mode": "category_area",
+          "hit_at_1": false,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "セソカク千日での滞在はどのような思い出を作れますか？"
+        }
+      ]
+    },
+    {
+      "id": "T010",
+      "question": "인천공항에서 서울역 가는 방법",
+      "backend": "pgvector",
+      "results": [
+        {
+          "mode": "no_filter",
+          "hit_at_1": false,
+          "hit_at_k": false,
+          "count": 5,
+          "top_result": "公共交通機関を利用する場合、最寄りのバス停はどこですか？"
+        },
+        {
+          "mode": "category",
+          "hit_at_1": false,
+          "hit_at_k": false,
+          "count": 5,
+          "top_result": "公共交通機関を利用する場合、最寄りのバス停はどこですか？"
+        },
+        {
+          "mode": "category_area",
+          "hit_at_1": false,
+          "hit_at_k": false,
+          "count": 5,
+          "top_result": "ホテルの立地はどのくらい便利ですか？"
+        }
+      ]
+    },
+    {
+      "id": "T011",
+      "question": "한복 입고 가면 좋은 궁궐 어디야?",
+      "backend": "pgvector",
+      "results": [
+        {
+          "mode": "no_filter",
+          "hit_at_1": false,
+          "hit_at_k": false,
+          "count": 5,
+          "top_result": "裏庭には何がありますか？"
+        },
+        {
+          "mode": "category",
+          "hit_at_1": false,
+          "hit_at_k": false,
+          "count": 5,
+          "top_result": "枕と足掛けの共通点はありますか？"
+        },
+        {
+          "mode": "category_area",
+          "hit_at_1": false,
+          "hit_at_k": false,
+          "count": 5,
+          "top_result": "三千寺の摩崖仏の胸には何が描かれていますか？"
+        }
+      ]
+    },
+    {
+      "id": "T012",
+      "question": "한국에서 환전은 어디서 하는 게 좋아?",
+      "backend": "pgvector",
+      "results": [
+        {
+          "mode": "no_filter",
+          "hit_at_1": false,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "健康文化院では何ができますか？"
+        },
+        {
+          "mode": "category",
+          "hit_at_1": false,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "健康文化院では何ができますか？"
+        },
+        {
+          "mode": "category_area",
+          "hit_at_1": false,
+          "hit_at_k": true,
+          "count": 5,
+          "top_result": "健康文化院では何ができますか？"
+        }
+      ]
+    }
+  ]
+}

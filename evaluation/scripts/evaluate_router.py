@@ -16,21 +16,39 @@ import sys
 import time
 from pathlib import Path
 
-# 프로젝트 루트를 sys.path에 추가
+import io
+
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+
+if hasattr(sys.stdout, "buffer") and (not sys.stdout.encoding or sys.stdout.encoding.lower() not in ("utf-8", "utf-8-sig")):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 from dotenv import load_dotenv
 
 load_dotenv(PROJECT_ROOT / ".env")
 
-DEFAULT_EVAL_PATH = PROJECT_ROOT / "evaluation" / "data" / "tour_eval.json"
+_DATASET_PATHS: dict[str, Path] = {
+    "unseen": PROJECT_ROOT / "evaluation" / "data" / "tour_eval_unseen.json",
+    "seen":   PROJECT_ROOT / "evaluation" / "data" / "tour_eval_seen.json",
+    "all":    PROJECT_ROOT / "evaluation" / "data" / "tour_eval.json",
+}
 LEGACY_EVAL_PATH = PROJECT_ROOT / "data" / "evaluation" / "tour_eval.json"
 
 
-def _load_cases(ids: list[str] | None = None) -> list[dict]:
-    eval_path = DEFAULT_EVAL_PATH if DEFAULT_EVAL_PATH.exists() else LEGACY_EVAL_PATH
-    with open(eval_path, encoding="utf-8") as f:
+def _load_cases(
+    dataset: str = "unseen",
+    ids: list[str] | None = None,
+) -> list[dict]:
+    path = _DATASET_PATHS.get(dataset, _DATASET_PATHS["all"])
+    if not path.exists():
+        # unseen/seen 파일이 아직 없으면 전체 데이터로 폴백
+        fallback = _DATASET_PATHS["all"]
+        if not fallback.exists():
+            fallback = LEGACY_EVAL_PATH
+        print(f"[경고] {path.name} 없음 → {fallback.name} 사용 (audit_eval_leakage 실행 권장)")
+        path = fallback
+    with open(path, encoding="utf-8") as f:
         cases = json.load(f)
     if ids:
         cases = [c for c in cases if c["id"] in ids]
@@ -38,11 +56,18 @@ def _load_cases(ids: list[str] | None = None) -> list[dict]:
 
 
 def _classify_only(case: dict, client) -> dict:
+    import logging
     from src.chain.router import _classify
+
+    logging.basicConfig(level=logging.WARNING)
 
     start = time.perf_counter()
     result = _classify(case["question"], client)
     elapsed = time.perf_counter() - start
+
+    if result.is_fallback:
+        print(f"  [FALLBACK] {case['id']}: _classify() 실패 — API 오류 또는 JSON 파싱 실패. "
+              f"로그(WARNING)에서 원인 확인. 카테고리 기본값='{result.category}'")
 
     expected_cat = case["expected_category"]
     got_cat = result.category
@@ -120,6 +145,12 @@ def _print_row(r: dict, full: bool) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="라우터 평가")
+    parser.add_argument(
+        "--dataset",
+        choices=["unseen", "seen", "all"],
+        default="unseen",
+        help="평가 데이터셋 (기본: unseen — few-shot 미포함 케이스만)",
+    )
     parser.add_argument("--ids", nargs="+", help="특정 케이스 ID만 실행 (예: T001 T003)")
     parser.add_argument("--no-answer", action="store_true", help="분류만 테스트 (응답 생성 생략)")
     parser.add_argument("--output", type=str, help="결과 JSON 저장 경로")
@@ -128,8 +159,9 @@ def main() -> None:
     from openai import OpenAI
     client = OpenAI()
 
-    cases = _load_cases(args.ids)
-    print(f"\n[평가 시작] {len(cases)}개 케이스  mode={'classify-only' if args.no_answer else 'full-pipeline'}\n")
+    cases = _load_cases(args.dataset, args.ids)
+    mode = "classify-only" if args.no_answer else "full-pipeline"
+    print(f"\n[평가 시작] dataset={args.dataset}  {len(cases)}개 케이스  mode={mode}\n")
 
     results = []
     for case in cases:

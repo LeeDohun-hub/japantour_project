@@ -1,0 +1,9 @@
+{
+  "config": "baseline",
+  "metrics": {
+    "faithfulness": 0.1363495300995301,
+    "answer_relevancy": 0.4074710871067833,
+    "context_precision": 0.416666666625,
+    "context_recall": 0.46990740740740744
+  }
+}

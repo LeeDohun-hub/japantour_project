@@ -1,0 +1,252 @@
+﻿[감사 대상]
+  few-shot 예시 : 26개 (router.py: 25, prompts.py: 5)
+  router.py     : C:\WorkSpace\japantour_project\src\chain\router.py
+  prompts.py    : C:\WorkSpace\japantour_project\src\chain\prompts.py
+
+───────────────────────────────────────────────────────────────────────────
+ID     질문                                             판정          유형·근거
+───────────────────────────────────────────────────────────────────────────
+T001   성수동 맛집 추천해줘                                    🚨 SEEN      exact  ← "성수동 맛집 추천해줘"
+T002   한국 식당 예절 알려줘                                   🚨 SEEN      substring  ← "한국 식당 예절"
+T003   명동에서 쇼핑하기 좋은 곳이 뭐야                             🚨 SEEN      keyword_overlap_cross_lang  ← "明洞でショッピング"
+T004   제주도에서 하루 여행 코스 추천해줘                            🚨 SEEN      exact  ← "제주도에서 하루 여행 코스 추천해줘"
+T005   서울 지하철에서 티머니는 어떻게 써?                           ✅ ok        
+T006   겨울 서울 여행 옷차림 알려줘                               🚨 SEEN      keyword_overlap_cross_lang  ← "冬のソウルで服装は？"
+T007   부산 해운대 근처 관광지 추천                               ✅ ok        
+T008   경주 역사 관광지 추천해줘                                 ✅ ok        
+T009   서귀포 여행 코스 알려줘                                  ✅ ok        
+T010   인천공항에서 서울역 가는 방법                               ✅ ok        
+T011   한복 입고 가면 좋은 궁궐 어디야?                            ✅ ok        
+T012   한국에서 환전은 어디서 하는 게 좋아?                          ✅ ok        
+───────────────────────────────────────────────────────────────────────────
+
+SEEN   : 5건  ['T001', 'T002', 'T003', 'T004', 'T006']
+UNSEEN : 7건  ['T005', 'T007', 'T008', 'T009', 'T010', 'T011', 'T012']
+
+저장: C:\WorkSpace\japantour_project\evaluation\data\tour_eval_seen.json  (5건)
+저장: C:\WorkSpace\japantour_project\evaluation\data\tour_eval_unseen.json  (7건)
+
+[STRICT] 누수 발견 → exit 1
+
+[평가 시작] dataset=unseen  7개 케이스  mode=classify-only
+
+T005   ✅ transport     ✅ kw=서울 지하철 티머니 사용법             7456ms
+T007   ✅ leisure       ✅ kw=부산 해운대 관광지                 1008ms
+T008   ✅ culture       ✅ kw=경주 역사 관광지                  1793ms
+T009   ✅ itinerary     ✅ kw=서귀포 여행 코스                   859ms
+T010   ✅ transport     ✅ kw=인천공항 서울역 가는 방법              844ms
+T011   ✅ culture       ✅ kw=한복 궁궐 추천                    562ms
+T012   ✅ general       ✅ kw=한국 환전 장소 추천                 524ms
+
+────────────────────────────────────────────────────────────
+분류 정확도 : 100.0%  (7/7)
+키워드 포함 : 100.0%  (7/7)
+평균 응답  : 1864ms
+
+결과 저장: C:\WorkSpace\japantour_project\evaluation\reports\router_classify_20260518_144542.json
+
+python.exe : [INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+At line:1 char:110
++ ... r_project"; & $PYTHON -m evaluation.scripts.run_full_eval --skip-raga ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([INFO] httpx: H...TTP/1.1 200 OK":String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] src.api.google_places_client: Places textSearch HTTP 200 \u2014 query='\ubd80\uc0b0 \ud574\uc6b4\ub300 \uad00\ua
+d11\uc9c0'
+[INFO] src.api.google_places_client: Places textSearch returned 5 places
+[INFO] src.chain.router: Places API [leisure/\ubd80\uc0b0 \ud574\uc6b4\ub300 \uad00\uad11\uc9c0] �� 5 results (error=No
+ne)
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+
+[평가 시작] dataset=unseen  7개 케이스  check_reply_kw=True
+
+  T005   ✅ transport     ✅ kw=서울 지하철 티머니 사용법          src=rag,llm         rag=5 places=0  11940ms
+         ↳ reply keyword FAIL (0% 일치)
+         ↳ 서울 지하철에서 티머니 카드는 교통카드로 사용됩니다. 지하철 개찰구에 카드 리더기에 티머니 카드를 대면 자동으로 요금이 차감되어 편리하게 탑승할 수 있습니다. 충전은 지하철역 내 충전기나 편의점에서 가능합니다. 자세
+  T007   ✅ leisure       ✅ kw=부산 해운대 관광지              src=places,rag,llm  rag=5 places=5  4537ms
+         ↳ 海雲台（ヘウンデ）ビーチやシーライフ釜山アクアリウム、海雲台ブルーラインパークなどがおすすめです。ゆったり海辺の散策や水族館体験が楽しめますよ。
+  T008   ✅ culture       ✅ kw=경주 역사 관광지               src=rag,llm         rag=5 places=0  4108ms
+         ↳ 慶州（キョンジュ）で歴史観光を楽しみたいなら、まず仏国寺（プルグクサ）がおすすめです。新羅時代の代表的な寺院で、千年以上の歴史を持ち、1995年にユネスコ世界文化遺産に登録されています。慶尚北道慶州市吐含山（トハムサン）に位置していますので
+  T009   ✅ itinerary     ✅ kw=서귀포 여행 코스               src=rag,llm         rag=5 places=0  9802ms
+         ↳ reply keyword FAIL (33% 일치)
+         ↳ 서귀포（ソグィポ）旅行コースのおすすめをご案内します。
+
+まず、自然を満喫したいなら、漢拏山（ハルラサン）国立公園でトレッキングや絶景を楽しめます。次に、天帝淵（チョンジェヨン）滝や正房瀑布（チョンバンポクポ）などの美しい滝巡りも人気です。
+  T010   ✅ transport     ✅ kw=인천공항 서울역 가는 방법          src=rag,llm         rag=5 places=0  5070ms
+         ↳ 仁川空港（インチョンコンハン）からソウル駅（ソウルヨク）へは、空港鉄道（AREX）を利用するのが便利です。空港鉄道の直通列車または一般列車で約43分で到着します。料金や時刻は変わることがあるため、現地や公式サイトでご確認ください。
+
+また、
+  T011   ✅ culture       ✅ kw=한복 궁궐 추천                src=rag,llm         rag=5 places=0  4624ms
+         ↳ 韓服（ハンボク）を着て訪れるのにおすすめの宮殿は、ソウルの景福宮（キョンボックン）です。景福宮は韓国の代表的な王宮で、韓服を着ての入場が無料になる特典もあります。伝統的な雰囲気の中で写真撮影も楽しめるので、韓服体験と歴史散策を同時に満喫でき
+  T012   ✅ general       ✅ kw=한국 환전 장소 추천             src=rag,llm         rag=5 places=0  5146ms
+         ↳ 韓国での両替は、空港の両替所や銀行、主要な観光地の両替所が便利です。特に明洞（ミョンドン）や仁寺洞（インサドン）などの観光地には多くの両替所があり、レートも比較的良いことが多いです。ただし、レートや手数料は場所によって異なるため、複数の両替
+
+─────────────────────────────────────────────────────────────────
+분류 정확도    : 7/7  (100.0%)
+키워드 포함    : 7/7  (100.0%)
+RAG 활용       : 7/7건
+Places 활용    : 1/7건
+평균 응답시간  : 6461ms
+응답 키워드 OK : 5/7  (71.4%)
+
+결과 저장: C:\WorkSpace\japantour_project\evaluation\reports\router_rag_20260518_144542.json
+
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+[INFO] httpx: HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+
+[pgvector] T001  성수동 맛집 추천해줘
+  - no_filter      hit@1=❌  hit@k=❌  count=5   top=このお店に行くことをおすすめしますか？
+  - category       hit@1=❌  hit@k=❌  count=5   top=このお店に行くことをおすすめしますか？
+  - category_area  hit@1=❌  hit@k=❌  count=5   top=この店のおすすめメニューはありますか？
+
+[pgvector] T002  한국 식당 예절 알려줘
+  - no_filter      hit@1=✅  hit@k=✅  count=5   top=この店はどんな料理を提供していますか？
+  - category       hit@1=❌  hit@k=✅  count=5   top=都市型韓屋外出「建陽師に会う」とは何ですか？
+  - category_area  hit@1=❌  hit@k=✅  count=5   top=都市型韓屋外出「建陽師に会う」とは何ですか？
+
+[pgvector] T003  명동에서 쇼핑하기 좋은 곳이 뭐야
+  - no_filter      hit@1=✅  hit@k=✅  count=5   top=店内でショッピングもできますか？
+  - category       hit@1=❌  hit@k=❌  count=5   top=このバッグはどこで購入することができますか？
+  - category_area  hit@1=❌  hit@k=❌  count=0   top=
+
+[pgvector] T004  제주도에서 하루 여행 코스 추천해줘
+  - no_filter      hit@1=✅  hit@k=✅  count=5   top=出張や旅行におすすめの宿ですか？
+  - category       hit@1=✅  hit@k=✅  count=5   top=出張や旅行におすすめの宿ですか？
+  - category_area  hit@1=✅  hit@k=✅  count=5   top=加波島で何ができますか？
+
+[pgvector] T005  서울 지하철에서 티머니는 어떻게 써?
+  - no_filter      hit@1=❌  hit@k=✅  count=5   top=この場所へのアクセス方法はどうすればいいですか？
+  - category       hit@1=❌  hit@k=✅  count=5   top=この場所へのアクセス方法はどうすればいいですか？
+  - category_area  hit@1=✅  hit@k=✅  count=5   top=場所について教えてください。
+
+[pgvector] T006  겨울 서울 여행 옷차림 알려줘
+  - no_filter      hit@1=❌  hit@k=✅  count=5   top=韓服はどこに位置していますか？
+  - category       hit@1=❌  hit@k=✅  count=5   top=韓服はどこに位置していますか？
+  - category_area  hit@1=❌  hit@k=✅  count=5   top=このお店ではどのような料理が提供されますか？
+
+[pgvector] T007  부산 해운대 근처 관광지 추천
+  - no_filter      hit@1=✅  hit@k=✅  count=5   top=周辺にはどんな観光地がありますか？
+  - category       hit@1=✅  hit@k=✅  count=5   top=周辺にはどんな観光地がありますか？
+  - category_area  hit@1=❌  hit@k=❌  count=5   top=オリンピック公園では何ができますか？
+
+[pgvector] T008  경주 역사 관광지 추천해줘
+  - no_filter      hit@1=✅  hit@k=✅  count=5   top=この博物館はどのような人々におすすめですか？
+  - category       hit@1=❌  hit@k=✅  count=5   top=この博物館はどのような方におすすめですか？
+  - category_area  hit@1=✅  hit@k=✅  count=5   top=仏国寺はどのような価値があるのですか？
+
+[pgvector] T009  서귀포 여행 코스 알려줘
+  - no_filter      hit@1=✅  hit@k=✅  count=5   top=チェックイン方法について詳しく教えてください。
+  - category       hit@1=✅  hit@k=✅  count=5   top=チェックイン方法について詳しく教えてください。
+  - category_area  hit@1=❌  hit@k=✅  count=5   top=セソカク千日での滞在はどのような思い出を作れますか？
+
+[pgvector] T010  인천공항에서 서울역 가는 방법
+  - no_filter      hit@1=❌  hit@k=❌  count=5   top=公共交通機関を利用する場合、最寄りのバス停はどこですか？
+  - category       hit@1=❌  hit@k=❌  count=5   top=公共交通機関を利用する場合、最寄りのバス停はどこですか？
+  - category_area  hit@1=❌  hit@k=❌  count=5   top=ホテルの立地はどのくらい便利ですか？
+
+[pgvector] T011  한복 입고 가면 좋은 궁궐 어디야?
+  - no_filter      hit@1=❌  hit@k=❌  count=5   top=裏庭には何がありますか？
+  - category       hit@1=❌  hit@k=❌  count=5   top=枕と足掛けの共通点はありますか？
+  - category_area  hit@1=❌  hit@k=❌  count=5   top=三千寺の摩崖仏の胸には何が描かれていますか？
+
+[pgvector] T012  한국에서 환전은 어디서 하는 게 좋아?
+  - no_filter      hit@1=❌  hit@k=✅  count=5   top=健康文化院では何ができますか？
+  - category       hit@1=❌  hit@k=✅  count=5   top=健康文化院では何ができますか？
+  - category_area  hit@1=❌  hit@k=✅  count=5   top=健康文化院では何ができますか？
+
+======================================================================
+Summary
+pgvector::category              hit@1=3/12 (25.0%)  hit@k=8/12 (66.7%)
+pgvector::category_area         hit@1=3/12 (25.0%)  hit@k=7/12 (58.3%)
+pgvector::no_filter             hit@1=6/12 (50.0%)  hit@k=9/12 (75.0%)
+
+결과 저장: C:\WorkSpace\japantour_project\evaluation\reports\vector_benchmark_20260518_144542.json
+
+=================================================================
+  STEP [audit]
+  CMD : -m evaluation.scripts.audit_eval_leakage --strict
+=================================================================
+  → WARN  (exit 1)
+
+=================================================================
+  STEP [router_classify]
+  CMD : -m evaluation.scripts.evaluate_router --dataset unseen --no-answer --output C:\WorkSpace\japantour_project\evaluation\reports\router_classify_20260518_144542.json
+=================================================================
+  → OK  (exit 0)
+
+=================================================================
+  STEP [router_rag]
+  CMD : -m evaluation.scripts.evaluate_router_rag --dataset unseen --check-reply-keywords --output C:\WorkSpace\japantour_project\evaluation\reports\router_rag_20260518_144542.json
+=================================================================
+  → OK  (exit 0)
+
+=================================================================
+  STEP [vector_benchmark]
+  CMD : -m evaluation.scripts.benchmark_vector_backends --backend pgvector --top-k 5 --output C:\WorkSpace\japantour_project\evaluation\reports\vector_benchmark_20260518_144542.json
+=================================================================
+  → OK  (exit 0)
+
+  [SKIP] ragas: --skip-ragas 지정
+
+  [SKIP] compare_optimizations: --skip-compare 지정
+
+=================================================================
+  EVAL COMPLETE
+=================================================================
+  단계: 5 OK  |  1 WARN  |  0 FAIL  (total 6)
+  WARN = 예상된 결과 (누수 감지 등) — EVAL_LEAKAGE.md 참조
+  요약: C:\WorkSpace\japantour_project\evaluation\reports\eval_summary_20260518_144542.md
+

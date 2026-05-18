@@ -137,12 +137,14 @@ function collect(step) {
   switch (step) {
     case 2: {
       const { nights, days } = calcNights($("flightDepart").value, $("flightReturn").value);
+      const prevSelected = wizardData.flight?.selected;
       wizardData.flight = {
         from:       $("flightFrom").value,
         to:         $("flightTo").value,
         depart:     $("flightDepart").value,
         returnDate: $("flightReturn").value,
         passengers: +$("passengerStepper").querySelector(".step-val").textContent || 1,
+        ...(prevSelected && { selected: prevSelected }),
       };
       wizardData.nights = nights;
       wizardData.days   = days;
@@ -282,6 +284,12 @@ async function checkAuthState() {
 }
 
 // ── STEP 2: FLIGHTS ───────────────────────────────────────────────────────
+let _flightFetchTimer = null;
+let _allFlights = [];
+let _flightPage = 0;
+let _fetchGen = 0;          // incremented on each fetch; stale responses are discarded
+const FLIGHTS_PER_PAGE = 10;
+
 function setupStep2() {
   const depart = $("flightDepart");
   const ret    = $("flightReturn");
@@ -305,6 +313,164 @@ function setupStep2() {
     if (action === "dec" && pax > 1)  pax--;
     $("passengerStepper").querySelector(".step-val").textContent = pax;
   });
+
+  // 출발·도착 교체 버튼
+  $("swapFlightRoute")?.addEventListener("click", () => {
+    const from = $("flightFrom");
+    const to   = $("flightTo");
+    const tmp  = from.value;
+    from.value = to.value;
+    to.value   = tmp;
+    clearTimeout(_flightFetchTimer);
+    _flightFetchTimer = setTimeout(fetchFlightList, 100);
+  });
+
+  // 출발지·날짜 변경 시 항공편 목록 조회
+  ["flightFrom", "flightTo", "flightDepart"].forEach((id) => {
+    $(id)?.addEventListener("change", () => {
+      clearTimeout(_flightFetchTimer);
+      _flightFetchTimer = setTimeout(fetchFlightList, 300);
+    });
+  });
+
+  fetchFlightList();
+}
+
+async function fetchFlightList() {
+  const dep  = ($("flightFrom")?.value || "").trim();
+  const arr  = ($("flightTo")?.value  || "ICN").trim();
+  const date = $("flightDepart")?.value || "";
+  const section = $("flightListSection");
+  const cards   = $("flightListCards");
+  const label   = $("flightListLabel");
+  const spinner = $("flightListLoading");
+  const pager   = $("flightListPager");
+  if (!section || !cards) return;
+
+  // Guard: dep must be selected before fetching
+  if (!dep) {
+    section.style.display = "block";
+    label.textContent = "출발지를 선택해주세요";
+    cards.innerHTML = "";
+    if (pager) pager.style.display = "none";
+    return;
+  }
+
+  // Increment generation so any in-flight request becomes stale
+  const gen = ++_fetchGen;
+
+  section.style.display = "block";
+  if (pager) pager.style.display = "none";
+  spinner.style.display = "inline";
+  label.textContent = `${dep} → ${arr} 항공편 조회 중…`;
+  cards.innerHTML = "";
+  _allFlights = [];
+  _flightPage = 0;
+
+  try {
+    const qs  = new URLSearchParams({ dep, arr, ...(date && { date }) });
+    const res = await fetch(`/api/flights/?${qs}`);
+    const data = await res.json();
+
+    // Discard if a newer fetch was started while we awaited
+    if (gen !== _fetchGen) return;
+
+    if (!res.ok || data.error) throw new Error(data.error || "조회 실패");
+
+    _allFlights = data.flights || [];
+    label.textContent = `${dep} → ${arr}  ${date || "오늘"}  총 ${_allFlights.length}편`;
+    if (_allFlights.length === 0) {
+      cards.innerHTML = `<p class="flight-list-empty">해당 노선·날짜의 항공편 정보가 없습니다.</p>`;
+      return;
+    }
+    renderFlightPage(0);
+    setupPager();
+  } catch (err) {
+    if (gen !== _fetchGen) return;
+    label.textContent = "조회 실패";
+    cards.innerHTML = `<p class="flight-list-empty">${err.message}</p>`;
+  } finally {
+    if (gen === _fetchGen) spinner.style.display = "none";
+  }
+}
+
+function renderFlightPage(page) {
+  const cards = $("flightListCards");
+  if (!cards) return;
+  const start = page * FLIGHTS_PER_PAGE;
+  const slice = _allFlights.slice(start, start + FLIGHTS_PER_PAGE);
+  cards.innerHTML = slice.map((f, i) => renderFlightSelectCard(f, start + i)).join("");
+  cards.querySelectorAll(".flight-sel-card").forEach((el) => {
+    el.addEventListener("click", () => selectFlight(el, _allFlights[+el.dataset.idx]));
+  });
+  // 이미 선택된 편명 유지 표시
+  const sel = wizardData.flight?.selected;
+  if (sel) {
+    cards.querySelectorAll(".flight-sel-card").forEach((el) => {
+      if (_allFlights[+el.dataset.idx]?.flight_iata === sel.flight_iata)
+        el.classList.add("selected");
+    });
+  }
+  // 페이저 상태 업데이트
+  const totalPages = Math.ceil(_allFlights.length / FLIGHTS_PER_PAGE);
+  const info = $("flightPageInfo");
+  if (info) info.textContent = `${page + 1} / ${totalPages}`;
+  $("flightPagePrev").disabled = page === 0;
+  $("flightPageNext").disabled = page >= totalPages - 1;
+}
+
+function setupPager() {
+  const pager = $("flightListPager");
+  if (!pager) return;
+  const totalPages = Math.ceil(_allFlights.length / FLIGHTS_PER_PAGE);
+  pager.style.display = totalPages > 1 ? "flex" : "none";
+
+  $("flightPagePrev").onclick = () => {
+    if (_flightPage > 0) { _flightPage--; renderFlightPage(_flightPage); }
+  };
+  $("flightPageNext").onclick = () => {
+    // Read live length so stale closure never blocks navigation after a re-fetch
+    const tp = Math.ceil(_allFlights.length / FLIGHTS_PER_PAGE);
+    if (_flightPage < tp - 1) { _flightPage++; renderFlightPage(_flightPage); }
+  };
+}
+
+function renderFlightSelectCard(f, idx) {
+  const dep = f.dep_scheduled || "--:--";
+  const arr = f.arr_scheduled || "--:--";
+  const gate = f.arr_gate ? ` · G${f.arr_gate}` : "";
+  const term = f.arr_terminal ? ` · ${f.arr_terminal}` : "";
+  const delay = f.arr_delay > 0 ? `<span class="fsc-delay">+${f.arr_delay}분 지연</span>` : "";
+  const days = f.operating_days ? `<span class="fsc-days">${f.operating_days}</span>` : "";
+  const aliases = (f.codeshare_aliases || []);
+  const aliasHtml = aliases.length
+    ? `<span class="fsc-aliases">+ ${aliases.join(" · ")}</span>`
+    : "";
+  return `
+<div class="flight-sel-card" data-idx="${idx}">
+  <div class="fsc-airline">${escHtml(f.airline_name)} <span class="fsc-num">${escHtml(f.flight_iata)}</span>${aliasHtml}${days}</div>
+  <div class="fsc-route">
+    <span class="fsc-ap">${escHtml(f.dep_iata)}</span>
+    <span class="fsc-time">${dep}</span>
+    <span class="fsc-arrow">→</span>
+    <span class="fsc-ap">${escHtml(f.arr_iata)}</span>
+    <span class="fsc-time">${arr}</span>
+    ${gate || term ? `<span class="fsc-meta">${gate}${term}</span>` : ""}
+  </div>
+  ${delay}
+</div>`;
+}
+
+function escHtml(s) {
+  return String(s || "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+  );
+}
+
+function selectFlight(el, flight) {
+  document.querySelectorAll(".flight-sel-card").forEach((c) => c.classList.remove("selected"));
+  el.classList.add("selected");
+  wizardData.flight = { ...wizardData.flight, selected: flight };
 }
 
 // ── STEP 3: ACCOMMODATION ─────────────────────────────────────────────────

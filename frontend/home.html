@@ -92,7 +92,7 @@
           <div class="wiz-step-header">
             <span class="wiz-step-num">✈ フライト</span>
             <h2>どこから、どこへ？</h2>
-            <p class="wiz-lead">AviationStack API連動予定 · 現在は参考情報として使用されます</p>
+            <p class="wiz-lead">仁川空港発着の定期便スケジュールをチャットで検索できます</p>
           </div>
 
           <div class="wiz-flight-card">
@@ -100,23 +100,42 @@
               <div class="flight-endpoint">
                 <label>出発地</label>
                 <select id="flightFrom">
-                  <option value="NRT">成田国際空港 (NRT)</option>
-                  <option value="HND">羽田空港 (HND)</option>
-                  <option value="KIX">関西国際空港 (KIX)</option>
-                  <option value="FUK">福岡空港 (FUK)</option>
-                  <option value="NGO">中部国際空港 (NGO)</option>
-                  <option value="CTS">新千歳空港 (CTS)</option>
-                  <option value="OKA">那覇空港 (OKA)</option>
+                  <optgroup label="🇰🇷 한국">
+                    <option value="ICN">인천국제공항 (ICN)</option>
+                    <option value="GMP">김포국제공항 (GMP)</option>
+                    <option value="PUS">김해국제공항 (PUS)</option>
+                    <option value="CJU">제주국제공항 (CJU)</option>
+                  </optgroup>
+                  <optgroup label="🇯🇵 일본">
+                    <option value="NRT" selected>成田国際空港 (NRT)</option>
+                    <option value="HND">羽田空港 (HND)</option>
+                    <option value="KIX">関西国際空港 (KIX)</option>
+                    <option value="FUK">福岡空港 (FUK)</option>
+                    <option value="NGO">中部国際空港 (NGO)</option>
+                    <option value="CTS">新千歳空港 (CTS)</option>
+                    <option value="OKA">那覇空港 (OKA)</option>
+                  </optgroup>
                 </select>
               </div>
-              <div class="flight-arrow">→</div>
+              <button type="button" id="swapFlightRoute" class="swap-btn" title="출발·도착 교체">⇄</button>
               <div class="flight-endpoint">
                 <label>目的地</label>
                 <select id="flightTo">
-                  <option value="ICN">仁川国際空港 (ICN)</option>
-                  <option value="GMP">金浦国際空港 (GMP)</option>
-                  <option value="PUS">金海国際空港 (PUS)</option>
-                  <option value="CJU">済州国際空港 (CJU)</option>
+                  <optgroup label="🇰🇷 한국">
+                    <option value="ICN" selected>인천국제공항 (ICN)</option>
+                    <option value="GMP">김포국제공항 (GMP)</option>
+                    <option value="PUS">김해국제공항 (PUS)</option>
+                    <option value="CJU">제주국제공항 (CJU)</option>
+                  </optgroup>
+                  <optgroup label="🇯🇵 일본">
+                    <option value="NRT">成田国際空港 (NRT)</option>
+                    <option value="HND">羽田空港 (HND)</option>
+                    <option value="KIX">関西国際空港 (KIX)</option>
+                    <option value="FUK">福岡空港 (FUK)</option>
+                    <option value="NGO">中部国際空港 (NGO)</option>
+                    <option value="CTS">新千歳空港 (CTS)</option>
+                    <option value="OKA">那覇空港 (OKA)</option>
+                  </optgroup>
                 </select>
               </div>
             </div>
@@ -140,9 +159,17 @@
               </div>
             </div>
 
-            <div class="aviation-notice">
-              <span class="notice-badge">準備中</span>
-              실제 항공권 검색은 AviationStack API 연동 후 제공됩니다
+            <div id="flightListSection" class="flight-list-section" style="display:none">
+              <div class="flight-list-header">
+                <span id="flightListLabel">편명을 선택하세요</span>
+                <span id="flightListLoading" class="flight-list-spinner" style="display:none">조회 중…</span>
+              </div>
+              <div id="flightListCards" class="flight-list-cards"></div>
+              <div id="flightListPager" class="flight-list-pager" style="display:none">
+                <button type="button" id="flightPagePrev" class="pager-btn">‹ 이전</button>
+                <span id="flightPageInfo" class="pager-info"></span>
+                <button type="button" id="flightPageNext" class="pager-btn">다음 ›</button>
+              </div>
             </div>
           </div>
         </div>

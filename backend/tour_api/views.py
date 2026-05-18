@@ -105,6 +105,62 @@ def api_photo(request):
         return JsonResponse({"detail": "photo fetch failed"}, status=502)
 
 
+def _merge_codeshares(flight_dicts: list[dict]) -> list[dict]:
+    """코드쉐어 slave 편을 master 편에 통합하여 중복 제거.
+
+    codeshared_iata 가 있으면 slave, 없으면 master.
+    slave는 master의 codeshare_aliases 리스트에 편명만 추가하고 제거.
+    master가 목록에 없는 경우 slave를 그대로 유지.
+    """
+    from collections import defaultdict
+    master_iatas = {f["flight_iata"] for f in flight_dicts if not f.get("codeshared_iata")}
+    slave_aliases: dict[str, list[str]] = defaultdict(list)
+    for f in flight_dicts:
+        master = f.get("codeshared_iata")
+        if master and master in master_iatas:
+            slave_aliases[master].append(f["flight_iata"])
+
+    result = []
+    for f in flight_dicts:
+        master = f.get("codeshared_iata")
+        if master and master in master_iatas:
+            continue   # master가 있는 slave는 건너뜀
+        result.append({**f, "codeshare_aliases": slave_aliases.get(f["flight_iata"], [])})
+    return result
+
+
+@require_GET
+def api_flights(request):
+    """출발지→ICN 항공편 목록 조회. 마법사 Step 2용."""
+    import dataclasses, sys
+    from pathlib import Path as _P
+    _root = _P(settings.BASE_DIR).parent
+    if str(_root / "src") not in sys.path:
+        sys.path.insert(0, str(_root / "src"))
+    from api.aviation_client import IncheonAirportClient
+
+    dep_iata    = (request.GET.get("dep") or "").upper() or None
+    arr_iata    = (request.GET.get("arr") or "ICN").upper()
+    flight_date = request.GET.get("date") or None
+    client = IncheonAirportClient()
+    if not client.is_configured:
+        return JsonResponse({"error": "API key not configured"}, status=503)
+    try:
+        flights = client.search_flights(
+            dep_iata=dep_iata,
+            arr_iata=arr_iata,
+            flight_date=flight_date,
+            limit=999,   # 해당 노선 전체 반환
+        )
+        # 출발 시각 기준 정렬 (추정값 포함)
+        flights.sort(key=lambda f: f.dep_scheduled or f.arr_scheduled or "99:99")
+        # 코드쉐어 중복 제거: slave 편을 master에 통합
+        flight_dicts = [dataclasses.asdict(f) for f in flights]
+        return JsonResponse({"flights": _merge_codeshares(flight_dicts)})
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+
+
 @require_GET
 def api_health(request):
     return JsonResponse(

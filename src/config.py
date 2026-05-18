@@ -12,7 +12,7 @@ LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY")
 SEARCH_LIMIT = 20
 
 # LLM Configuration
-CLASSIFIER_MODEL = "gpt-5-nano"
+CLASSIFIER_MODEL = "gpt-4.1-mini"
 LLM_MODEL = "gpt-4.1-mini"
 LLM_TEMPERATURE = 0.0
 

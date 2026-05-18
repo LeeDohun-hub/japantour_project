@@ -1,0 +1,168 @@
+{
+  "metadata": {
+    "dataset": "unseen",
+    "timestamp": "2026-05-18T14:46:57.619225",
+    "total_cases": 7,
+    "check_reply_keywords": true,
+    "note": "route_and_answer() — ground_truth 미사용 (프로덕션 경로)"
+  },
+  "summary": {
+    "category_acc": 100.0,
+    "keyword_acc": 100.0,
+    "rag_used_rate": 100.0,
+    "places_used_rate": 14.3,
+    "avg_latency_ms": 6461,
+    "reply_keyword_acc": 71.4,
+    "error_count": 0
+  },
+  "results": [
+    {
+      "id": "T005",
+      "question": "서울 지하철에서 티머니는 어떻게 써?",
+      "reply_language": "日本語",
+      "expected_category": "transport",
+      "got_category": "transport",
+      "category_ok": true,
+      "got_keyword": "서울 지하철 티머니 사용법",
+      "keyword_ok": true,
+      "reply_keyword_ok": false,
+      "reply_keyword_ratio": 0.0,
+      "sources_used": [
+        "rag",
+        "llm"
+      ],
+      "rag_count": 5,
+      "places_count": 0,
+      "reply": "서울 지하철에서 티머니 카드는 교통카드로 사용됩니다. 지하철 개찰구에 카드 리더기에 티머니 카드를 대면 자동으로 요금이 차감되어 편리하게 탑승할 수 있습니다. 충전은 지하철역 내 충전기나 편의점에서 가능합니다. 자세한 사용법과 충전 방법은 현장이나 공식 정보를 확인해 주세요。",
+      "is_fallback": false,
+      "latency_ms": 11940
+    },
+    {
+      "id": "T007",
+      "question": "부산 해운대 근처 관광지 추천",
+      "reply_language": "日本語",
+      "expected_category": "leisure",
+      "got_category": "leisure",
+      "category_ok": true,
+      "got_keyword": "부산 해운대 관광지",
+      "keyword_ok": true,
+      "reply_keyword_ok": true,
+      "reply_keyword_ratio": 0.6666666666666666,
+      "sources_used": [
+        "places",
+        "rag",
+        "llm"
+      ],
+      "rag_count": 5,
+      "places_count": 5,
+      "reply": "海雲台（ヘウンデ）ビーチやシーライフ釜山アクアリウム、海雲台ブルーラインパークなどがおすすめです。ゆったり海辺の散策や水族館体験が楽しめますよ。",
+      "is_fallback": false,
+      "latency_ms": 4537
+    },
+    {
+      "id": "T008",
+      "question": "경주 역사 관광지 추천해줘",
+      "reply_language": "日本語",
+      "expected_category": "culture",
+      "got_category": "culture",
+      "category_ok": true,
+      "got_keyword": "경주 역사 관광지",
+      "keyword_ok": true,
+      "reply_keyword_ok": true,
+      "reply_keyword_ratio": 1.0,
+      "sources_used": [
+        "rag",
+        "llm"
+      ],
+      "rag_count": 5,
+      "places_count": 0,
+      "reply": "慶州（キョンジュ）で歴史観光を楽しみたいなら、まず仏国寺（プルグクサ）がおすすめです。新羅時代の代表的な寺院で、千年以上の歴史を持ち、1995年にユネスコ世界文化遺産に登録されています。慶尚北道慶州市吐含山（トハムサン）に位置していますので、ぜひ訪れてみてください。\n\nまた、仏国寺周辺には進士チェ・ポの墓所や彼を称えるチョン・ヒョガクもありますので、歴史散策にぴったりです。\n\n訪問時の詳細な営業時間や入場料は現地または公式情報でご確認ください。",
+      "is_fallback": false,
+      "latency_ms": 4108
+    },
+    {
+      "id": "T009",
+      "question": "서귀포 여행 코스 알려줘",
+      "reply_language": "日本語",
+      "expected_category": "itinerary",
+      "got_category": "itinerary",
+      "category_ok": true,
+      "got_keyword": "서귀포 여행 코스",
+      "keyword_ok": true,
+      "reply_keyword_ok": false,
+      "reply_keyword_ratio": 0.3333333333333333,
+      "sources_used": [
+        "rag",
+        "llm"
+      ],
+      "rag_count": 5,
+      "places_count": 0,
+      "reply": "서귀포（ソグィポ）旅行コースのおすすめをご案内します。\n\nまず、自然を満喫したいなら、漢拏山（ハルラサン）国立公園でトレッキングや絶景を楽しめます。次に、天帝淵（チョンジェヨン）滝や正房瀑布（チョンバンポクポ）などの美しい滝巡りも人気です。\n\n海辺のアクティビティなら、서귀포の海沿いでカヤックやヨット体験ができるスポットがあります。ミカンやデコポンの果物狩り体験もおすすめです。\n\n宿泊は海の眺めが楽しめるペンションやホテルが多く、リラックスできます。\n\n食事は서귀포市内の飲食店をNaver Mapで検索して、地元の新鮮な海産物や郷土料理を楽しんでください。\n\nぜひ自然と海の両方を楽しむプランを検討してみてください。詳細な営業時間や料金は現地または公式情報でご確認ください。",
+      "is_fallback": false,
+      "latency_ms": 9802
+    },
+    {
+      "id": "T010",
+      "question": "인천공항에서 서울역 가는 방법",
+      "reply_language": "日本語",
+      "expected_category": "transport",
+      "got_category": "transport",
+      "category_ok": true,
+      "got_keyword": "인천공항 서울역 가는 방법",
+      "keyword_ok": true,
+      "reply_keyword_ok": true,
+      "reply_keyword_ratio": 1.0,
+      "sources_used": [
+        "rag",
+        "llm"
+      ],
+      "rag_count": 5,
+      "places_count": 0,
+      "reply": "仁川空港（インチョンコンハン）からソウル駅（ソウルヨク）へは、空港鉄道（AREX）を利用するのが便利です。空港鉄道の直通列車または一般列車で約43分で到着します。料金や時刻は変わることがあるため、現地や公式サイトでご確認ください。\n\nまた、T-moneyカードを使うと地下鉄やバスの乗り換えもスムーズです。リアルタイムのルート検索にはNaver MapやKakaoMapアプリがおすすめです。安全で快適な旅をお楽しみください。",
+      "is_fallback": false,
+      "latency_ms": 5070
+    },
+    {
+      "id": "T011",
+      "question": "한복 입고 가면 좋은 궁궐 어디야?",
+      "reply_language": "日本語",
+      "expected_category": "culture",
+      "got_category": "culture",
+      "category_ok": true,
+      "got_keyword": "한복 궁궐 추천",
+      "keyword_ok": true,
+      "reply_keyword_ok": true,
+      "reply_keyword_ratio": 1.0,
+      "sources_used": [
+        "rag",
+        "llm"
+      ],
+      "rag_count": 5,
+      "places_count": 0,
+      "reply": "韓服（ハンボク）を着て訪れるのにおすすめの宮殿は、ソウルの景福宮（キョンボックン）です。景福宮は韓国の代表的な王宮で、韓服を着ての入場が無料になる特典もあります。伝統的な雰囲気の中で写真撮影も楽しめるので、韓服体験と歴史散策を同時に満喫できますよ。\n\n他にも昌徳宮（チャンドックン）や徳寿宮（トクスグン）も人気の宮殿ですが、韓服での訪問なら景福宮が特におすすめです。\n\n※営業時間や韓服レンタルの詳細は、現地または公式サイトでご確認ください。",
+      "is_fallback": false,
+      "latency_ms": 4624
+    },
+    {
+      "id": "T012",
+      "question": "한국에서 환전은 어디서 하는 게 좋아?",
+      "reply_language": "日本語",
+      "expected_category": "general",
+      "got_category": "general",
+      "category_ok": true,
+      "got_keyword": "한국 환전 장소 추천",
+      "keyword_ok": true,
+      "reply_keyword_ok": true,
+      "reply_keyword_ratio": 1.0,
+      "sources_used": [
+        "rag",
+        "llm"
+      ],
+      "rag_count": 5,
+      "places_count": 0,
+      "reply": "韓国での両替は、空港の両替所や銀行、主要な観光地の両替所が便利です。特に明洞（ミョンドン）や仁寺洞（インサドン）などの観光地には多くの両替所があり、レートも比較的良いことが多いです。ただし、レートや手数料は場所によって異なるため、複数の両替所を比較するのがおすすめです。最新のレートや営業時間は現地や公式サイトでご確認ください。",
+      "is_fallback": false,
+      "latency_ms": 5146
+    }
+  ]
+}

@@ -1,0 +1,111 @@
+[
+  {
+    "id": "T001",
+    "question": "성수동 맛집 추천해줘",
+    "reply_language": "日本語",
+    "expected_category": "food",
+    "expected_keyword_contains": [
+      "성수동",
+      "맛집"
+    ],
+    "expected_area": "Seoul",
+    "expected_result_keywords": [
+      "ソウル",
+      "飲食",
+      "明洞",
+      "カフェ"
+    ],
+    "leakage_type": "exact",
+    "matched_few_shot": "성수동 맛집 추천해줘",
+    "leakage_source": [
+      "router.py"
+    ]
+  },
+  {
+    "id": "T002",
+    "question": "한국 식당 예절 알려줘",
+    "reply_language": "日本語",
+    "expected_category": "culture",
+    "expected_keyword_contains": [
+      "한국",
+      "식당",
+      "예절"
+    ],
+    "expected_area": "",
+    "expected_result_keywords": [
+      "マナー",
+      "韓国",
+      "食事"
+    ],
+    "leakage_type": "substring",
+    "matched_few_shot": "한국 식당 예절",
+    "leakage_source": [
+      "router.py"
+    ]
+  },
+  {
+    "id": "T003",
+    "question": "명동에서 쇼핑하기 좋은 곳이 뭐야",
+    "reply_language": "日本語",
+    "expected_category": "shopping",
+    "expected_keyword_contains": [
+      "명동",
+      "쇼핑"
+    ],
+    "expected_area": "Seoul",
+    "expected_result_keywords": [
+      "明洞",
+      "ショッピング",
+      "土産"
+    ],
+    "leakage_type": "keyword_overlap_cross_lang",
+    "matched_few_shot": "明洞でショッピング",
+    "leakage_source": [
+      "router.py"
+    ]
+  },
+  {
+    "id": "T004",
+    "question": "제주도에서 하루 여행 코스 추천해줘",
+    "reply_language": "日本語",
+    "expected_category": "itinerary",
+    "expected_keyword_contains": [
+      "제주도",
+      "여행",
+      "코스"
+    ],
+    "expected_area": "Jeju",
+    "expected_result_keywords": [
+      "済州",
+      "旅行",
+      "コース"
+    ],
+    "leakage_type": "exact",
+    "matched_few_shot": "제주도에서 하루 여행 코스 추천해줘",
+    "leakage_source": [
+      "router.py"
+    ]
+  },
+  {
+    "id": "T006",
+    "question": "겨울 서울 여행 옷차림 알려줘",
+    "reply_language": "日本語",
+    "expected_category": "general",
+    "expected_keyword_contains": [
+      "겨울",
+      "서울",
+      "옷차림"
+    ],
+    "expected_area": "Seoul",
+    "expected_result_keywords": [
+      "冬",
+      "ソウル",
+      "服装"
+    ],
+    "leakage_type": "keyword_overlap_cross_lang",
+    "matched_few_shot": "冬のソウルで服装は？",
+    "leakage_source": [
+      "router.py"
+    ]
+  }
+]

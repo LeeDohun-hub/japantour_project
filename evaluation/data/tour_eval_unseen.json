@@ -1,0 +1,118 @@
+[
+  {
+    "id": "T005",
+    "question": "서울 지하철에서 티머니는 어떻게 써?",
+    "reply_language": "日本語",
+    "expected_category": "transport",
+    "expected_keyword_contains": [
+      "서울",
+      "지하철",
+      "티머니"
+    ],
+    "expected_area": "Seoul",
+    "expected_result_keywords": [
+      "地下鉄",
+      "T-money",
+      "ソウル"
+    ]
+  },
+  {
+    "id": "T007",
+    "question": "부산 해운대 근처 관광지 추천",
+    "reply_language": "日本語",
+    "expected_category": "leisure",
+    "expected_keyword_contains": [
+      "부산",
+      "해운대",
+      "관광지"
+    ],
+    "expected_area": "Busan",
+    "expected_result_keywords": [
+      "釜山",
+      "海雲台",
+      "観光"
+    ]
+  },
+  {
+    "id": "T008",
+    "question": "경주 역사 관광지 추천해줘",
+    "reply_language": "日本語",
+    "expected_category": "culture",
+    "expected_keyword_contains": [
+      "경주",
+      "역사",
+      "관광지"
+    ],
+    "expected_area": "Gyeongju",
+    "expected_result_keywords": [
+      "慶州",
+      "歴史",
+      "仏国寺"
+    ]
+  },
+  {
+    "id": "T009",
+    "question": "서귀포 여행 코스 알려줘",
+    "reply_language": "日本語",
+    "expected_category": "itinerary",
+    "expected_keyword_contains": [
+      "서귀포",
+      "여행",
+      "코스"
+    ],
+    "expected_area": "Seogwipo",
+    "expected_result_keywords": [
+      "西帰浦",
+      "済州",
+      "旅行"
+    ]
+  },
+  {
+    "id": "T010",
+    "question": "인천공항에서 서울역 가는 방법",
+    "reply_language": "日本語",
+    "expected_category": "transport",
+    "expected_keyword_contains": [
+      "인천공항",
+      "서울역"
+    ],
+    "expected_area": "Seoul",
+    "expected_result_keywords": [
+      "仁川空港",
+      "ソウル駅",
+      "空港鉄道"
+    ]
+  },
+  {
+    "id": "T011",
+    "question": "한복 입고 가면 좋은 궁궐 어디야?",
+    "reply_language": "日本語",
+    "expected_category": "culture",
+    "expected_keyword_contains": [
+      "한복",
+      "궁궐"
+    ],
+    "expected_area": "Seoul",
+    "expected_result_keywords": [
+      "韓服",
+      "景福宮",
+      "宮殿"
+    ]
+  },
+  {
+    "id": "T012",
+    "question": "한국에서 환전은 어디서 하는 게 좋아?",
+    "reply_language": "日本語",
+    "expected_category": "general",
+    "expected_keyword_contains": [
+      "한국",
+      "환전"
+    ],
+    "expected_area": "",
+    "expected_result_keywords": [
+      "両替",
+      "韓国",
+      "空港"
+    ]
+  }
+]
