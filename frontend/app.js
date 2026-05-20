@@ -13,6 +13,7 @@ const healthStatus = document.getElementById("healthStatus");
 let history = [];
 let sessionId = null;
 let isComposing = false;
+let _lastFailedText = null;
 
 const COLLAPSE_HEIGHT = 240;
 
@@ -218,6 +219,49 @@ function renderPlaceCards(places, category, keyword, lang) {
   return `<div class="place-cards-section"><div class="place-cards-title">${headerHtml}</div>${cards.join("")}</div>`;
 }
 
+/**
+ * 한국관광공사 TourAPI (JpnService2) 숙박·축제 카드.
+ */
+function renderVisitKoreaCards(stays, festivals, attractions, lang) {
+  const isJa = lang === "日本語";
+  let html = "";
+
+  const buildCards = (items, emoji, showPeriod) => {
+    return items.slice(0, 5).map((it) => {
+      const name = escapeHtml(it.title || "");
+      const addr = it.addr1 ? `<div class="place-addr">${escapeHtml(it.addr1)}</div>` : "";
+      const period = showPeriod && it.event_period
+        ? `<span class="place-badge">${escapeHtml(it.event_period)}</span>`
+        : "";
+      const thumb = it.first_image
+        ? `<img class="place-thumb" src="${escapeHtml(it.first_image)}" alt="" loading="lazy" onerror="this.classList.add('place-thumb--fallback')" />`
+        : `<span class="place-thumb place-thumb--fallback" aria-hidden="true">${emoji}</span>`;
+      const uri = it.maps_uri || "";
+      const mapsHint = uri ? `<span class="place-maps-hint">Google Maps →</span>` : "";
+      const meta = period ? `<div class="place-meta">${period}</div>` : "";
+      const inner = `<div class="place-thumb-wrap">${thumb}</div><div class="place-card-text"><div class="place-name">${name}</div>${meta}${addr}${mapsHint}</div>`;
+      if (uri) {
+        return `<a class="place-card" href="${escapeHtml(uri)}" target="_blank" rel="noopener">${inner}</a>`;
+      }
+      return `<div class="place-card">${inner}</div>`;
+    });
+  };
+
+  if (attractions && attractions.length) {
+    const title = isJa ? "🗺 観光スポット（韓国観光公社）" : "🗺 관광지 (한국관광공사)";
+    html += `<div class="place-cards-section"><div class="place-cards-title">${title}</div>${buildCards(attractions, "🗺", false).join("")}</div>`;
+  }
+  if (festivals && festivals.length) {
+    const title = isJa ? "🎭 イベント・祭り（韓国観光公社）" : "🎭 이벤트·축제 (한국관광공사)";
+    html += `<div class="place-cards-section"><div class="place-cards-title">${title}</div>${buildCards(festivals, "🎭", true).join("")}</div>`;
+  }
+  if (stays && stays.length) {
+    const title = isJa ? "🏨 宿泊（韓国観光公社）" : "🏨 숙박 (한국관광공사)";
+    html += `<div class="place-cards-section"><div class="place-cards-title">${title}</div>${buildCards(stays, "🏨", false).join("")}</div>`;
+  }
+  return html;
+}
+
 /** 시간 문자열을 HH:MM 형식으로 반환 (HH:MM 직접 또는 ISO 8601 → KST 변환) */
 function formatFlightTime(isoStr) {
   if (!isoStr) return "--:--";
@@ -247,6 +291,36 @@ const FLIGHT_STATUS_CLASS = {
   scheduled: "status-scheduled", active: "status-active", landed: "status-landed",
   cancelled: "status-cancelled", incident: "status-incident", diverted: "status-diverted",
 };
+
+/**
+ * 공연·행사 카드 HTML (gyeonggi_events / KINTEX)
+ * @param {Array}  events  - GyeonggiEvent dict 배열
+ * @param {string} lang    - "日本語" | "한국어"
+ */
+function renderGyeonggiEventCards(events, lang) {
+  if (!events || !events.length) return "";
+  const isJa = lang === "日本語";
+  const title = isJa ? "🎪 旅行期間中の公演・行事" : "🎪 여행 기간 중 공연·행사";
+  const cards = events.slice(0, 6).map((ev) => {
+    const name   = escapeHtml(ev.name || "");
+    const period = ev.start_date === ev.end_date
+      ? escapeHtml(ev.start_date || "")
+      : `${escapeHtml(ev.start_date || "")}〜${escapeHtml(ev.end_date || "")}`;
+    const venue  = ev.venue  ? `<div class="ev-venue">${escapeHtml(ev.venue)}</div>` : "";
+    const desc   = ev.description
+      ? `<div class="ev-desc">${escapeHtml(ev.description.slice(0, 80))}${ev.description.length > 80 ? "…" : ""}</div>`
+      : "";
+    const _src = ev.source_service || "";
+    const source = _src.startsWith("kintex") ? "KINTEX" : _src === "kpop_web" ? "K-pop 공연" : "전국행사";
+    const inner  = `<div class="ev-name">${name}</div>
+      <div class="ev-meta">${period}${ev.city ? " · " + escapeHtml(ev.city) : ""} <span class="ev-src">${source}</span></div>
+      ${venue}${desc}`;
+    return ev.url
+      ? `<a class="ev-card" href="${escapeHtml(ev.url)}" target="_blank" rel="noopener">${inner}</a>`
+      : `<div class="ev-card">${inner}</div>`;
+  }).join("");
+  return `<div class="ev-section"><h4 class="ev-title">${title}</h4><div class="ev-grid">${cards}</div></div>`;
+}
 
 /**
  * 항공편 / 공항 카드 HTML 생성
@@ -399,6 +473,12 @@ messageInput.addEventListener("keydown", (e) => {
   }
 });
 
+function retryLastMessage() {
+  if (!_lastFailedText) return;
+  messageInput.value = _lastFailedText;
+  chatForm.requestSubmit();
+}
+
 chatForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = messageInput.value.trim();
@@ -407,8 +487,11 @@ chatForm.addEventListener("submit", async (e) => {
   appendBubble("user", text);
   messageInput.value = "";
   btnSend.disabled = true;
+  _lastFailedText = null;
 
   const loading = appendLoadingBubble();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90000);
 
   try {
     const res = await fetch("/api/chat/", {
@@ -420,10 +503,11 @@ chatForm.addEventListener("submit", async (e) => {
         session_id: sessionId,
         history: history.map(({ role, content }) => ({ role, content })),
       }),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
     const data = await res.json().catch(() => ({}));
     loading.remove();
-    // 진단 로그 — 원인 파악 후 제거
     console.log("[chat] category:", data.category, "| keyword:", data.keyword,
                 "| places_count:", data.places_count, "| places_error:", data.places_error || "(none)");
     if (!res.ok) {
@@ -435,10 +519,26 @@ chatForm.addEventListener("submit", async (e) => {
     }
 
     let extra = "";
-    const hasPlaceCards = data.places && data.places.length > 0;
-    const hasFlightCards = (data.flights && data.flights.length > 0) || data.airport;
+    const hasPlaceCards   = data.places && data.places.length > 0;
+    const hasVkCards      =
+      (data.visitkorea_stays && data.visitkorea_stays.length > 0) ||
+      (data.visitkorea_festivals && data.visitkorea_festivals.length > 0) ||
+      (data.visitkorea_attractions && data.visitkorea_attractions.length > 0);
+    const hasFlightCards  = (data.flights && data.flights.length > 0) || data.airport;
+    const hasEventCards   = data.gyeonggi_events && data.gyeonggi_events.length > 0;
     if (hasPlaceCards) {
       extra += renderPlaceCards(data.places, data.category || "", data.keyword || "", replyLanguage.value);
+    }
+    if (hasVkCards) {
+      extra += renderVisitKoreaCards(
+        data.visitkorea_stays || [],
+        data.visitkorea_festivals || [],
+        data.visitkorea_attractions || [],
+        replyLanguage.value,
+      );
+    }
+    if (hasEventCards) {
+      extra += renderGyeonggiEventCards(data.gyeonggi_events, replyLanguage.value);
     }
     if (hasFlightCards) {
       extra += renderFlightCards(
@@ -452,14 +552,22 @@ chatForm.addEventListener("submit", async (e) => {
     if (data.translated_ko) {
       extra += `<div class="translation"><h4>한국어 번역</h4>${escapeHtml(data.translated_ko)}</div>`;
     }
-    const displayReply = (hasPlaceCards || hasFlightCards) ? "" : (data.reply || "");
-    appendBubble("assistant", displayReply, extra);
+    const displayReply = (hasPlaceCards || hasVkCards || hasFlightCards) ? "" : (data.reply || "");
+    if (!displayReply && !extra) {
+      const isJa = replyLanguage.value === "日本語";
+      const fallback = isJa
+        ? "申し訳ありません、応答を生成できませんでした。もう一度お試しください。"
+        : "죄송합니다, 응답을 생성하지 못했습니다. 다시 시도해 주세요.";
+      appendBubble("assistant", fallback);
+    } else {
+      appendBubble("assistant", displayReply, extra);
+    }
 
     history.push({ role: "user", content: text });
     history.push({
       role: "assistant",
-      content: hasPlaceCards
-        ? "(place cards shown)"
+      content: hasPlaceCards || hasVkCards
+        ? "(venue cards shown)"
         : hasFlightCards
           ? "(flight cards shown)"
           : (data.reply || ""),
@@ -468,8 +576,21 @@ chatForm.addEventListener("submit", async (e) => {
       history = history.slice(-40);
     }
   } catch (err) {
+    clearTimeout(timeoutId);
     loading.remove();
-    appendBubble("assistant", String(err));
+    _lastFailedText = text;
+    const isJa = replyLanguage.value === "日本語";
+    const errMsg = err.name === "AbortError"
+      ? (isJa
+          ? "応答がタイムアウトしました（90秒）。サーバーが混み合っています。"
+          : "응답 시간이 초과되었습니다(90초). 잠시 후 다시 시도해 주세요.")
+      : (isJa
+          ? "サーバーへの接続に失敗しました。サーバーが起動しているか確認してください。"
+          : "서버 연결에 실패했습니다. 서버가 실행 중인지 확인해 주세요.");
+    const retryLabel = isJa ? "↩ 再試行" : "↩ 다시 시도";
+    appendBubble("assistant", errMsg,
+      `<button class="retry-btn" onclick="retryLastMessage()">${retryLabel}</button>`);
+    console.error("[chat] fetch error:", err);
   } finally {
     btnSend.disabled = false;
     messageInput.focus();

@@ -249,6 +249,24 @@ select:focus {
   border-color: var(--gold);
 }
 
+.retry-btn {
+  display: inline-block;
+  margin-top: 0.7rem;
+  padding: 0.35rem 0.9rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid #c0392b;
+  background: transparent;
+  color: #e74c3c;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.retry-btn:hover {
+  background: #c0392b;
+  color: #fff;
+}
+
 /* ---------- ローディングバブル ---------- */
 .loading-status {
   font-size: 0.88rem;
@@ -296,6 +314,27 @@ select:focus {
   color: var(--gold);
   margin-bottom: 0.45rem;
 }
+
+/* ── 챗봇 공연·행사 카드 ── */
+.ev-section { margin-top: 0.9rem; }
+.ev-title { font-size: .82rem; font-weight: 600; color: var(--gold, #c9a84c); margin: 0 0 .5rem; }
+.ev-grid { display: flex; flex-direction: column; gap: .4rem; }
+.ev-card {
+  display: block;
+  padding: .55rem .75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface, #1e2130);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color .2s;
+}
+a.ev-card:hover { border-color: var(--gold, #c9a84c); }
+.ev-name { font-size: .82rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ev-meta { font-size: .72rem; color: var(--muted); margin-top: .1rem; }
+.ev-src  { font-size: .65rem; background: rgba(201,168,76,.15); color: var(--gold, #c9a84c); border-radius: 3px; padding: .05em .3em; margin-left: .2em; }
+.ev-venue { font-size: .72rem; color: var(--muted); margin-top: .15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ev-desc  { font-size: .7rem; color: var(--muted); margin-top: .1rem; line-height: 1.35; }
 
 .translation {
   margin-top: 0.85rem;
@@ -784,12 +823,73 @@ a.btn {
 
 .page-wizard .top-nav { flex-shrink: 0; }
 
-.nav-user-label {
-  font-size: 0.85rem;
-  color: var(--gold);
+.page-wizard .top-nav-brand {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 0.75rem;
 }
 
-.nav-chat-shortcut { margin-left: 0.25rem; }
+.page-wizard .nav-right {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-shrink: 0;
+}
+
+.nav-user-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--gold);
+  white-space: nowrap;
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.page-wizard .nav-logout-btn,
+.page-wizard .nav-chat-shortcut {
+  width: auto !important;
+  margin-top: 0 !important;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.nav-chat-shortcut { margin-left: 0; }
+
+.chip-subsection-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0.9rem 0 0.35rem;
+  padding-top: 0.65rem;
+  border-top: 1px dashed var(--border);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hotel-list-pager { margin-top: 0.65rem; }
+
+.hotel-manual-block {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: rgba(8, 12, 22, 0.45);
+}
+.hotel-manual-lead {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0 0 0.65rem;
+  line-height: 1.5;
+}
+.hotel-results-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
 
 /* Container */
 .wizard-container {
@@ -1036,6 +1136,12 @@ a.btn {
   background: rgba(100,200,120,.2); color: #6dc87a;
 }
 /* ── Wizard Step2 항공편 선택 목록 ─────────────────────────────────── */
+.flight-leg-label {
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--gold);
+  margin: 1rem 0 .35rem;
+}
 .flight-list-section {
   margin-top: 1rem;
 }
@@ -1182,10 +1288,36 @@ a.btn {
   background: var(--gold-soft); border: 1px solid rgba(212,168,83,.25);
   font-size: .72rem; color: var(--gold); margin-bottom: 1rem;
 }
+.plan-source-badge--primary { margin-bottom: .75rem; }
+.plan-source-badge--refs {
+  background: rgba(66, 133, 244, .12);
+  border-color: rgba(66, 133, 244, .28);
+  color: #8ab4f8;
+}
+.plan-refs-block {
+  margin-top: .5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+.plan-refs-empty {
+  font-size: .82rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+  margin: .5rem 0 0;
+  padding: .75rem 1rem;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, .03);
+  border: 1px dashed rgba(255, 255, 255, .1);
+}
 .plan-content {
   font-size: .91rem; line-height: 1.75; color: var(--text); white-space: pre-wrap; word-break: break-word;
   background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 1.15rem 1.25rem; margin-bottom: 1.25rem;
+}
+.plan-content .plan-inline-spot,
+.plan-content .plan-place-card,
+.plan-content .plan-place-card * {
+  white-space: normal;
 }
 .plan-actions { display: flex; gap: .65rem; flex-wrap: wrap; }
 
@@ -1353,7 +1485,7 @@ a.place-card:hover .place-maps-hint {
   text-decoration: underline;
 }
 
-/* ── Flight cards (AviationStack 결과) ─────────────────────────────── */
+/* ── Flight cards (인천공항 API 결과) ──────────────────────────────── */
 .flight-cards-section {
   margin-top: .75rem;
   display: flex;
@@ -1515,4 +1647,454 @@ a.place-card:hover .place-maps-hint {
   font-size: .75rem;
   color: var(--text-muted);
   margin-top: .15rem;
+}
+
+/* ── Accommodation — Korean address selector (Step 3) ───────────── */
+.addr-selector { margin-bottom: .9rem; }
+.addr-row { display: flex; gap: .65rem; }
+.addr-field { flex: 1; display: flex; flex-direction: column; gap: .3rem; }
+.addr-label {
+  font-size: .75rem; font-weight: 600; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.addr-select {
+  width: 100%; padding: .62rem .85rem;
+  border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--bg-mid); color: var(--text);
+  font-size: .86rem; cursor: pointer; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2398a3b8' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right .75rem center;
+  padding-right: 2.2rem; transition: border-color .2s, box-shadow .2s;
+}
+.addr-select:focus {
+  outline: none; border-color: var(--border-strong);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.addr-select:disabled { opacity: .4; cursor: not-allowed; }
+@media (max-width: 480px) { .addr-row { flex-direction: column; gap: .5rem; } }
+
+/* ── Accommodation search block ─────────────────────────────────── */
+.accom-search-block { margin-top: .75rem; }
+.accom-search-hint {
+  font-size: .74rem; color: var(--text-muted); margin: .2rem 0 .45rem; line-height: 1.45;
+}
+.accom-detail-manual { margin-top: .75rem; }
+.accom-detail-manual input {
+  width: 100%; padding: .62rem .85rem; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: rgba(8,12,22,.6); color: var(--text); font: inherit;
+}
+.region-cities-input {
+  width: 100%;
+  margin-top: .35rem;
+  padding: .62rem .85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(8, 12, 22, .6);
+  color: var(--text);
+  font: inherit;
+  font-size: .88rem;
+  transition: border-color .2s, box-shadow .2s;
+}
+.region-cities-input:focus {
+  outline: none;
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.accom-search-row { display: flex; align-items: stretch; gap: .5rem; margin-top: .35rem; }
+.accom-search-row input {
+  flex: 1;
+  min-width: 0;
+  width: auto; /* .accom-detail input { width:100% } 와 .btn.secondary { width:100% } 충돌 방지 */
+  padding: .62rem .85rem; border-radius: var(--radius-sm);
+  background: var(--bg-mid); border: 1px solid var(--border);
+  color: var(--text); font-size: .88rem; transition: border-color .2s, box-shadow .2s;
+}
+.accom-search-row .btn.secondary {
+  width: auto;
+  margin-top: 0;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.accom-search-row input:focus {
+  outline: none; border-color: var(--border-strong);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.accom-search-results {
+  margin-top: .4rem; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); overflow: hidden;
+}
+.accom-result-item {
+  display: block; width: 100%; text-align: left;
+  padding: .6rem .9rem; background: var(--bg-card);
+  border: none; border-bottom: 1px solid var(--border);
+  color: var(--text); cursor: pointer; transition: background .15s;
+}
+.accom-result-item:last-child { border-bottom: none; }
+.accom-result-item:hover { background: rgba(212,168,83,.09); }
+.accom-result-item strong { display: block; font-size: .87rem; }
+.accom-result-addr { font-size: .74rem; color: var(--text-muted); margin-top: .08rem; }
+.accom-selected-info {
+  display: flex; align-items: flex-start; gap: .45rem;
+  padding: .55rem .85rem; margin-top: .65rem;
+  background: rgba(52,199,89,.07); border: 1px solid rgba(52,199,89,.22);
+  border-radius: var(--radius-sm); font-size: .84rem; color: var(--text);
+}
+.accom-sel-name { font-weight: 700; }
+.accom-sel-addr { font-size: .75rem; color: var(--text-muted); margin-top: .1rem; display: block; }
+.accom-no-result { padding: .55rem .9rem; font-size: .82rem; color: var(--text-muted); }
+
+/* ── Transport info panel (Step 4) ──────────────────────────────── */
+.transport-info-panel {
+  margin-top: .85rem; display: flex; flex-direction: column; gap: .55rem;
+}
+.ti-card {
+  padding: .75rem .9rem; background: var(--bg-card);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: .84rem; line-height: 1.65;
+}
+.ti-card strong { color: var(--text); display: block; margin-bottom: .2rem; }
+.ti-card a {
+  color: #4285f4; text-decoration: none;
+  display: inline-block; margin-top: .15rem; margin-right: .75rem;
+}
+.ti-card a:hover { text-decoration: underline; }
+
+/* ── Hotel recommendation cards (Step 3 undecided) ─────────────── */
+.hotel-search-status {
+  display: flex; align-items: center; gap: .5rem;
+  font-size: .83rem; color: var(--text-muted); padding: .55rem 0;
+}
+.hotel-spinner {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid var(--border-strong); border-top-color: var(--accent);
+  animation: spin .7s linear infinite; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.hotel-results {
+  margin-top: .55rem;
+  display: flex; flex-direction: column; gap: .5rem;
+}
+.hotel-results-label {
+  font-size: .75rem; font-weight: 600; color: var(--text-muted);
+  margin: 0; letter-spacing: .03em; line-height: 1.45;
+}
+.hotel-card {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: .85rem; padding: .85rem 1rem;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); transition: border-color .2s, box-shadow .2s;
+}
+.hotel-card:hover {
+  border-color: rgba(212,168,83,.45);
+  box-shadow: 0 4px 16px rgba(0,0,0,.18);
+}
+.hotel-photo {
+  width: 90px; height: 68px; object-fit: cover;
+  border-radius: 6px; flex: 0 0 auto;
+}
+.hotel-card-info {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column; gap: .35rem;
+}
+.hotel-meta {
+  display: flex; align-items: center; gap: .45rem; flex-wrap: wrap;
+}
+.hotel-rating {
+  font-size: .78rem; color: var(--gold); font-weight: 600;
+}
+.hotel-rating-cnt {
+  font-size: .72rem; color: var(--text-muted); font-weight: 400;
+}
+.hotel-price {
+  font-size: .75rem; color: #a0e0a0; font-weight: 600;
+  background: rgba(160,224,160,.12); border-radius: 4px; padding: .1rem .35rem;
+}
+/* 選択済みホテルパネル */
+.hotel-selected-panel {
+  margin-top: 1rem; padding: .85rem 1rem;
+  background: rgba(212,168,83,.08); border: 1.5px solid rgba(212,168,83,.4);
+  border-radius: var(--radius-sm);
+  display: flex; flex-direction: column; gap: .3rem;
+}
+.hotel-sel-badge {
+  font-size: .75rem; font-weight: 700; color: var(--gold); margin-bottom: .1rem;
+}
+.hotel-sel-rating { font-size: .78rem; color: var(--text-muted); }
+.hotel-sel-addr   { font-size: .76rem; color: var(--text-muted); }
+.hotel-sel-clear-btn {
+  align-self: flex-start; margin-top: .4rem;
+  font-size: .75rem; padding: .3rem .65rem;
+}
+.hotel-name {
+  font-size: .92rem; font-weight: 700; color: var(--text);
+  line-height: 1.4; word-break: keep-all; overflow-wrap: break-word;
+}
+.hotel-addr {
+  font-size: .78rem; color: var(--text-muted);
+  line-height: 1.5; word-break: keep-all; overflow-wrap: break-word;
+}
+.hotel-maps-link {
+  font-size: .75rem; color: #6ea8ff; text-decoration: none;
+  display: inline-flex; align-items: center; gap: .2rem;
+  margin-top: .1rem; width: fit-content;
+}
+.hotel-maps-link:hover { text-decoration: underline; color: #8bb8ff; }
+.hotel-select-btn {
+  flex: 0 0 auto; width: auto !important; margin-top: 0 !important;
+  white-space: nowrap; align-self: center;
+  padding: .5rem .85rem; font-size: .8rem;
+}
+@media (max-width: 560px) {
+  .hotel-card {
+    flex-direction: column; align-items: stretch; gap: .65rem;
+  }
+  .hotel-select-btn {
+    align-self: stretch; width: 100% !important; text-align: center;
+  }
+}
+
+.link-inline { color: var(--accent); text-decoration: none; font-weight: 500; }
+.link-inline:hover { text-decoration: underline; }
+
+/* ── Plan content link & formatting ─────────────────────────────── */
+.plan-content a { color: #4285f4; text-decoration: none; }
+.plan-content a:hover { text-decoration: underline; }
+.plan-content strong { color: var(--gold); }
+
+/* ── Wizard: sports detail & plan reference cards ─────────────── */
+.sports-detail-block {
+  margin-top: 1rem;
+  padding-top: .75rem;
+  border-top: 1px solid var(--border, rgba(255,255,255,.08));
+}
+.plan-refs-area { margin-top: 1.25rem; }
+.plan-refs-section { margin-bottom: 1rem; }
+.plan-refs-title {
+  font-size: 1rem; font-weight: 600; color: var(--gold);
+  margin: 0 0 .75rem;
+}
+.plan-refs-sub { font-size: .85rem; color: var(--muted); margin: .5rem 0 .35rem; }
+.plan-refs-note { font-size: .75rem; color: var(--muted); margin-top: .5rem; }
+.plan-vk-grid { display: flex; flex-wrap: wrap; gap: .6rem; }
+.plan-vk-card {
+  display: flex; align-items: center; gap: .6rem;
+  background: var(--card-bg, #1e2028); border: 1px solid var(--border, #2e3140);
+  border-radius: .6rem; padding: .5rem .75rem;
+  color: inherit; text-decoration: none; flex: 1 1 220px; min-width: 0;
+}
+.plan-vk-card:hover { border-color: var(--gold, #c9a84c); }
+.plan-vk-thumb-wrap { flex-shrink: 0; }
+.plan-vk-thumb { width: 52px; height: 52px; border-radius: .4rem; object-fit: cover; display: block; }
+.plan-vk-thumb--fallback {
+  display: flex; align-items: center; justify-content: center;
+  width: 52px; height: 52px; border-radius: .4rem;
+  background: var(--surface, #2a2d3a); font-size: 1.5rem;
+}
+.plan-vk-text { min-width: 0; }
+.plan-vk-name { font-size: .875rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plan-vk-badge { font-size: .7rem; color: var(--gold, #c9a84c); }
+.plan-vk-addr { font-size: .75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plan-ev-desc { font-size: .72rem; color: var(--muted); margin-top: .15rem; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plan-ev-source { font-size: .65rem; background: rgba(201,168,76,.15); color: var(--gold, #c9a84c); border-radius: 3px; padding: .05em .3em; margin-left: .25em; }
+.plan-place-grid, .plan-sport-grid {
+  display: flex; flex-direction: column; gap: .5rem;
+}
+.plan-place-card-wide.place-card,
+.plan-place-card-wide {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: .75rem;
+  padding: .65rem .85rem;
+  border-radius: 10px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  font-size: .85rem;
+  text-decoration: none;
+  color: inherit;
+  margin-bottom: .5rem;
+}
+a.plan-place-card-wide:hover { border-color: var(--accent); }
+.sport-event-card {
+  display: block;
+  padding: .65rem .85rem;
+  border-radius: 10px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  font-size: .85rem;
+  margin-bottom: .5rem;
+}
+.sport-event-card--notice {
+  border-color: rgba(220, 160, 60, .35);
+  background: rgba(220, 160, 60, .06);
+}
+.sport-notice-title { margin: .35rem 0 .2rem; font-weight: 600; }
+.sport-notice-body { margin: 0 0 .5rem; font-size: .82rem; color: var(--muted); line-height: 1.45; }
+.plan-place-addr, .sport-venue {
+  display: block; font-size: .78rem; color: var(--muted); margin-top: .2rem;
+}
+.plan-place-maps, .sport-official {
+  display: inline-block; margin-top: .35rem;
+  font-size: .78rem; color: var(--accent);
+}
+.sport-league {
+  display: inline-block; font-size: .72rem;
+  padding: .15rem .45rem; border-radius: 4px;
+  background: rgba(100,140,220,.15); margin-right: .35rem;
+}
+.sport-match { margin-top: .25rem; }
+
+/* ── Plan inline place preview (Maps URL行の直下) ───────────────── */
+.plan-line { margin: .35rem 0; line-height: 1.55; }
+.plan-line-spacer { height: .55rem; }
+.plan-inline-spot { margin: .65rem 0 1rem; }
+
+.plan-place-card {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: .85rem;
+  padding: .75rem .85rem;
+  background: rgba(18, 28, 50, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+}
+.plan-place-card__thumb-link {
+  flex-shrink: 0;
+  display: block;
+  width: 92px;
+  height: 92px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.05);
+  text-decoration: none;
+}
+.plan-place-card__thumb-link:hover { opacity: .92; }
+.plan-place-card__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.plan-place-card__img--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 1.75rem;
+  opacity: .75;
+}
+img.plan-place-card__img.plan-place-card__img--fallback {
+  object-fit: none;
+  background: rgba(255, 255, 255, 0.04);
+}
+.plan-place-card__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  justify-content: center;
+}
+.plan-place-card__name {
+  margin: 0;
+  font-size: .9rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.plan-place-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .4rem .55rem;
+  font-size: .78rem;
+  line-height: 1.3;
+}
+.plan-place-card__rating {
+  font-weight: 600;
+  color: var(--gold);
+}
+.plan-place-card__reviews {
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: .15rem;
+}
+.plan-place-card__open {
+  font-size: .7rem;
+  font-weight: 600;
+  color: #34c759;
+}
+.plan-place-card__closed {
+  font-size: .7rem;
+  font-weight: 600;
+  color: #ff9f0a;
+}
+.plan-place-card__price {
+  display: inline-block;
+  padding: .12rem .45rem;
+  border-radius: 999px;
+  font-size: .68rem;
+  font-weight: 600;
+  background: rgba(255, 255, 255, .06);
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, .12);
+}
+.plan-place-card__addr {
+  margin: 0;
+  font-size: .74rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  word-break: break-word;
+}
+.plan-place-card__actions {
+  display: flex;
+  gap: .5rem;
+  margin-top: .25rem;
+  flex-wrap: wrap;
+}
+.plan-place-card__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: .32rem .7rem;
+  border-radius: 6px;
+  font-size: .76rem;
+  font-weight: 600;
+  text-decoration: none;
+  color: #e8f0ff;
+  background: rgba(66, 133, 244, 0.22);
+  border: 1px solid rgba(66, 133, 244, 0.45);
+  transition: background .15s, border-color .15s;
+}
+.plan-place-card__btn:hover {
+  background: rgba(66, 133, 244, 0.35);
+  text-decoration: none;
+}
+.plan-place-card__btn--route {
+  color: #d4e6ff;
+  background: rgba(100, 160, 240, 0.18);
+  border-color: rgba(122, 175, 240, 0.4);
+}
+.plan-place-card__btn--route:hover {
+  background: rgba(100, 160, 240, 0.3);
+}
+
+@media (max-width: 480px) {
+  .plan-place-card { flex-direction: column; }
+  .plan-place-card__thumb-link {
+    width: 100%;
+    height: 140px;
+  }
+}
+.plan-maps-fallback {
+  display: block; font-size: .78rem; word-break: break-all;
+  color: var(--muted); margin: .25rem 0;
 }

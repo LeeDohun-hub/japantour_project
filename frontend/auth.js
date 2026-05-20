@@ -26,8 +26,9 @@ const Auth = (() => {
     const avatarEl = $('navAvatar');
     if (guestEl) guestEl.style.display = 'none';
     if (userEl) userEl.style.display = 'flex';
-    if (nameEl) nameEl.textContent = currentUser.username;
-    if (avatarEl) avatarEl.textContent = currentUser.username.charAt(0).toUpperCase();
+    const name = (currentUser.display_name || currentUser.username || '').trim();
+    if (nameEl) nameEl.textContent = name;
+    if (avatarEl) avatarEl.textContent = name.charAt(0).toUpperCase();
   }
 
   function renderGuest() {

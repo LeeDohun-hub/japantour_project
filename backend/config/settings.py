@@ -57,7 +57,16 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 SESSION_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_AGE = 60 * 60 * 24 * 30
+SESSION_COOKIE_AGE = 60 * 60 * 8  # 8시간
+
+if DEBUG:
+    # 개발 환경: 인메모리 캐시 세션 → runserver 재시작 시 자동 로그아웃
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        }
+    }
+    SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 
 def _build_database_config() -> dict:
     engine = os.environ.get("DB_ENGINE", "sqlite").strip().lower()

@@ -159,6 +159,7 @@
               </div>
             </div>
 
+            <p class="flight-leg-label">到着便（韓国入国）</p>
             <div id="flightListSection" class="flight-list-section" style="display:none">
               <div class="flight-list-header">
                 <span id="flightListLabel">편명을 선택하세요</span>
@@ -171,6 +172,25 @@
                 <button type="button" id="flightPageNext" class="pager-btn">다음 ›</button>
               </div>
             </div>
+            <p class="flight-leg-label">出国便（帰国・韓国発）</p>
+            <div id="returnFlightListSection" class="flight-list-section" style="display:none">
+              <div class="flight-list-header">
+                <span id="returnFlightListLabel">帰国便を選択してください</span>
+                <span id="returnFlightListLoading" class="flight-list-spinner" style="display:none">조회 중…</span>
+              </div>
+              <div id="returnFlightListCards" class="flight-list-cards"></div>
+              <div id="returnFlightListPager" class="flight-list-pager" style="display:none">
+                <button type="button" id="returnFlightPagePrev" class="pager-btn">‹ 이전</button>
+                <span id="returnFlightPageInfo" class="pager-info"></span>
+                <button type="button" id="returnFlightPageNext" class="pager-btn">다음 ›</button>
+              </div>
+            </div>
+            <p class="field-error" id="flightSelError" style="display:none;margin-top:.5rem">
+              ✈ 到着便を選択してから次へ進んでください。
+            </p>
+            <p class="field-error" id="flightReturnSelError" style="display:none;margin-top:.5rem">
+              ✈ 帰国便を選択してから次へ進んでください。
+            </p>
           </div>
         </div>
       </section>
@@ -199,16 +219,109 @@
               <small>おおよそのエリアのみ</small>
             </button>
           </div>
-          <div id="accomDetailDecided" class="accom-detail" style="display:none">
-            <label>住所または地域名</label>
-            <input type="text" id="accomAddress" placeholder="例：ソウル特別市 江南区" />
+
+          <!-- 住所ドロップダウン（予約済み・友人宅共通） -->
+          <div id="accomLocationBlock" class="accom-detail" style="display:none">
+            <div class="addr-selector">
+              <div class="addr-row">
+                <div class="addr-field">
+                  <label class="addr-label">도 / 특별시 / 광역시</label>
+                  <select id="addrSido" class="addr-select">
+                    <option value="">-- 선택 --</option>
+                  </select>
+                </div>
+                <div class="addr-field">
+                  <label class="addr-label">시 / 군 / 구</label>
+                  <select id="addrSigungu" class="addr-select" disabled>
+                    <option value="">-- 위에서 먼저 선택 --</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <input type="hidden" id="accomAddress" />
           </div>
+
+          <!-- 施設検索（予約済み・友人宅共通） -->
+          <div id="accomDetailShared" class="accom-detail" style="display:none">
+            <div class="accom-search-block">
+              <label class="addr-label">施設名で検索 <span class="opt">任意</span></label>
+              <div class="accom-search-row">
+                <input type="text" id="accomSearchInput" placeholder="例：ロッテホテル、南大門ゲストハウス..." />
+                <button type="button" id="accomSearchBtn" class="btn btn-sm secondary">検索</button>
+              </div>
+              <div id="accomSearchResults" class="accom-search-results" style="display:none"></div>
+            </div>
+            <div class="accom-search-block">
+              <label class="addr-label">詳細住所で検索 <span class="opt">任意</span></label>
+              <p class="accom-search-hint">도・시・구を選んだ上で、施設名や建物名などで検索できます。</p>
+              <div class="accom-search-row">
+                <input type="text" id="accomDetailSearchInput" placeholder="例：강남구12、서울아파트" />
+                <button type="button" id="accomDetailSearchBtn" class="btn btn-sm secondary">検索</button>
+              </div>
+              <div id="accomDetailSearchResults" class="accom-search-results" style="display:none"></div>
+            </div>
+            <div class="accom-detail-manual">
+              <label class="addr-label">詳細住所（直接入力） <span class="opt">任意</span></label>
+              <input type="text" id="accomDetailManual" placeholder="検索で見つからない場合はこちらに入力（例：강남구 123-45）" />
+            </div>
+            <div id="accomSelectedInfo" class="accom-selected-info" style="display:none">
+              ✅ <span id="accomSelectedName" class="accom-sel-name"></span>
+              <span id="accomSelectedAddr" class="accom-sel-addr"></span>
+            </div>
+            <input type="hidden" id="accomName" />
+          </div>
+
+          <!-- ホテル推薦（まだ未定） -->
           <div id="accomDetailUndecided" class="accom-detail" style="display:none">
-            <p class="wiz-notice">📋 宿泊おすすめ機能は실装予定です。AIチャットでご相談ください。</p>
-          </div>
-          <div id="accomDetailFriend" class="accom-detail" style="display:none">
-            <label>おおよそのエリア</label>
-            <input type="text" id="accomRegion" placeholder="例：釜山・海雲台あたり" />
+            <p class="wiz-notice">🏨 エリアを選択すると、そのエリアのおすすめホテルを表示します</p>
+            <div class="addr-selector" style="margin-top:.65rem">
+              <div class="addr-row">
+                <div class="addr-field">
+                  <label class="addr-label">도 / 특별시 / 광역시</label>
+                  <select id="addrSidoUnd" class="addr-select">
+                    <option value="">-- 선택 --</option>
+                  </select>
+                </div>
+                <div class="addr-field">
+                  <label class="addr-label">시 / 군 / 구</label>
+                  <select id="addrSigunguUnd" class="addr-select" disabled>
+                    <option value="">-- 위에서 먼저 선택 --</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div id="hotelSearchStatus" class="hotel-search-status" style="display:none">
+              <span class="hotel-spinner"></span>
+              <span id="hotelStatusText">検索中…</span>
+            </div>
+            <div id="hotelResults" class="hotel-results" style="display:none"></div>
+            <div id="hotelListPager" class="flight-list-pager hotel-list-pager" style="display:none">
+              <button type="button" class="pager-btn" id="hotelPagePrev">← 前へ</button>
+              <span class="pager-info" id="hotelPageInfo">1 / 1</span>
+              <button type="button" class="pager-btn" id="hotelPageNext">次へ →</button>
+            </div>
+            <div id="hotelManualBlock" class="hotel-manual-block" style="display:none">
+              <p class="hotel-manual-lead" id="hotelManualLead">おすすめにないホテルはホテル名で直接検索できます</p>
+              <label class="addr-label">ホテル名で検索</label>
+              <div class="accom-search-row">
+                <input type="text" id="hotelManualInput" placeholder="例：ロッテホテル釜山、釜山ゲストハウス" />
+                <button type="button" id="hotelManualSearchBtn" class="btn btn-sm secondary">検索</button>
+              </div>
+              <p class="accom-search-hint">エリア（시·군·구）＋ホテル名で検索します。エリア未選択の場合は入力した名前のみで検索します。</p>
+            </div>
+            <!-- 選択済みホテル表示 -->
+            <div id="hotelSelectedPanel" class="hotel-selected-panel" style="display:none">
+              <div class="hotel-sel-badge">✅ 選択中のホテル</div>
+              <strong id="hotelSelectedPanelName"></strong>
+              <span id="hotelSelectedPanelRating" class="hotel-sel-rating"></span>
+              <span id="hotelSelectedPanelAddr" class="hotel-sel-addr"></span>
+              <a id="hotelSelectedPanelLink" href="#" target="_blank" rel="noopener" class="hotel-maps-link" style="display:none">📍 Googleマップで見る</a>
+              <button type="button" class="btn btn-sm ghost hotel-sel-clear-btn" id="hotelSelClearBtn">選択を解除</button>
+            </div>
+
+            <p style="margin-top:.85rem;font-size:.8rem;color:var(--text-muted)">
+              💬 さらに詳しい相談は <a href="/chat/" class="link-inline">AIチャット</a> へ
+            </p>
           </div>
         </div>
       </section>
@@ -222,11 +335,12 @@
             <p class="wiz-lead">複数選択可</p>
           </div>
           <div class="chip-grid" id="transportChips">
-            <button class="chip" data-val="arex">🚆 空港鉄道（AREX）</button>
+            <button class="chip" data-val="rail">🚆 鉄道・地下鉄（AREX・広域鉄道）</button>
             <button class="chip" data-val="taxi">🚕 タクシー / KakaoTaxi</button>
             <button class="chip" data-val="bus">🚌 空港バス・リムジン</button>
             <button class="chip" data-val="rental">🚗 レンタカー</button>
           </div>
+          <div id="transportInfoPanel" class="transport-info-panel" style="display:none"></div>
           <p class="wiz-sub">リアルタイム料金・時刻は各サービスでご確認ください</p>
         </div>
       </section>
@@ -249,6 +363,17 @@
             <button class="chip" data-val="gyeongsang">🏯 慶尚道</button>
             <button class="chip" data-val="jeju">🌺 済州島</button>
           </div>
+          <div class="region-cities-field" style="margin-top:1rem">
+            <label class="addr-label" for="regionCitiesInput">都市・区を指定 <span class="opt">任意</span></label>
+            <p class="accom-search-hint">例：大田・儒城区、釜山・海雲台、全州。カンマや「・」で複数入力できます。</p>
+            <input
+              type="text"
+              id="regionCitiesInput"
+              class="region-cities-input"
+              placeholder="例：대전 유성구、부산 해운대"
+              autocomplete="off"
+            />
+          </div>
           <div class="wiz-section-label" style="margin-top:1.5rem">やりたいこと（複数選択可）</div>
           <div class="chip-grid" id="activityChips">
             <button class="chip" data-val="food">🍜 グルメ</button>
@@ -258,6 +383,7 @@
             <button class="chip" data-val="hallyu">🎵 韓流・K-pop</button>
             <button class="chip" data-val="nature">🌿 自然</button>
             <button class="chip" data-val="photo">📸 フォトスポット</button>
+            <button class="chip" data-val="sports">🏟 スポーツ観戦</button>
           </div>
         </div>
       </section>
@@ -387,10 +513,23 @@
           </div>
 
           <div id="planOutputArea" style="display:none">
-            <div class="plan-source-badge">
-              📚 K-Culture 관광 콘텐츠 특화 일본어 말뭉치 데이터 기반
+            <div class="plan-source-badge plan-source-badge--primary">
+              📚 K-Culture 관광 콘텐츠 특화 일본어 말뭉치 데이터 기반 — 全体旅行プラン
             </div>
             <div class="plan-content" id="planContent"></div>
+
+            <div id="planRefsBlock" class="plan-refs-block">
+              <div class="plan-source-badge plan-source-badge--refs">
+                🔗 旅行先周辺のスポーツ・イベント・観光 — URL・写真・料金帯など（参照データ）
+              </div>
+              <div id="planPlacesArea" style="display:none"></div>
+              <div id="planVisitKoreaArea" style="display:none"></div>
+              <div id="planEventsArea" style="display:none"></div>
+              <div id="planSportsArea" style="display:none"></div>
+              <p id="planRefsEmpty" class="plan-refs-empty" style="display:none">
+                参照データのカードは、スポーツ観戦の選択・希望エリア・Googleマップ連携の飲食店・旅行期間中の公演・行事データがある場合に表示されます。
+              </p>
+            </div>
             <div class="plan-actions">
               <a href="/chat/" class="btn primary">💬 AIチャットで詳しく聞く</a>
               <button class="btn wiz-btn-outline" id="btnRestart">最初からやり直す</button>

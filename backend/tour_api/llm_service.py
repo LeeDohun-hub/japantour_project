@@ -30,7 +30,13 @@ class ChatRunResult:
     translated_ko: str | None
     route_result: Any | None = None
     places: list = field(default_factory=list)
+    visitkorea_stays: list = field(default_factory=list)
+    visitkorea_festivals: list = field(default_factory=list)
+    visitkorea_attractions: list = field(default_factory=list)
+    sports_events: list = field(default_factory=list)
     flights: list = field(default_factory=list)
+    gyeonggi_events: list = field(default_factory=list)
+    ticket_platform_events: list = field(default_factory=list)
     airport: dict | None = None
     flight_subtype: str = ""
 
@@ -84,6 +90,7 @@ def run_chat(
     latitude: float | None = None,
     longitude: float | None = None,
     radius_meters: int = 1000,
+    traveler_profile: dict | None = None,
 ) -> ChatRunResult:
     """분류 → RAG → Places API → LLM 라우팅 파이프라인으로 응답 생성.
 
@@ -111,6 +118,7 @@ def run_chat(
             latitude=latitude,
             longitude=longitude,
             radius_meters=radius_meters,
+            traveler_profile=traveler_profile,
         )
         reply = route_result.reply
     except Exception as exc:
@@ -122,14 +130,63 @@ def run_chat(
         translated_ko = translate_to_korean(reply)
 
     places: list = []
+    visitkorea_stays: list = []
+    visitkorea_festivals: list = []
+    visitkorea_attractions: list = []
+    sports_events: list = []
     flights: list = []
+    gyeonggi_events: list = []
+    ticket_platform_events: list = []
     airport: dict | None = None
     flight_subtype: str = ""
 
     if route_result is not None:
+        card_categories = frozenset({"food", "lodging", "shopping", "leisure"})
         if route_result.places:
             places = [dataclasses.asdict(p) for p in route_result.places]
+        if route_result.visitkorea_stays:
+            visitkorea_stays = [
+                i.to_dict() if hasattr(i, "to_dict") else dataclasses.asdict(i)
+                for i in route_result.visitkorea_stays
+            ]
+        if route_result.visitkorea_festivals:
+            visitkorea_festivals = [
+                i.to_dict() if hasattr(i, "to_dict") else dataclasses.asdict(i)
+                for i in route_result.visitkorea_festivals
+            ]
+        if route_result.visitkorea_attractions:
+            visitkorea_attractions = [
+                i.to_dict() if hasattr(i, "to_dict") else dataclasses.asdict(i)
+                for i in route_result.visitkorea_attractions
+            ]
+        has_venue_cards = bool(
+            places
+            or visitkorea_stays
+            or visitkorea_festivals
+            or visitkorea_attractions
+        )
+        if has_venue_cards and route_result.category in card_categories:
             reply = ""
+        elif (
+            (visitkorea_festivals or visitkorea_attractions)
+            and route_result.category in ("culture", "leisure")
+        ):
+            reply = ""
+        if route_result.sports_events:
+            sports_events = [
+                m.to_dict() if hasattr(m, "to_dict") else dataclasses.asdict(m)
+                for m in route_result.sports_events
+            ]
+        if getattr(route_result, "gyeonggi_events", None):
+            gyeonggi_events = [
+                e.to_dict() if hasattr(e, "to_dict") else dataclasses.asdict(e)
+                for e in route_result.gyeonggi_events
+            ]
+        if getattr(route_result, "ticket_platform_events", None):
+            ticket_platform_events = [
+                e.to_dict() if hasattr(e, "to_dict") else dataclasses.asdict(e)
+                for e in route_result.ticket_platform_events
+            ]
         if route_result.flights:
             flights = [dataclasses.asdict(f) for f in route_result.flights]
             reply = ""
@@ -143,7 +200,13 @@ def run_chat(
         translated_ko=translated_ko,
         route_result=route_result,
         places=places,
+        visitkorea_stays=visitkorea_stays,
+        visitkorea_festivals=visitkorea_festivals,
+        visitkorea_attractions=visitkorea_attractions,
+        sports_events=sports_events,
         flights=flights,
+        gyeonggi_events=gyeonggi_events,
+        ticket_platform_events=ticket_platform_events,
         airport=airport,
         flight_subtype=flight_subtype,
     )
@@ -164,8 +227,8 @@ def _fallback_chat(
     system = (
         f"あなたは韓国旅行の案内ガイドです。{lang_rule}\n"
         "具体的な店舗名・施設名・住所は、確認できるデータがない場合は生成しないでください。"
-        "エリア名の紹介や一般的なアドバイスに留め、具体的な場所はNaver MapやGoogle Mapsで検索するよう案内してください。"
-        "不確かな情報は「公式サイトや現地でご確認ください」と明示してください。"
+        "エリア名の紹介や一般的なアドバイスに留めてください。"
+        "「予約サイトで確認」「Naverで検索」など、ユーザーに確認を押し付ける締めの文は使わないでください。"
     )
     messages: list[dict] = [{"role": "system", "content": system}]
     for turn in history[-6:]:

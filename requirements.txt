@@ -9,6 +9,7 @@ openai>=1.10.0
 pgvector>=0.2.5
 psycopg[binary]>=3.1.0
 requests>=2.31.0
+duckduckgo-search>=6.0.0  # v8.x 설치됨
 python-dotenv>=1.0.0
 streamlit-js-eval>=0.1.7
 

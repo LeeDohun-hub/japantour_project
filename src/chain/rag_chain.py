@@ -8,7 +8,7 @@ from src.config import CLASSIFIER_MODEL, LLM_MODEL, LLM_TEMPERATURE, OPENAI_API_
 
 _NO_KB_CONTEXT = (
     "(지식 베이스에서 검색된 문서가 없습니다. "
-    "一般的な韓国旅行の知識に基づいて回答し、最新の料金・営業時間・規則は公式サイトや現地で確認するよう案内してください。)"
+    "一般的な韓国旅行の知識に基づいて回答してください。確認をユーザーに押し付ける締めの文は使わないでください。)"
 )
 
 

@@ -1,19 +1,24 @@
 from __future__ import annotations
 
+import dataclasses
 import json
+import logging
 import os
 import re
 import secrets
 import urllib.parse
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 import requests as http_requests
 from django.conf import settings
 from django.contrib.auth import authenticate
+from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
 from django.contrib.auth.models import User
-from django.http import FileResponse, HttpResponse, JsonResponse
+from django.http import FileResponse, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
@@ -26,6 +31,110 @@ from tour_api.chat_persistence import (
 from tour_api.llm_service import get_client, run_chat
 
 _FRONTEND: Path = settings.FRONTEND_DIR
+
+
+@require_GET
+def api_places_search(request):
+    """위저드 Step 3 숙박시설 검색 — Google Places Text Search."""
+    import sys
+    from pathlib import Path as _P
+    _root = _P(settings.BASE_DIR).parent
+    if str(_root / "src") not in sys.path:
+        sys.path.insert(0, str(_root / "src"))
+
+    from src.api.google_places_client import GooglePlacesClient
+
+    query = request.GET.get("q", "").strip()
+    if not query:
+        return JsonResponse({"places": []})
+    fetch_all = request.GET.get("all", "").lower() in ("1", "true", "yes")
+    try:
+        limit = min(max(int(request.GET.get("limit", 5)), 1), 20)
+    except (TypeError, ValueError):
+        limit = 5
+    try:
+        pclient = GooglePlacesClient()
+        if not pclient.is_configured:
+            return JsonResponse({"places": [], "error": "Places API not configured"})
+        if fetch_all:
+            results = pclient.search_by_text_all(text_query=query, max_total=60, language_code="ja")
+            next_token = None
+        else:
+            results, next_token = pclient.search_by_text(
+                text_query=query, max_results=limit, language_code="ja"
+            )
+        places = [
+            {
+                "name": p.name,
+                "address": p.address or "",
+                "maps_url": p.google_maps_uri or "",
+                "rating": p.rating,
+                "user_rating_count": p.user_rating_count,
+                "price_level": p.price_level,
+                "photo_name": p.photo_name,
+                "latitude": p.latitude,
+                "longitude": p.longitude,
+            }
+            for p in results
+        ]
+        payload: dict = {"places": places, "total": len(places)}
+        if next_token:
+            payload["next_page_token"] = next_token
+        return JsonResponse(payload)
+    except Exception as exc:
+        logger.warning("api_places_search error: %s", exc)
+        return JsonResponse({"places": [], "error": str(exc)})
+
+
+@csrf_exempt
+@require_POST
+def api_places_enrich(request):
+    """プラン本文の Google Maps URL を Places 詳細（写真・評価等）に変換."""
+    import sys
+    from pathlib import Path as _P
+
+    _root = _P(settings.BASE_DIR).parent
+    if str(_root / "src") not in sys.path:
+        sys.path.insert(0, str(_root / "src"))
+
+    from src.api.google_places_client import GooglePlacesClient
+
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"detail": "Invalid JSON"}, status=400)
+
+    items = body.get("items")
+    if not isinstance(items, list) or len(items) > 24:
+        return JsonResponse({"detail": "items must be a list (max 24)"}, status=400)
+
+    lang = body.get("language", "ja")
+    if lang not in ("ja", "ko"):
+        lang = "ja"
+
+    try:
+        pclient = GooglePlacesClient()
+        if not pclient.is_configured:
+            return JsonResponse({"places": {}, "error": "Places API not configured"})
+    except Exception as exc:
+        return JsonResponse({"places": {}, "error": str(exc)})
+
+    enriched: dict[str, dict] = {}
+    for raw in items:
+        if not isinstance(raw, dict):
+            continue
+        url = str(raw.get("url") or "").strip()
+        query = str(raw.get("query") or "").strip()
+        if not url:
+            continue
+        try:
+            place = pclient.find_for_plan_item(url, query, language_code=lang)
+            if place:
+                enriched[url] = dataclasses.asdict(place)
+        except Exception as exc:
+            logger.warning("places enrich failed for %r: %s", url[:80], exc)
+
+    return JsonResponse({"places": enriched})
 
 
 @require_GET
@@ -131,7 +240,7 @@ def _merge_codeshares(flight_dicts: list[dict]) -> list[dict]:
 
 @require_GET
 def api_flights(request):
-    """출발지→ICN 항공편 목록 조회. 마법사 Step 2용."""
+    """노선·날짜별 항공편 목록 (마법사 Step 2: 到着便·帰国便 공용)."""
     import dataclasses, sys
     from pathlib import Path as _P
     _root = _P(settings.BASE_DIR).parent
@@ -229,14 +338,25 @@ def api_chat(request):
     )
     upsert_traveler_profile(chat_session, traveler_profile if isinstance(traveler_profile, dict) else None)
 
-    chat_result = run_chat(
-        message=message,
-        reply_language=reply_language,
-        history=clean_history,
-        latitude=latitude,
-        longitude=longitude,
-        radius_meters=radius_meters,
-    )
+    profile_payload = traveler_profile if isinstance(traveler_profile, dict) else None
+    try:
+        chat_result = run_chat(
+            message=message,
+            reply_language=reply_language,
+            history=clean_history,
+            latitude=latitude,
+            longitude=longitude,
+            radius_meters=radius_meters,
+            traveler_profile=profile_payload,
+        )
+    except Exception as exc:
+        logger.exception("run_chat failed: %s", exc)
+        err_msg = (
+            "申し訳ありません、サーバーエラーが発生しました。しばらくしてから再度お試しください。"
+            if reply_language == "日本語"
+            else "죄송합니다, 서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
+        )
+        return JsonResponse({"reply": err_msg, "detail": str(exc)}, status=500)
 
     save_chat_turn(
         session=chat_session,
@@ -265,6 +385,18 @@ def api_chat(request):
               f"places={rr.places_count} error={rr.places_error!r}")
     if chat_result.places:
         payload["places"] = chat_result.places
+    if chat_result.visitkorea_stays:
+        payload["visitkorea_stays"] = chat_result.visitkorea_stays
+    if chat_result.visitkorea_festivals:
+        payload["visitkorea_festivals"] = chat_result.visitkorea_festivals
+    if chat_result.visitkorea_attractions:
+        payload["visitkorea_attractions"] = chat_result.visitkorea_attractions
+    if chat_result.sports_events:
+        payload["sports_events"] = chat_result.sports_events
+    if getattr(chat_result, "gyeonggi_events", None):
+        payload["gyeonggi_events"] = chat_result.gyeonggi_events
+    if getattr(chat_result, "ticket_platform_events", None):
+        payload["ticket_platform_events"] = chat_result.ticket_platform_events
     if chat_result.flights:
         payload["flights"] = chat_result.flights
         payload["flight_subtype"] = chat_result.flight_subtype
@@ -334,15 +466,39 @@ def api_me(request):
     if not request.user.is_authenticated:
         return JsonResponse({"authenticated": False}, status=401)
     u = request.user
+    display_name = u.first_name.strip() if u.first_name else u.username
     return JsonResponse({
         "authenticated": True,
-        "user": {"id": u.id, "username": u.username, "email": u.email},
+        "user": {
+            "id": u.id,
+            "username": u.username,
+            "display_name": display_name,
+            "email": u.email,
+        },
     })
 
 
 def _oauth_login(request, user: User) -> None:
     user.backend = "django.contrib.auth.backends.ModelBackend"
     django_login(request, user)
+    request.session.modified = True
+
+
+_OAUTH_STATE_SIGNER = TimestampSigner(salt="tour-oauth-state")
+
+
+def _oauth_state_create() -> str:
+    return _OAUTH_STATE_SIGNER.sign(secrets.token_urlsafe(16))
+
+
+def _oauth_state_valid(state: str | None) -> bool:
+    if not state:
+        return False
+    try:
+        _OAUTH_STATE_SIGNER.unsign(state, max_age=600)
+        return True
+    except (BadSignature, SignatureExpired):
+        return False
 
 
 # ── Google OAuth2 ──────────────────────────────────────────────────────────
@@ -356,8 +512,7 @@ def oauth_google_start(request):
     cid = os.getenv("GOOGLE_CLIENT_ID", "")
     if not cid:
         return JsonResponse({"detail": "GOOGLE_CLIENT_ID not configured"}, status=503)
-    state = secrets.token_urlsafe(16)
-    request.session["oauth_state"] = state
+    state = _oauth_state_create()
     params = {
         "client_id": cid,
         "redirect_uri": request.build_absolute_uri("/api/auth/oauth/google/callback/"),
@@ -372,7 +527,8 @@ def oauth_google_start(request):
 def oauth_google_callback(request):
     code = request.GET.get("code")
     state = request.GET.get("state")
-    if not code or state != request.session.get("oauth_state"):
+    if not code or not _oauth_state_valid(state):
+        logger.warning("Google OAuth callback rejected (code=%s, state_ok=%s)", bool(code), _oauth_state_valid(state))
         return redirect("/?oauth_error=1")
 
     cid = os.getenv("GOOGLE_CLIENT_ID", "")
@@ -388,6 +544,7 @@ def oauth_google_callback(request):
         access_token = tok.get("access_token", "")
         info = http_requests.get(_GOOGLE_INFO, headers={"Authorization": f"Bearer {access_token}"}, timeout=10).json()
     except Exception:
+        logger.exception("Google OAuth token/profile failed")
         return redirect("/?oauth_error=1")
 
     google_id = info.get("id", "")
@@ -398,7 +555,7 @@ def oauth_google_callback(request):
     username = f"google_{google_id}"[:150]
     user, _ = User.objects.get_or_create(username=username, defaults={"email": email})
     _oauth_login(request, user)
-    return redirect("/")
+    return redirect("/?oauth_success=1")
 
 
 # ── LINE OAuth2 ────────────────────────────────────────────────────────────
@@ -407,17 +564,22 @@ _LINE_TOKEN = "https://api.line.me/oauth2/v2.1/token"
 _LINE_PROFILE = "https://api.line.me/v2/profile"
 
 
+def _line_redirect_uri(request: HttpRequest) -> str:
+    """LINE_REDIRECT_URI 환경변수 우선, 없으면 동적 생성."""
+    fixed = os.getenv("LINE_REDIRECT_URI", "").strip()
+    return fixed or request.build_absolute_uri("/api/auth/oauth/line/callback/")
+
+
 @require_GET
 def oauth_line_start(request):
     cid = os.getenv("LINE_CHANNEL_ID", "")
     if not cid:
         return JsonResponse({"detail": "LINE_CHANNEL_ID not configured"}, status=503)
-    state = secrets.token_urlsafe(16)
-    request.session["oauth_state"] = state
+    state = _oauth_state_create()
     params = {
         "response_type": "code",
         "client_id": cid,
-        "redirect_uri": request.build_absolute_uri("/api/auth/oauth/line/callback/"),
+        "redirect_uri": _line_redirect_uri(request),
         "state": state,
         "scope": "profile openid",
     }
@@ -428,36 +590,51 @@ def oauth_line_start(request):
 def oauth_line_callback(request):
     code = request.GET.get("code")
     state = request.GET.get("state")
-    if not code or state != request.session.get("oauth_state"):
+    if not code or not _oauth_state_valid(state):
+        logger.warning("LINE OAuth callback rejected (code=%s, state_ok=%s)", bool(code), _oauth_state_valid(state))
         return redirect("/?oauth_error=1")
 
     cid = os.getenv("LINE_CHANNEL_ID", "")
     csecret = os.getenv("LINE_CHANNEL_SECRET", "")
+    redirect_uri = _line_redirect_uri(request)
     try:
         tok = http_requests.post(_LINE_TOKEN, data={
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": request.build_absolute_uri("/api/auth/oauth/line/callback/"),
+            "redirect_uri": redirect_uri,
             "client_id": cid,
             "client_secret": csecret,
         }, timeout=10).json()
-        access_token = tok.get("access_token", "")
-        profile = http_requests.get(_LINE_PROFILE, headers={"Authorization": f"Bearer {access_token}"}, timeout=10).json()
+        if tok.get("error") or not tok.get("access_token"):
+            logger.warning("LINE token error: %s (redirect_uri=%s)", tok, redirect_uri)
+            return redirect("/?oauth_error=1")
+        access_token = tok["access_token"]
+        profile = http_requests.get(
+            _LINE_PROFILE,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10,
+        ).json()
     except Exception:
+        logger.exception("LINE OAuth token/profile failed")
         return redirect("/?oauth_error=1")
 
     line_id = profile.get("userId", "")
-    display_name = profile.get("displayName", "LINE User")
     if not line_id:
+        logger.warning("LINE profile missing userId: %s", profile)
         return redirect("/?oauth_error=1")
+
+    display_name = (profile.get("displayName") or "").strip()
 
     username = f"line_{line_id}"[:150]
     user, created = User.objects.get_or_create(username=username)
     if created:
         user.set_unusable_password()
-        user.save()
+    # 로그인할 때마다 LINE 표시 이름을 first_name에 동기화
+    if display_name and user.first_name != display_name:
+        user.first_name = display_name[:150]
+    user.save()
     _oauth_login(request, user)
-    return redirect("/")
+    return redirect("/?oauth_success=1")
 
 
 @require_GET

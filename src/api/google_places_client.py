@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import re
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -63,6 +64,7 @@ class NearbyPlace:
     photo_name: str | None = None        # places/.../photos/... (proxy용)
     serves_breakfast: bool | None = None
     has_restaurant: bool | None = None   # dineIn 필드
+    search_area: str | None = None       # itinerary 검색 시 에리어 라벨
 
 
 def _resolve_api_key(explicit: str | None = None) -> str | None:
@@ -135,11 +137,12 @@ class GooglePlacesClient:
         language_code: str = "ja",
         region_code: str = "KR",
         included_type: str | None = None,
-    ) -> list[NearbyPlace]:
+        page_token: str | None = None,
+    ) -> tuple[list[NearbyPlace], str | None]:
         """텍스트 쿼리로 장소 검색 (예: '성수동 맛집', '명동 호텔').
 
-        위치 정보 없이도 사용 가능.
-        included_type: Places API (New) 단일 타입 필터 (선택)
+        Returns:
+            (places, next_page_token) — next_page_token is None when no more pages.
         """
         if not self.api_key:
             raise ValueError("Google API key is not configured.")
@@ -152,6 +155,8 @@ class GooglePlacesClient:
         }
         if included_type:
             body["includedType"] = included_type
+        if page_token:
+            body["pageToken"] = page_token
 
         headers = {
             "Content-Type": "application/json",
@@ -168,8 +173,84 @@ class GooglePlacesClient:
         response.raise_for_status()
         data = response.json()
         raw_places = data.get("places", [])
-        logger.info("Places textSearch returned %d places", len(raw_places))
-        return [self._normalize_place(place) for place in raw_places]
+        next_token = data.get("nextPageToken") or None
+        logger.info(
+            "Places textSearch returned %d places (has_next=%s)",
+            len(raw_places),
+            bool(next_token),
+        )
+        places = [self._normalize_place(place) for place in raw_places]
+        return places, next_token
+
+    def search_by_text_all(
+        self,
+        text_query: str,
+        *,
+        max_total: int = 60,
+        language_code: str = "ja",
+        region_code: str = "KR",
+        included_type: str | None = None,
+    ) -> list[NearbyPlace]:
+        """Text Search 전 페이지 수집 (API 상한 약 60건)."""
+        cap = max(1, min(int(max_total), 60))
+        collected: list[NearbyPlace] = []
+        seen: set[str] = set()
+        page_token: str | None = None
+
+        while len(collected) < cap:
+            batch, page_token = self.search_by_text(
+                text_query,
+                max_results=20,
+                language_code=language_code,
+                region_code=region_code,
+                included_type=included_type,
+                page_token=page_token,
+            )
+            if not batch:
+                break
+            for place in batch:
+                key = f"{place.name}|{place.address}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                collected.append(place)
+                if len(collected) >= cap:
+                    break
+            if not page_token:
+                break
+
+        return collected
+
+    def find_for_plan_item(
+        self,
+        maps_url: str,
+        query: str = "",
+        language_code: str = "ja",
+    ) -> NearbyPlace | None:
+        """プラン内 Maps URL + 店名ラベルから Places 詳細を取得."""
+        if not self.is_configured:
+            return None
+        target_cid = extract_maps_cid(maps_url)
+        q = (query or "").strip()
+        if not q and not target_cid:
+            return None
+        if q:
+            try:
+                results, _ = self.search_by_text(
+                    text_query=q,
+                    max_results=8,
+                    language_code=language_code,
+                )
+            except Exception as exc:
+                logger.warning("find_for_plan_item search failed: %s", exc)
+                return None
+            if target_cid:
+                for place in results:
+                    if maps_urls_same_cid(place.google_maps_uri, maps_url):
+                        return place
+            if results:
+                return results[0]
+        return None
 
     def _normalize_place(
         self,
@@ -217,6 +298,23 @@ class GooglePlacesClient:
             serves_breakfast=place.get("servesBreakfast"),
             has_restaurant=place.get("dineIn"),
         )
+
+
+def extract_maps_cid(maps_url: str) -> str | None:
+    """Google Maps URL の cid パラメータを抽出."""
+    if not maps_url:
+        return None
+    match = re.search(r"[?&]cid=(\d+)", maps_url)
+    return match.group(1) if match else None
+
+
+def maps_urls_same_cid(a: str | None, b: str | None) -> bool:
+    ca, cb = extract_maps_cid(a or ""), extract_maps_cid(b or "")
+    if ca and cb:
+        return ca == cb
+    if not a or not b:
+        return False
+    return a.split("&g_mp=")[0].rstrip("/") == b.split("&g_mp=")[0].rstrip("/")
 
 
 def recommend_nearby_places(
