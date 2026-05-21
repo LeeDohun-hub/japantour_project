@@ -17,14 +17,48 @@ let _lastFailedText = null;
 
 const COLLAPSE_HEIGHT = 240;
 
+function formatReplyWithTicketPreviews(text) {
+  const LP = window.LinkPreview;
+  if (!LP || !text) return escapeHtml(text);
+  const urls = LP.extractTicketUrls(text);
+  if (!urls.length) return escapeHtml(text);
+  const re = new RegExp(LP.TICKET_URL_RE.source, "gi");
+  let html = "";
+  let last = 0;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    html += escapeHtml(text.slice(last, m.index));
+    html += LP.renderSkeleton(LP.normalizeUrl(m[0]));
+    last = m.index + m[0].length;
+  }
+  html += escapeHtml(text.slice(last));
+  return html;
+}
+
+function renderTicketPlatformCards(events, lang) {
+  const LP = window.LinkPreview;
+  if (!LP || !events || !events.length) return "";
+  const isJa = lang === "日本語";
+  const title = isJa ? "🎫 チケット・公演（インターパーク）" : "🎫 티켓·공연 (인터파크)";
+  const cards = events.slice(0, 6).map((ev) => {
+    const url = LP.normalizeUrl(ev.ticket_url || "");
+    return LP.renderCard(LP.eventToPreview(ev, url));
+  }).join("");
+  return `<div class="ev-section ticket-platform-section"><h4 class="ev-title">${title}</h4><div class="ticket-platform-grid">${cards}</div></div>`;
+}
+
 function appendBubble(role, content, extraHtml = "") {
   const div = document.createElement("div");
   div.className = `bubble ${role}`;
   const label = role === "user" ? "You" : "Guide";
   // Guide: 본문만 접기(번역·버튼은 항상 표시). You: 기존과 동일.
   if (role === "assistant") {
+    const hasTicketLinks =
+      window.LinkPreview && LinkPreview.extractTicketUrls(content || "").length > 0;
     const bodyPart = content
-      ? `<div class="bubble-body">${escapeHtml(content)}</div>`
+      ? `<div class="bubble-body${hasTicketLinks ? " bubble-body--rich" : ""}">${
+          hasTicketLinks ? formatReplyWithTicketPreviews(content) : escapeHtml(content)
+        }</div>`
       : "";
     div.innerHTML = `<div class="label">${label}</div>${bodyPart}${extraHtml || ""}`;
   } else {
@@ -526,6 +560,8 @@ chatForm.addEventListener("submit", async (e) => {
       (data.visitkorea_attractions && data.visitkorea_attractions.length > 0);
     const hasFlightCards  = (data.flights && data.flights.length > 0) || data.airport;
     const hasEventCards   = data.gyeonggi_events && data.gyeonggi_events.length > 0;
+    const hasTicketCards  =
+      data.ticket_platform_events && data.ticket_platform_events.length > 0;
     if (hasPlaceCards) {
       extra += renderPlaceCards(data.places, data.category || "", data.keyword || "", replyLanguage.value);
     }
@@ -540,6 +576,9 @@ chatForm.addEventListener("submit", async (e) => {
     if (hasEventCards) {
       extra += renderGyeonggiEventCards(data.gyeonggi_events, replyLanguage.value);
     }
+    if (hasTicketCards) {
+      extra += renderTicketPlatformCards(data.ticket_platform_events, replyLanguage.value);
+    }
     if (hasFlightCards) {
       extra += renderFlightCards(
         data.flights || [],
@@ -552,7 +591,13 @@ chatForm.addEventListener("submit", async (e) => {
     if (data.translated_ko) {
       extra += `<div class="translation"><h4>한국어 번역</h4>${escapeHtml(data.translated_ko)}</div>`;
     }
-    const displayReply = (hasPlaceCards || hasVkCards || hasFlightCards) ? "" : (data.reply || "");
+    const replyText = (data.reply || "").trim();
+    const inlineTickets =
+      window.LinkPreview && LinkPreview.extractTicketUrls(replyText).length > 0;
+    const displayReply =
+      inlineTickets || !(hasPlaceCards || hasVkCards || hasFlightCards)
+        ? data.reply || ""
+        : "";
     if (!displayReply && !extra) {
       const isJa = replyLanguage.value === "日本語";
       const fallback = isJa
@@ -561,6 +606,11 @@ chatForm.addEventListener("submit", async (e) => {
       appendBubble("assistant", fallback);
     } else {
       appendBubble("assistant", displayReply, extra);
+      if (window.LinkPreview && displayReply) {
+        const ticketIdx = LinkPreview.buildEventIndex(data.ticket_platform_events || []);
+        const bubble = chatLog.lastElementChild;
+        LinkPreview.hydrate(bubble, ticketIdx);
+      }
     }
 
     history.push({ role: "user", content: text });

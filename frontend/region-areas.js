@@ -1,0 +1,96 @@
+/**
+ * 🗺 観光ステップ — 8広域 → 市・郡・区（시군구）チップ
+ * label: 日本語表示 / query: Places・日程検索用（한국 행정구역명）
+ */
+window.REGION_AREA_LABELS = {
+  seoul: "ソウル",
+  gyeonggi: "京畿道",
+  incheon: "仁川",
+  gangwon: "江原道",
+  chungcheong: "忠清道",
+  jeolla: "全羅道",
+  gyeongsang: "慶尚道",
+  jeju: "済州島",
+};
+
+/** @type {Record<string, { id: string, label: string, query: string }[]>} */
+window.REGION_CITY_OPTIONS = {
+  seoul: [
+    { id: "jongno", label: "鍾路区", query: "서울 종로구" },
+    { id: "jung", label: "中区（明洞）", query: "서울 중구" },
+    { id: "mapo", label: "麻浦区（弘大）", query: "서울 마포구" },
+    { id: "gangnam", label: "江南区", query: "서울 강남구" },
+    { id: "seongdong", label: "城東区（聖水）", query: "서울 성동구" },
+    { id: "yongsan", label: "龍山区（梨泰院）", query: "서울 용산구" },
+    { id: "dongdaemun", label: "東大門区", query: "서울 동대문구" },
+    { id: "songpa", label: "松坡区（蚕室）", query: "서울 송파구" },
+    { id: "yeongdeungpo", label: "永登浦区", query: "서울 영등포구" },
+  ],
+  gyeonggi: [
+    { id: "goyang", label: "高陽市", query: "고양시" },
+    { id: "suwon", label: "水原市", query: "수원시" },
+    { id: "seongnam", label: "城南市", query: "성남시" },
+    { id: "yongin", label: "龍仁市", query: "용인시" },
+    { id: "bucheon", label: "富川市", query: "부천시" },
+    { id: "anyang", label: "安養市", query: "안양시" },
+    { id: "paju", label: "坡州市", query: "파주시" },
+    { id: "gapyeong", label: "加平郡", query: "가평군" },
+    { id: "hwaseong", label: "華城市", query: "화성시" },
+    { id: "siheung", label: "始興市", query: "시흥시" },
+    { id: "namyangju", label: "南楊州市", query: "남양주시" },
+    { id: "pyeongtaek", label: "平沢市", query: "평택시" },
+  ],
+  incheon: [
+    { id: "michuhol", label: "弥楚忽区（文鶴）", query: "인천 미추홀구" },
+    { id: "yeonsu", label: "延寿区（松島）", query: "인천 연수구" },
+    { id: "bupyeong", label: "富平区", query: "인천 부평구" },
+    { id: "jung", label: "中区（月尾島）", query: "인천 중구" },
+    { id: "namdong", label: "南洞区", query: "인천 남동구" },
+    { id: "seogu", label: "西区", query: "인천 서구" },
+  ],
+  gangwon: [
+    { id: "gangneung", label: "江陵市", query: "강릉시" },
+    { id: "sokcho", label: "束草市", query: "속초시" },
+    { id: "chuncheon", label: "春川市", query: "춘천시" },
+    { id: "pyeongchang", label: "平昌郡", query: "평창군" },
+    { id: "yangyang", label: "襄阳郡", query: "양양군" },
+    { id: "goseong", label: "高城郡", query: "강원 고성군" },
+    { id: "wonju", label: "原州市", query: "원주시" },
+    { id: "hongcheon", label: "洪川郡", query: "홍천군" },
+  ],
+  chungcheong: [
+    { id: "daejeon", label: "大田広域市", query: "대전광역시" },
+    { id: "yuseong", label: "大田・儒城区", query: "대전 유성구" },
+    { id: "cheonan", label: "天安市", query: "천안시" },
+    { id: "gongju", label: "公州市", query: "공주시" },
+    { id: "buyeo", label: "扶余郡", query: "부여군" },
+    { id: "boryeong", label: "瑞山市", query: "보령시" },
+    { id: "chungju", label: "忠州市", query: "충주시" },
+    { id: "cheongju", label: "清州市", query: "청주시" },
+    { id: "sejong", label: "世宗特別市", query: "세종특별자치시" },
+  ],
+  jeolla: [
+    { id: "jeonju", label: "全州・完山/徳津区", query: "전주시" },
+    { id: "yeosu", label: "麗水市", query: "여수시" },
+    { id: "mokpo", label: "木浦市", query: "목포시" },
+    { id: "suncheon", label: "順天市", query: "순천시" },
+    { id: "damyang", label: "潭陽郡", query: "담양군" },
+    { id: "gunsan", label: "群山市", query: "군산시" },
+    { id: "gwangju", label: "光州広域市", query: "광주광역시" },
+  ],
+  gyeongsang: [
+    { id: "busan_haeundae", label: "釜山・海雲台区", query: "부산 해운대구" },
+    { id: "busan_jung", label: "釜山・中区", query: "부산 중구" },
+    { id: "gyeongju", label: "慶州市", query: "경주시" },
+    { id: "daegu", label: "大邱広域市", query: "대구광역시" },
+    { id: "ulsan", label: "蔚山広域市", query: "울산광역시" },
+    { id: "changwon", label: "昌原市", query: "창원시" },
+    { id: "geoje", label: "巨済市", query: "거제시" },
+    { id: "pohang", label: "浦項市", query: "포항시" },
+    { id: "andong", label: "安東市", query: "안동시" },
+  ],
+  jeju: [
+    { id: "jeju_city", label: "済州市", query: "제주시" },
+    { id: "seogwipo", label: "西帰浦市", query: "서귀포시" },
+  ],
+};

@@ -24,6 +24,7 @@ async function init() {
   setupStep3();
   setupChipGroup("transportChips",       false);
   setupChipGroup("regionChips",          false);
+  setupRegionCityPicker();
   setupChipGroup("activityChips",        false);
   setupChipGroup("budgetPriorityChips",  false);
   setupChipGroup("budgetStyleChips",     true);
@@ -113,10 +114,7 @@ function goToStep(step) {
     wizBtnNext.textContent = step === TOTAL_STEPS - 1 ? "プランを生成 ✨" : "次へ";
   }
 
-  if (step === 5) {
-    const regionIn = $("regionCitiesInput");
-    if (regionIn) regionIn.value = wizardData.regionCities || "";
-  }
+  if (step === 5) restoreRegionCityStep();
 
   window.scrollTo(0, 0);
 }
@@ -142,8 +140,11 @@ function setupNavigation() {
     if (window.PlanMapView?.destroy) window.PlanMapView.destroy();
     wizardData = {};
     _selectedAccomPlace = null;
-    const regionIn = $("regionCitiesInput");
-    if (regionIn) regionIn.value = "";
+    const otherIn = $("regionCitiesOther");
+    if (otherIn) otherIn.value = "";
+    const panels = $("regionCityPanels");
+    if (panels) panels.innerHTML = "";
+    syncRegionCityPanels();
     goToStep(1);
   });
 
@@ -180,6 +181,25 @@ function validate(step) {
       return false;
     }
     errEl.textContent = "";
+  }
+  if (step === 5) {
+    const regions = chips("regionChips");
+    const areaErr = $("regionAreaError");
+    if (!regions.length) {
+      if (areaErr) areaErr.hidden = false;
+      $("regionChips")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return false;
+    }
+    if (areaErr) areaErr.hidden = true;
+
+    const cityCount = document.querySelectorAll("#regionCityPanels .chip.selected").length;
+    const cityErr = $("regionCityError");
+    if (cityCount === 0) {
+      if (cityErr) cityErr.hidden = false;
+      $("regionCitySection")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return false;
+    }
+    if (cityErr) cityErr.hidden = true;
   }
   return true;
 }
@@ -236,10 +256,14 @@ function collect(step) {
       wizardData.transport = chips("transportChips");
       break;
     case 5: {
-      wizardData.regions    = chips("regionChips");
-      const regionCities = ($("regionCitiesInput")?.value || "").trim();
-      if (regionCities) wizardData.regionCities = regionCities;
+      wizardData.regions = chips("regionChips");
+      wizardData.regionCityIds = getSelectedRegionCityIds();
+      const built = buildRegionCitiesString();
+      if (built) wizardData.regionCities = built;
       else delete wizardData.regionCities;
+      const other = ($("regionCitiesOther")?.value || "").trim();
+      if (other) wizardData.regionCitiesOther = other;
+      else delete wizardData.regionCitiesOther;
       wizardData.activities = chips("activityChips");
       wizardData.sports     = chips("sportsChips");
       wizardData.vacationTypes = chips("vacationChips");
@@ -865,6 +889,138 @@ function setupChipGroup(id, singleSelect) {
   });
 }
 
+// ── 観光：広域 → 都市・区 ─────────────────────────────────────────────────
+function _escapeAttr(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
+
+function setupRegionCityPicker() {
+  const regionEl = $("regionChips");
+  const panels = $("regionCityPanels");
+  if (!regionEl || !panels) return;
+
+  regionEl.addEventListener("click", () => setTimeout(syncRegionCityPanels, 0));
+
+  panels.addEventListener("click", (e) => {
+    const chip = e.target.closest(".chip");
+    if (!chip?.dataset?.val) return;
+    chip.classList.toggle("selected");
+    const err = $("regionCityError");
+    if (err) err.hidden = true;
+  });
+
+  $("regionCitiesOther")?.addEventListener("input", () => {
+    const err = $("regionCityError");
+    if (err && ($("regionCitiesOther").value || "").trim()) err.hidden = true;
+  });
+
+  syncRegionCityPanels();
+}
+
+const _REGION_ICONS = {
+  seoul: "🏙",
+  gyeonggi: "🌳",
+  incheon: "✈",
+  gangwon: "⛰",
+  chungcheong: "🌾",
+  jeolla: "🌊",
+  gyeongsang: "🏯",
+  jeju: "🌺",
+};
+
+function syncRegionCityPanels() {
+  const selected = chips("regionChips");
+  const panels = $("regionCityPanels");
+  const placeholder = $("regionCityPlaceholder");
+  if (!panels) return;
+
+  if (!selected.length) {
+    panels.innerHTML = "";
+    if (placeholder) placeholder.hidden = false;
+    return;
+  }
+  if (placeholder) placeholder.hidden = true;
+
+  const savedIds = new Set(wizardData.regionCityIds || []);
+  const opts = window.REGION_CITY_OPTIONS || {};
+  const labels = window.REGION_AREA_LABELS || {};
+  if (!Object.keys(opts).length) {
+    panels.innerHTML =
+      '<p class="region-city-load-error">都市・区リストの読み込みに失敗しました。ページを再読み込みしてください。</p>';
+    return;
+  }
+  let html = "";
+
+  for (const reg of selected) {
+    const cities = opts[reg];
+    if (!cities?.length) continue;
+    const title = labels[reg] || reg;
+    const icon = _REGION_ICONS[reg] || "📍";
+    html += `<div class="region-city-group" data-region="${reg}">`;
+    html += `<h4 class="region-city-group__title">${icon} ${title}</h4>`;
+    html += `<div class="chip-grid region-city-grid">`;
+    for (const c of cities) {
+      const id = `${reg}:${c.id}`;
+      const sel = savedIds.has(id) ? " selected" : "";
+      html += `<button type="button" class="chip${sel}" data-region="${reg}" data-val="${c.id}" data-query="${_escapeAttr(c.query)}">${c.label}</button>`;
+    }
+    html += `</div></div>`;
+  }
+  panels.innerHTML = html;
+}
+
+function getSelectedRegionCityIds() {
+  const ids = [];
+  document.querySelectorAll("#regionCityPanels .chip.selected").forEach((chip) => {
+    if (chip.dataset.region && chip.dataset.val) {
+      ids.push(`${chip.dataset.region}:${chip.dataset.val}`);
+    }
+  });
+  return ids;
+}
+
+function buildRegionCitiesString() {
+  const parts = [];
+  document.querySelectorAll("#regionCityPanels .chip.selected").forEach((chip) => {
+    const q = (chip.dataset.query || "").trim();
+    if (q) parts.push(q);
+  });
+  const other = ($("regionCitiesOther")?.value || "").trim();
+  if (other) {
+    other.split(/[,、/・\n|]+/).forEach((t) => {
+      const s = t.trim();
+      if (s) parts.push(s);
+    });
+  }
+  return [...new Set(parts)].join("・");
+}
+
+function restoreRegionCityStep() {
+  const regions = wizardData.regions || [];
+  document.querySelectorAll("#regionChips .chip").forEach((c) => {
+    c.classList.toggle("selected", regions.includes(c.dataset.val));
+  });
+  syncRegionCityPanels();
+
+  const otherIn = $("regionCitiesOther");
+  if (otherIn) {
+    otherIn.value = wizardData.regionCitiesOther || "";
+    if (!wizardData.regionCitiesOther && wizardData.regionCities && !wizardData.regionCityIds?.length) {
+      otherIn.value = wizardData.regionCities;
+    }
+  }
+
+  if (wizardData.regionCityIds?.length) {
+    wizardData.regionCityIds.forEach((id) => {
+      const [reg, val] = id.split(":");
+      const chip = document.querySelector(
+        `#regionCityPanels .chip[data-region="${reg}"][data-val="${val}"]`
+      );
+      chip?.classList.add("selected");
+    });
+  }
+}
+
 function setupSportsDetailToggle() {
   const activityEl = $("activityChips");
   if (activityEl) {
@@ -1097,8 +1253,19 @@ function buildPrompt(isReroll = false) {
   }
   if (d.regions?.length)
     lines.push(`【希望エリア】${d.regions.map((r)=>rMap[r]||r).join("・")}`);
+  if (d.regionCityIds?.length && window.REGION_CITY_OPTIONS) {
+    const cityLabels = [];
+    for (const id of d.regionCityIds) {
+      const [reg, val] = id.split(":");
+      const opt = (window.REGION_CITY_OPTIONS[reg] || []).find((c) => c.id === val);
+      if (opt) cityLabels.push(opt.label);
+    }
+    if (cityLabels.length) {
+      lines.push(`【訪問したい市・郡・区】${cityLabels.join("・")}（各日の中心にする）`);
+    }
+  }
   if (d.regionCities)
-    lines.push(`【重点都市・区】${d.regionCities}（この都市を中心に日程・食事を組むこと）`);
+    lines.push(`【検索・Places用キーワード】${d.regionCities}`);
   const spMap = { soccer:"サッカー観戦", baseball:"野球観戦", basketball:"バスケ観戦", volleyball:"バレー観戦", sports:"スポーツ観戦（全競技）" };
   const legacyHallyu = (d.additional?.hallyu || []).filter((h) => h !== "traditional");
   const actMerged = [...(d.activities || [])];
@@ -1125,7 +1292,7 @@ function buildPrompt(isReroll = false) {
   if (d.budget?.total) {
     let bs = `総予算:${sym}${d.budget.total}`;
     if (d.budget.daily) bs += `、1日:${sym}${d.budget.daily}`;
-    if (d.budget.style) bs += `、スタイル:${sMap[d.budget.style]||d.budget.style}`;
+    if (d.budget.style) bs += `、予算の考え方:${sMap[d.budget.style]||d.budget.style}`;
     lines.push(`【予算】${bs}`);
   }
 
@@ -1136,7 +1303,7 @@ function buildPrompt(isReroll = false) {
     if (add.pace)                   parts.push(pMap[add.pace]||add.pace);
     const prefMap = {
       grilled_meat: "焼肉・サムギョプサル", stew: "チゲ・鍋・チョンタン", noodles: "麺類",
-      seafood: "海鮮・生魚", chicken: "韓国チキン", gukbap: "국밥（곰탕・설렁탕）",
+      seafood: "海鮮・生魚", chicken: "韓国チキン", gukbap: "クッパ（コムタン・ソルロンタンなど）",
       rice_meal: "ビビンバ・石焼・定食",
       soup: "クッパ・寄せ鍋", jeon: "チヨン", street: "屋台・スンデ",
       cafe_sweet: "カフェ・韓国スイーツ", healthy: "野菜・ヘルシー韓食",
@@ -1164,14 +1331,16 @@ function buildPrompt(isReroll = false) {
     }
     if (add.travelStyles?.length) {
       const tsLabels = add.travelStyles.map((t) => tsMap[t] || t);
-      parts.push(`好みの旅行スタイル:${tsLabels.join("・")}`);
+      parts.push(`旅行スタイル:${tsLabels.join("・")}`);
     }
     if (add.note)                   parts.push(add.note);
     if (parts.length) lines.push(`【その他】${parts.join("、")}`);
   }
 
-  if (d.accommodation?.type === "friend" || (d.accommodation?.address || "").includes("고양")) {
-    lines.push("【到着日】友人宅・京畿道宿泊のため、1日目の夕食は高陽・宿泊近郊のみ。明洞・弘大への移動は2日目以降。");
+  if (d.regions?.length) {
+    lines.push(
+      "【到着日】1日目は入国・移動・チェックイン・休息のみ。観光・食事は【希望エリア】の順で2日目以降に配置（宿泊先の市区だけで観光エリアを決めない）。"
+    );
   }
   if (isReroll) {
     const avoid = wizardData.avoid_place_names || [];
@@ -1862,7 +2031,7 @@ function _tryRenderPlaceCard(indexes, rendered, url) {
   return true;
 }
 
-function _renderPlanHtml(text, placeIndexes) {
+function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
   const lines = text.split(/\r?\n/);
   const out = [];
   const rendered = new Set();
@@ -1895,17 +2064,44 @@ function _renderPlanHtml(text, placeIndexes) {
 
   const emitCard = (place) => _renderInlinePlaceCard(place);
 
+  const ticketIdx = ticketEventIndex || {};
+  const LP = window.LinkPreview;
+
+  const _ticketCardsForUrls = (urls) => {
+    if (!LP) {
+      return urls.map(
+        (url) =>
+          `<a href="${_escapeHtml(url)}" target="_blank" rel="noopener" class="plan-ticket-link">🎫 公演チケット</a>`
+      );
+    }
+    return urls.map((rawUrl) => {
+      const url = LP.normalizeUrl(rawUrl);
+      const known = ticketIdx[url] || ticketIdx[url.split("?")[0]];
+      if (known) return LP.renderCard(LP.eventToPreview(known, url));
+      return LP.renderSkeleton(url);
+    });
+  };
+
   const processContentLine = (rawLine) => {
     const line = _stripPlanClocks(rawLine);
     const trimmed = line.trim();
     if (!trimmed || _isEchoCardLine(trimmed)) return;
 
+    const ticketUrls = LP ? LP.extractTicketUrls(line) : [];
+    if (ticketUrls.length) {
+      const prose = LP ? LP.stripUrlsFromProse(line, ticketUrls) : line;
+      const cardParts = _ticketCardsForUrls(ticketUrls);
+      if (prose && !_isEchoCardLine(prose)) {
+        pushStep(`<p class="plan-line">${_formatPlanTextLine(prose)}</p>${cardParts.join("")}`);
+      } else {
+        pushStep(cardParts.join(""));
+      }
+      return;
+    }
+
     if (_PLAN_TICKET_URL_RE.test(trimmed)) {
-      const ticketUrl = trimmed.split(/\s/)[0];
-      const label = trimmed.length > ticketUrl.length + 2 ? trimmed : "インターパーク チケット";
-      pushStep(
-        `<a href="${_escapeHtml(ticketUrl)}" target="_blank" rel="noopener" class="plan-ticket-link">🎫 ${_escapeHtml(label.replace(ticketUrl, "").trim() || "公演チケット")}</a>`
-      );
+      const ticketUrl = LP ? LP.normalizeUrl(trimmed.split(/\s/)[0]) : trimmed.split(/\s/)[0];
+      pushStep(_ticketCardsForUrls([ticketUrl]).join(""));
       return;
     }
 
@@ -2093,7 +2289,13 @@ async function _displayPlanOutput(data) {
       }
     } catch (_) { /* プラン本文のみ */ }
   }
-  $("planContent").innerHTML = _renderPlanHtml(reply, placeIndexes);
+  const ticketIdx = window.LinkPreview
+    ? LinkPreview.buildEventIndex(data.ticket_platform_events || [])
+    : {};
+  $("planContent").innerHTML = _renderPlanHtml(reply, placeIndexes, ticketIdx);
+  if (window.LinkPreview) {
+    await LinkPreview.hydrate($("planContent"), ticketIdx);
+  }
 
   if (window.PlanMapView) {
     const rMap = {
@@ -2146,6 +2348,13 @@ async function _displayPlanOutput(data) {
     eventsEl.style.display = eventsHtml ? "block" : "none";
   }
 
+  const ticketEl = $("planTicketArea");
+  const ticketHtml = ticketEl ? _renderTicketPlatformCards(data.ticket_platform_events || []) : "";
+  if (ticketEl) {
+    ticketEl.innerHTML = ticketHtml;
+    ticketEl.style.display = ticketHtml ? "block" : "none";
+  }
+
   const sportsEl = $("planSportsArea");
   const sportsHtml = sportsEl ? _renderPlanSportsCards(data.sports_events || []) : "";
   if (sportsEl) {
@@ -2155,7 +2364,7 @@ async function _displayPlanOutput(data) {
 
   const refsEmpty = $("planRefsEmpty");
   if (refsEmpty) {
-    const hasRefs = Boolean(placesHtml || vkHtml || eventsHtml || sportsHtml);
+    const hasRefs = Boolean(placesHtml || vkHtml || eventsHtml || ticketHtml || sportsHtml);
     refsEmpty.style.display = hasRefs ? "none" : "block";
   }
 
@@ -2169,6 +2378,18 @@ const _LEAGUE_LABELS = {
   kleague: "Kリーグ（サッカー）",
   kleague2: "K2（サッカー）",
 };
+
+function _renderTicketPlatformCards(events) {
+  if (!events || !events.length || !window.LinkPreview) return "";
+  const cards = events.slice(0, 8).map((ev) => {
+    const url = LinkPreview.normalizeUrl(ev.ticket_url || "");
+    return LinkPreview.renderCard(LinkPreview.eventToPreview(ev, url));
+  }).join("");
+  return `<div class="plan-refs-section">
+    <h3 class="plan-refs-title">🎫 チケット・公演（インターパーク）</h3>
+    <div class="plan-ticket-grid">${cards}</div>
+  </div>`;
+}
 
 function _renderPlanEventsCards(events) {
   if (!events || !events.length) return "";

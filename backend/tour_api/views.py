@@ -852,6 +852,31 @@ def serve_theme_bg(request):
 
 
 @require_GET
+def api_link_preview(request):
+    """Interpark ticket URL Open Graph preview for link cards in plan/chat UI."""
+    import sys
+    from pathlib import Path as _P
+
+    _root = _P(settings.BASE_DIR).parent
+    if str(_root / "src") not in sys.path:
+        sys.path.insert(0, str(_root / "src"))
+
+    from src.api.link_preview import fetch_link_preview
+
+    url = (request.GET.get("url") or "").strip()
+    if not url:
+        return JsonResponse({"detail": "url required"}, status=400)
+    try:
+        preview = fetch_link_preview(url)
+        return JsonResponse(preview)
+    except ValueError as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+    except Exception as exc:
+        logger.warning("api_link_preview error: %s", exc)
+        return JsonResponse({"detail": "preview failed", "error": str(exc)}, status=502)
+
+
+@require_GET
 def serve_app_js(request):
     path = _FRONTEND / "app.js"
     if not path.is_file():
@@ -878,6 +903,22 @@ def serve_wizard_js(request):
 @require_GET
 def serve_plan_map_js(request):
     path = _FRONTEND / "plan-map.js"
+    if not path.is_file():
+        return JsonResponse({"detail": "not found"}, status=404)
+    return FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")
+
+
+@require_GET
+def serve_link_preview_js(request):
+    path = _FRONTEND / "link-preview.js"
+    if not path.is_file():
+        return JsonResponse({"detail": "not found"}, status=404)
+    return FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")
+
+
+@require_GET
+def serve_region_areas_js(request):
+    path = _FRONTEND / "region-areas.js"
     if not path.is_file():
         return JsonResponse({"detail": "not found"}, status=404)
     return FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")

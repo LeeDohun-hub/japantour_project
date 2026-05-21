@@ -1572,6 +1572,95 @@ a.btn {
 .plan-ticket-link:hover { text-decoration: underline; }
 .plan-inline-spot { margin: 0.5rem 0; }
 
+/* ── Interpark ticket link preview ── */
+.ticket-preview-card {
+  display: flex;
+  gap: 0.85rem;
+  margin: 0.65rem 0;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-elevated, #fff);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  max-width: 420px;
+}
+.ticket-preview-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 4px 14px rgba(28, 48, 88, 0.08);
+}
+.ticket-preview-card--loading { pointer-events: none; opacity: 0.92; }
+.ticket-preview-thumb {
+  flex: 0 0 72px;
+  width: 72px;
+  height: 72px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #e8f0fe, #fce8e6);
+}
+.ticket-preview-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ticket-preview-thumb--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+}
+.ticket-preview-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.ticket-preview-site {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.ticket-preview-title {
+  font-size: 0.92rem;
+  line-height: 1.35;
+  color: var(--text);
+}
+.ticket-preview-desc {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ticket-preview-cta {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin-top: 0.15rem;
+}
+.bubble-body--rich { white-space: pre-wrap; }
+.bubble-body--rich .ticket-preview-card { max-width: 100%; }
+.ticket-platform-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.ticket-platform-grid .ticket-preview-card { max-width: 100%; }
+.plan-timeline-body .ticket-preview-card { max-width: 100%; }
+.plan-ticket-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.plan-ticket-grid .ticket-preview-card { max-width: 100%; }
+
 /* ── Plan output ── */
 .plan-loading { padding: 1.5rem 0; }
 .plan-bar-wrap { display: flex; align-items: center; gap: .65rem; margin-bottom: .75rem; }
@@ -1998,6 +2087,53 @@ a.place-card:hover .place-maps-hint {
   outline: none;
   border-color: var(--border-strong);
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.region-city-section { margin-top: .25rem; }
+.region-city-placeholder {
+  margin: .5rem 0 0;
+  padding: .75rem .85rem;
+  font-size: .85rem;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border);
+  background: var(--surface-input);
+}
+.region-city-load-error {
+  margin: .5rem 0 0;
+  font-size: .85rem;
+  color: #c0392b;
+}
+.region-city-panels { display: flex; flex-direction: column; gap: 1rem; margin-top: .5rem; }
+.region-city-panels:empty { display: none; }
+.region-city-group {
+  padding: .75rem .85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-input);
+}
+.region-city-group__title {
+  margin: 0 0 .55rem;
+  font-size: .88rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.region-city-grid { margin: 0; }
+.region-cities-other-fold {
+  margin-top: 1rem;
+  font-size: .82rem;
+  color: var(--text-muted);
+}
+.region-cities-other-fold summary {
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: .4rem;
+}
+.region-cities-other-fold[open] .region-cities-input { margin-top: .25rem; }
+.req-badge {
+  font-size: .72rem;
+  font-weight: 600;
+  color: #c0392b;
+  margin-left: .35rem;
 }
 .accom-search-row { display: flex; align-items: stretch; gap: .5rem; margin-top: .35rem; }
 .accom-search-row input {

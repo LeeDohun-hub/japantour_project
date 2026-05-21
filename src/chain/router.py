@@ -109,6 +109,13 @@ _ITINERARY_AREAS: dict[str, str] = {
     "속초": "속초", "sokcho": "속초", "강릉": "강릉", "gangneung": "강릉",
     "전주": "전주", "jeonju": "전주", "全州": "전주",
     "대구": "대구", "daegu": "대구", "경주": "경주", "gyeongju": "경주",
+    "인천": "인천", "incheon": "인천", "仁川": "인천",
+    "랜더스": "인천", "landers": "인천", "文鶴": "인천", "문학": "인천",
+    "랜더스필드": "인천", "ランダース": "인천",
+    "일산": "고양", "一山": "고양", "킨텍스": "고양", "kintex": "고양",
+    "덕양": "고양", "徳陽": "고양", "花井": "화정", "화정": "화정",
+    "송도": "송도", "松島": "송도", "海雲台": "해운대", "해운대": "해운대",
+    "全州": "전주", "儒城": "유성", "ユソン": "유성",
 }
 
 _REGION_DEFAULT_AREAS: dict[str, list[str]] = {
@@ -557,12 +564,20 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "  ④ 仁川国際空港（ICN）出発（便名・出発時刻は1行で可）\n"
             "- 出国便に間に合わない観光・食事は禁止。\n"
             "\n"
-            "【1日目 — 友人・家族宅・京畿・郊外宿泊】\n"
-            "- 到着日は入国・移動で疲労が大きい。夕食は宿泊エリア近郊のみ（例：高陽・一山大化駅・友人宅最寄り）。\n"
-            "- 明洞・弘大・江南などソウル中心部への観光・食事は2日目以降に配置（到着日の遠距離移動は禁止）。\n"
-            "- 1日目の食事は [Google Places Results] の search_area が宿泊近郊（宿泊先名・「○○周辺」）の店を最優先。\n"
-            "- 選択した旅行地域（regions）と矛盾する他地域の店名は使わない。\n"
-            "- traveler_profile.regionCities（重点都市・区）がある場合は、その都市を中心に日程を組む。\n"
+            "【🗺希望エリア優先 — 最重要】\n"
+            "- traveler_profile.regions（🗺どこを観光したいか）と regionCities（重点都市・区）を\n"
+            "  日程・食事・観光の主軸とする。宿泊先の住所だけで観光エリアを決めない。\n"
+            "- 宿泊が高陽でも、希望エリアに仁川がある日は仁川の店・スポットを使う。\n"
+            "- regionCities（例：ランダースフィールド）がある都市を中心にその日の行程を組む。\n"
+            "\n"
+            "【1日目 — 到着日】\n"
+            "- 入国・移動・チェックイン・休息のみ。観光・外食店名は原則書かない。\n"
+            "- 明洞・弘大・仁川観光など希望エリアの本格観光・食事は2日目以降（希望エリア順）。\n"
+            "\n"
+            "【日別エリア — 食事候補リストのセクション厳守】\n"
+            "- [Reference Data] の「日程×エリア割当」と【仁川・希望エリア】【京畿・希望エリア】等に従う。\n"
+            "- 1日目にレストランを書く場合は例外のみ（通常は書かない）。\n"
+            "- 仁川の日は【仁川・希望エリア】のみ。京畿の日は【京畿・希望エリア】のみ。混在禁止。\n"
             "\n"
             "【1日目 — 深夜（23:00以降）・0時前後の宿泊到着 — 厳守】\n"
             "- 入国・移動の結果、宿泊先（友人宅・ホテル等）到着が 23:00以降〜翌1:30頃 の場合:\n"
@@ -669,7 +684,9 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
 - Put the exact google_maps_uri on its own line immediately after the restaurant name (or "Name: URL" on one line).
 - Do NOT paste rating, review count, address, open hours, or button labels (地図/経路) — the app renders cards automatically.
 - Do NOT list multiple restaurants per meal or dump the Places reference block into the itinerary text.
-- Use search_area to match the correct day and region; no cross-region picks.
+- Use search_area and [日程×エリア割当] to match the correct day and region; no cross-region picks.
+- Follow traveler_profile.regions order for multi-day plans; do not default all meals to the lodging city.
+- Day 1: no restaurant names unless explicitly allowed; never use venues from a different day's region section.
 """
         if plan_reroll > 0:
             avoid_line = ""
@@ -1241,6 +1258,313 @@ def _accommodation_food_areas(traveler_profile: dict | None) -> list[str]:
     return areas
 
 
+_GOYANG_LOCATION_KEYWORDS: tuple[str, ...] = (
+    "고양", "goyang", "gyeonggi-do", "gyeonggi",
+    "일산", "ilsan", "ilsandong", "ilsanseo", "화정", "덕양", "deokyang",
+    "hosu-ro", "호수", "todang", "토당", "능곡", "행신", "대화", "탄현",
+    "주엽", "킨텍스", "kintex", "高陽", "コヤン",
+)
+_INCHEON_LOCATION_KEYWORDS: tuple[str, ...] = (
+    "인천", "incheon", "미추홀", "michuhol", "연수", "yeonsu", "부평", "bupyeong",
+    "문학", "munhak", "송도", "songdo", "랜더스", "landers", "仁川",
+)
+_SEOUL_LOCATION_KEYWORDS: tuple[str, ...] = (
+    "서울", "seoul", "jung district", "명동", "myeongdong", "홍대", "hongdae",
+    "강남", "gangnam", "동대문", "dongdaemun", "弘大", "明洞", "江南",
+)
+
+
+def _place_location_blob(place: NearbyPlace) -> str:
+    return f"{place.name or ''} {place.address or ''} {place.search_area or ''}".lower()
+
+
+def _blob_has_any(blob: str, keywords: tuple[str, ...]) -> bool:
+    return any(k.lower() in blob for k in keywords)
+
+
+def _place_in_goyang_zone(place: NearbyPlace) -> bool:
+    return _blob_has_any(_place_location_blob(place), _GOYANG_LOCATION_KEYWORDS)
+
+
+def _place_in_incheon_zone(place: NearbyPlace) -> bool:
+    blob = _place_location_blob(place)
+    if _blob_has_any(blob, _GOYANG_LOCATION_KEYWORDS):
+        return False
+    return _blob_has_any(blob, _INCHEON_LOCATION_KEYWORDS)
+
+
+def _place_in_seoul_zone(place: NearbyPlace) -> bool:
+    blob = _place_location_blob(place)
+    if _blob_has_any(blob, _GOYANG_LOCATION_KEYWORDS + _INCHEON_LOCATION_KEYWORDS):
+        return False
+    return _blob_has_any(blob, _SEOUL_LOCATION_KEYWORDS)
+
+
+def _place_in_stay_zone(place: NearbyPlace, stay_areas: list[str]) -> bool:
+    if not stay_areas:
+        return False
+    if "고양" in stay_areas and _place_in_goyang_zone(place):
+        return True
+    if "인천" in stay_areas and _place_in_incheon_zone(place):
+        return True
+    if "수원" in stay_areas and "수원" in _place_location_blob(place):
+        return True
+    if "대전" in stay_areas and "대전" in _place_location_blob(place):
+        return True
+    return False
+
+
+_REGION_CHIP_TO_AREAS: dict[str, list[str]] = {
+    "seoul": ["명동", "홍대"],
+    "gyeonggi": ["고양", "수원"],
+    "incheon": ["인천"],
+    "busan": ["부산"],
+    "jeju": ["제주"],
+    "gangwon": ["속초", "강릉"],
+    "chungcheong": ["대전", "유성"],
+    "jeolla": ["전주"],
+    "gyeongsang": ["부산", "대구"],
+}
+
+_REGION_CHIP_LABELS_JA: dict[str, str] = {
+    "seoul": "ソウル",
+    "gyeonggi": "京畿道（高陽・一山）",
+    "incheon": "仁川",
+    "busan": "釜山",
+    "jeju": "済州島",
+    "gangwon": "江原道",
+    "chungcheong": "忠清道",
+    "jeolla": "全羅道",
+    "gyeongsang": "慶尚道",
+}
+
+
+def _tourism_search_areas(traveler_profile: dict | None) -> list[str]:
+    """🗺希望エリア（regions・重点都市）から Places 検索・日程の主エリアを決める."""
+    if not traveler_profile:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def add(area: str) -> None:
+        a = area.strip()
+        if a and a not in seen:
+            seen.add(a)
+            out.append(a)
+
+    cities = _region_cities_text(traveler_profile)
+    if cities:
+        for a in _areas_from_region_cities(cities):
+            add(a)
+        if _profile_has_landers_focus(traveler_profile):
+            add("인천")
+
+    for reg in traveler_profile.get("regions") or []:
+        key = str(reg).lower()
+        for area in _REGION_CHIP_TO_AREAS.get(key, _REGION_DEFAULT_AREAS.get(key, [])):
+            add(area)
+
+    return out[:_MAX_ITINERARY_AREAS]
+
+
+def _prioritize_itinerary_areas(
+    areas: list[str],
+    traveler_profile: dict | None,
+) -> list[str]:
+    """🗺希望エリアを最優先。宿泊近郊は検索の最後尾のみ."""
+    tourism = _tourism_search_areas(traveler_profile)
+    out: list[str] = list(tourism)
+    for a in areas:
+        if a not in out:
+            out.append(a)
+    stay = _accommodation_food_areas(traveler_profile)
+    for s in stay:
+        if s not in out:
+            out.append(s)
+    return out[:_MAX_ITINERARY_AREAS]
+
+
+def _sort_food_queries_by_tourism_priority(
+    queries: list[str],
+    traveler_profile: dict | None,
+) -> list[str]:
+    tourism = _tourism_search_areas(traveler_profile)
+    stay = _accommodation_food_areas(traveler_profile)
+
+    def rank(q: str) -> int:
+        if tourism and any(t in q for t in tourism):
+            return 0
+        if stay and any(s in q for s in stay):
+            return 2
+        return 1
+
+    return sorted(queries, key=rank)
+
+
+def _profile_has_landers_focus(traveler_profile: dict | None) -> bool:
+    if not traveler_profile:
+        return False
+    blob = _region_cities_text(traveler_profile).lower()
+    return any(
+        k in blob
+        for k in ("랜더스", "landers", "文鶴", "문학", "munhak", "ssg")
+    )
+
+
+def _fmt_itinerary_daily_area_binding(traveler_profile: dict | None) -> str:
+    """LLM向け: 🗺希望エリアを日別に割当（宿泊先の市区だけで決めない）."""
+    if not traveler_profile:
+        return ""
+    region_order = [str(r).lower() for r in (traveler_profile.get("regions") or [])]
+    if not region_order:
+        return ""
+
+    cities = _region_cities_text(traveler_profile)
+    landers = _profile_has_landers_focus(traveler_profile)
+
+    hope_labels = [
+        _REGION_CHIP_LABELS_JA.get(r, r) for r in region_order
+    ]
+    lines = [
+        "=== 日程×エリア割当（🗺希望エリア最優先 — 宿泊先だけで観光・食事を決めない）===",
+        f"【希望エリア】{'・'.join(hope_labels)}",
+    ]
+    if cities:
+        lines.append(f"【重点都市・区】{cities}（この指定を各日の中心にする）")
+    accom = traveler_profile.get("accommodation") or {}
+    if accom.get("address") or accom.get("name"):
+        lines.append(
+            "【宿泊先】移動・チェックインの到着地点のみ。"
+            "宿泊エリアと異なる希望エリアの観光・食事は2日目以降に配置する。"
+        )
+
+    lines.append(
+        "1日目: 空港到着・入国・宿泊先へ移動・チェックイン・休息。"
+        "観光スポット・レストラン名は原則書かない（深夜到着はコンビニ・軽食のみ）。"
+    )
+    day = 2
+    for reg in region_order:
+        if reg == "incheon":
+            extra = "（ランダースフィールド・文鶴・スポーツ観戦）" if landers else ""
+            lines.append(
+                f"{day}日目: 仁川エリアの観光・食事{extra}。"
+                "食事は【仁川・希望エリア】の候補のみ。京畿・ソウルの店は禁止。"
+            )
+            day += 1
+        elif reg == "gyeonggi":
+            lines.append(
+                f"{day}日目: 京畿道・高陽・一山の観光・食事。"
+                "食事は【京畿・希望エリア】の候補のみ。仁川・ソウルの店は禁止。"
+            )
+            day += 1
+        elif reg == "seoul":
+            lines.append(
+                f"{day}日目: ソウル（明洞・弘大など）の観光・食事。"
+                "食事は【ソウル・希望エリア】の候補のみ。"
+            )
+            day += 1
+        else:
+            label = _REGION_CHIP_LABELS_JA.get(reg, reg)
+            lines.append(
+                f"{day}日目: {label} の観光・食事（該当希望エリアの候補のみ）。"
+            )
+            day += 1
+
+    lines.append(
+        "※ 2日目以降は上記の希望エリア順に日程を組む。"
+        "各日の食事は該当セクションの google_maps_uri のみ。他エリアの候補を別日に流用しない。"
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _fmt_itinerary_food_by_day_zones(
+    food_places: list[NearbyPlace],
+    traveler_profile: dict | None,
+) -> str:
+    """食事候補を🗺希望エリア別に分割（宿泊近郊専用バケットは作らない）."""
+    if not food_places:
+        return ""
+    region_order = [str(r).lower() for r in ((traveler_profile or {}).get("regions") or [])]
+    seen: set[str] = set()
+    blocks: list[str] = []
+
+    def key(p: NearbyPlace) -> str:
+        return f"{p.name}|{p.address}"
+
+    def take(bucket: list[NearbyPlace], pred) -> None:
+        for p in food_places:
+            k = key(p)
+            if k in seen or not pred(p):
+                continue
+            seen.add(k)
+            bucket.append(p)
+
+    if region_order:
+        for reg in region_order:
+            bucket: list[NearbyPlace] = []
+            if reg == "incheon":
+                take(bucket, _place_in_incheon_zone)
+                title = "仁川・希望エリア"
+            elif reg == "gyeonggi":
+                take(bucket, _place_in_goyang_zone)
+                title = "京畿・希望エリア（高陽・一山）"
+            elif reg == "seoul":
+                take(bucket, _place_in_seoul_zone)
+                title = "ソウル・希望エリア"
+            else:
+                label = _REGION_CHIP_LABELS_JA.get(reg, reg)
+                areas = _REGION_CHIP_TO_AREAS.get(reg, [])
+                take(
+                    bucket,
+                    lambda p, ar=areas: any(a in (p.search_area or "") for a in ar),
+                )
+                title = label
+            if bucket:
+                blocks.append(
+                    f"=== 食事候補【{title}】===\n"
+                    + _fmt_places(bucket, group_by_area=True)
+                )
+    else:
+        incheon, goyang, seoul, other = [], [], [], []
+        for p in food_places:
+            k = key(p)
+            if k in seen:
+                continue
+            seen.add(k)
+            if _place_in_incheon_zone(p):
+                incheon.append(p)
+            elif _place_in_goyang_zone(p):
+                goyang.append(p)
+            elif _place_in_seoul_zone(p):
+                seoul.append(p)
+            else:
+                other.append(p)
+        if incheon:
+            blocks.append(
+                "=== 食事候補【仁川・希望エリア】===\n"
+                + _fmt_places(incheon, group_by_area=True)
+            )
+        if goyang:
+            blocks.append(
+                "=== 食事候補【京畿・希望エリア】===\n"
+                + _fmt_places(goyang, group_by_area=True)
+            )
+        if seoul:
+            blocks.append(
+                "=== 食事候補【ソウル・希望エリア】===\n"
+                + _fmt_places(seoul, group_by_area=True)
+            )
+        if other:
+            blocks.append(
+                "=== 食事候補【その他】===\n"
+                + _fmt_places(other[:12], group_by_area=True)
+            )
+
+    if not blocks:
+        return _fmt_places(food_places, group_by_area=True)
+    return "\n\n".join(blocks)
+
+
 # ─── 인천공항 → 목적지 최적 경로 테이블 ────────────────────────────────
 # (주소 매칭 키워드 목록, 일본어 경로 설명)
 _AIRPORT_TRANSIT_ROUTES: list[tuple[list[str], str]] = [
@@ -1424,41 +1748,41 @@ def _detect_itinerary_areas(
     keyword: str,
     traveler_profile: dict | None,
 ) -> list[str]:
-    """프롬프트·프로필에서 일정용 에리어 목록 추출."""
+    """프롬프트·프로필에서 일정용 에리어 목록 추출（🗺希望エリア優先）."""
+    areas: list[str] = []
+    if traveler_profile:
+        for a in _tourism_search_areas(traveler_profile):
+            if a not in areas:
+                areas.append(a)
+
     parts = [user_message, keyword]
     if traveler_profile:
-        accom = traveler_profile.get("accommodation") or {}
-        for key in ("address", "detail", "name", "region"):
-            val = accom.get(key)
-            if val:
-                parts.append(str(val))
-        for reg in traveler_profile.get("regions") or []:
-            for area in _REGION_DEFAULT_AREAS.get(reg, []):
-                parts.append(area)
         cities = _region_cities_text(traveler_profile)
         if cities:
             parts.append(cities)
+        for reg in traveler_profile.get("regions") or []:
+            parts.append(str(reg))
 
     text = " ".join(parts).lower()
-    areas: list[str] = []
     for kw, area in _ITINERARY_AREAS.items():
         if kw.lower() in text and area not in areas:
             areas.append(area)
 
-    cities = _region_cities_text(traveler_profile)
-    if cities:
-        for a in _areas_from_region_cities(cities):
-            if a not in areas:
-                areas.insert(0, a)
-        areas = areas[:_MAX_ITINERARY_AREAS]
-
     if not areas and traveler_profile:
         for reg in traveler_profile.get("regions") or []:
-            for area in _REGION_DEFAULT_AREAS.get(reg, []):
+            for area in _REGION_DEFAULT_AREAS.get(str(reg).lower(), []):
                 if area not in areas:
                     areas.append(area)
+        accom = traveler_profile.get("accommodation") or {}
+        accom_text = " ".join(
+            str(accom.get(k) or "") for k in ("address", "detail", "name", "region")
+        )
+        if accom_text.strip():
+            for kw, area in _ITINERARY_AREAS.items():
+                if kw.lower() in accom_text.lower() and area not in areas:
+                    areas.append(area)
 
-    return areas[:_MAX_ITINERARY_AREAS]
+    return _prioritize_itinerary_areas(areas, traveler_profile)
 
 
 def _food_preferences_from_profile(
@@ -1649,10 +1973,12 @@ def _food_queries_from_preferences(
         return []
     out: list[str] = []
     seen: set[str] = set()
-    area0 = areas[0] if areas else "일산"
+    tourism = _tourism_search_areas(traveler_profile)
+    search_areas = tourism[:2] if tourism else areas[:2]
+    area0 = search_areas[0] if search_areas else "일산"
     for pref in prefs[:5]:
         for template in _FOOD_PREF_SEARCH.get(pref, []):
-            for area in areas[:2]:
+            for area in search_areas:
                 q = f"{area} {template}"
                 if q not in seen:
                     seen.add(q)
@@ -1680,21 +2006,17 @@ def _build_itinerary_food_queries(
             seen.add(q)
             queries.append(q)
 
+    tourism_areas = _tourism_search_areas(traveler_profile)
     for q in _food_queries_from_preferences(traveler_profile, areas):
         add(q)
 
-    for area in areas:
+    for area in tourism_areas or areas:
         add(f"{area} 한식 맛집")
 
     parts = [user_message, keyword]
     if traveler_profile:
-        accom = traveler_profile.get("accommodation") or {}
-        for key in ("address", "detail", "name", "region"):
-            val = accom.get(key)
-            if val:
-                parts.append(str(val))
         for reg in traveler_profile.get("regions") or []:
-            parts.append(reg)
+            parts.append(str(reg))
         cities = _region_cities_text(traveler_profile)
         if cities:
             parts.append(cities)
@@ -1707,6 +2029,18 @@ def _build_itinerary_food_queries(
     if cities:
         for q in _food_queries_from_region_cities(cities):
             add(q)
+
+    prefs, _ = _food_preferences_from_profile(traveler_profile)
+    if "chicken" in prefs and traveler_profile:
+        regs = [str(r).lower() for r in (traveler_profile.get("regions") or [])]
+        if "gyeonggi" in regs:
+            add("고양시 치킨 맛집")
+            add("수원시 치킨 맛집")
+        if "incheon" in regs:
+            add("인천 미추홀 치킨 맛집")
+            add("문학야구장 근처 치킨")
+        if "seoul" in regs:
+            add("명동 치킨 맛집")
 
     for a in _accommodation_food_areas(traveler_profile):
         add(f"{a} 맛집")
@@ -1737,6 +2071,7 @@ def _build_itinerary_food_queries(
             for area in _shuffled_copy(areas, seed + 1)[:2]:
                 add(f"{area} 카페")
 
+    queries = _sort_food_queries_by_tourism_priority(queries, traveler_profile)
     logger.info("itinerary food queries: %s", queries)
     return queries
 
@@ -2819,6 +3154,9 @@ def route_and_answer(
         food_pref_hint = _fmt_food_preference_hint(traveler_profile)
         if food_pref_hint:
             ctx_parts.append(food_pref_hint)
+        area_bind = _fmt_itinerary_daily_area_binding(traveler_profile)
+        if area_bind:
+            ctx_parts.append(area_bind)
     if flights_results:
         ctx_parts.append(f"=== 仁川空港 定期便スケジュール ===\n{_fmt_flights(flights_results)}")
     if airport_result is not None:
@@ -2836,8 +3174,8 @@ def route_and_answer(
         if food_places:
             ctx_parts.append(
                 "=== 食事候補（韓国料理・ユーザーの好みメニューのみ）===\n"
-                + _fmt_places(food_places, group_by_area=True)
-                + "\n※ 昼食・夕食はこのリストからのみ選ぶ。リスト外の店名は禁止。\n"
+                + _fmt_itinerary_food_by_day_zones(food_places, traveler_profile)
+                + "\n※ 各日は見出しに合ったセクションの店のみ。リスト外の店名は禁止。\n"
             )
         if attr_places:
             ctx_parts.append(

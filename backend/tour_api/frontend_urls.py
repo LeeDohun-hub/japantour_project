@@ -11,6 +11,8 @@ urlpatterns = [
     path("app.js", views.serve_app_js),
     path("auth.js", views.serve_auth_js),
     path("wizard.js", views.serve_wizard_js),
+    path("region-areas.js", views.serve_region_areas_js),
     path("plan-map.js", views.serve_plan_map_js),
+    path("link-preview.js", views.serve_link_preview_js),
     path("", views.serve_home, name="home_page"),
 ]

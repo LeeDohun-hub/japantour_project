@@ -386,27 +386,35 @@
             <span class="wiz-step-num">🗺 관광</span>
             <h2>どこを観光したいですか？</h2>
           </div>
-          <div class="wiz-section-label">エリア（複数選択可）</div>
+          <div class="wiz-section-label">① 広域エリア <span class="opt">複数選択可</span></div>
           <div class="chip-grid" id="regionChips">
-            <button class="chip" data-val="seoul">🏙 ソウル</button>
-            <button class="chip" data-val="gyeonggi">🌳 京畿道</button>
-            <button class="chip" data-val="incheon">✈ 仁川</button>
-            <button class="chip" data-val="gangwon">⛰ 江原道</button>
-            <button class="chip" data-val="chungcheong">🌾 忠清道</button>
-            <button class="chip" data-val="jeolla">🌊 全羅道</button>
-            <button class="chip" data-val="gyeongsang">🏯 慶尚道</button>
-            <button class="chip" data-val="jeju">🌺 済州島</button>
+            <button type="button" class="chip" data-val="seoul">🏙 ソウル</button>
+            <button type="button" class="chip" data-val="gyeonggi">🌳 京畿道</button>
+            <button type="button" class="chip" data-val="incheon">✈ 仁川</button>
+            <button type="button" class="chip" data-val="gangwon">⛰ 江原道</button>
+            <button type="button" class="chip" data-val="chungcheong">🌾 忠清道</button>
+            <button type="button" class="chip" data-val="jeolla">🌊 全羅道</button>
+            <button type="button" class="chip" data-val="gyeongsang">🏯 慶尚道</button>
+            <button type="button" class="chip" data-val="jeju">🌺 済州島</button>
           </div>
-          <div class="region-cities-field" style="margin-top:1rem">
-            <label class="addr-label" for="regionCitiesInput">都市・区を指定 <span class="opt">任意</span></label>
-            <p class="accom-search-hint">例：大田・儒城区、釜山・海雲台、全州。カンマや「・」で複数入力できます。</p>
-            <input
-              type="text"
-              id="regionCitiesInput"
-              class="region-cities-input"
-              placeholder="例：대전 유성구、부산 해운대"
-              autocomplete="off"
-            />
+          <p id="regionAreaError" class="field-error" role="alert" hidden>広域エリアを1つ以上選んでください。</p>
+
+          <div id="regionCitySection" class="region-city-section">
+            <div class="wiz-section-label" style="margin-top:1.25rem">② 市・郡・区を選択 <span class="req-badge">必須</span></div>
+            <p class="accom-search-hint">①で選んだ道・広域ごとに、<strong>市・郡・区（시군구）</strong>のボタンを選んでください（複数可）。</p>
+            <p id="regionCityPlaceholder" class="region-city-placeholder">↑ まず「① 広域エリア」を1つ以上選ぶと、ここに市・郡・区の選択肢が表示されます。</p>
+            <div id="regionCityPanels" class="region-city-panels"></div>
+            <details class="region-cities-other-fold">
+              <summary>リストにない都市・区がある場合のみ入力</summary>
+              <input
+                type="text"
+                id="regionCitiesOther"
+                class="region-cities-input"
+                placeholder="例：安養、富川（カンマ・「・」で複数可）"
+                autocomplete="off"
+              />
+            </details>
+            <p id="regionCityError" class="field-error" role="alert" hidden>都市・区を1つ以上選んでください。</p>
           </div>
           <div class="wiz-section-label" style="margin-top:1.5rem">やりたいこと（複数選択可）</div>
           <div class="chip-grid" id="activityChips">
@@ -474,7 +482,7 @@
             <button class="chip" data-val="stay">🏨 宿泊</button>
             <button class="chip" data-val="food">🍜 食費</button>
           </div>
-          <div class="wiz-section-label" style="margin-top:1.25rem">旅行スタイル <span class="opt">任意</span></div>
+          <div class="wiz-section-label" style="margin-top:1.25rem">予算の考え方 <span class="opt">任意</span></div>
           <div class="chip-grid" id="budgetStyleChips">
             <button class="chip" data-val="budget">💡 コスパ重視</button>
             <button class="chip" data-val="normal">⚖ バランス</button>
@@ -519,7 +527,7 @@
                 <button class="chip" data-val="noodles">🍜 麺類（冷麺・チャジャン等）</button>
                 <button class="chip" data-val="seafood">🦐 海鮮・生魚</button>
                 <button class="chip" data-val="chicken">🍗 韓国チキン・タッカン</button>
-                <button class="chip" data-val="gukbap">🍲 국밥（곰탕・설렁탕など）</button>
+                <button class="chip" data-val="gukbap">🍲 クッパ（コムタン・ソルロンタンなど）</button>
                 <button class="chip" data-val="rice_meal">🍚 ビビンバ・石焼・定食</button>
                 <button class="chip" data-val="soup">🥣 スープ・寄せ鍋</button>
                 <button class="chip" data-val="jeon">🥞 チヨン・海鮮チヨン</button>
@@ -545,8 +553,8 @@
               </div>
             </div>
             <div class="add-group add-group--wide">
-              <div class="wiz-section-label">好みの旅行スタイル <span class="opt">複数選択可</span></div>
-              <p class="accom-search-hint">あなたに合ったプラン構成の参考にします。</p>
+              <div class="wiz-section-label">旅行スタイル <span class="opt">複数選択可</span></div>
+              <p class="accom-search-hint">あなたに合ったプラン構成の参考にします（コスパ・体験・グルメなど）。</p>
               <div class="chip-grid" id="travelStyleChips">
                 <button class="chip" data-val="experience">🎯 体験・アクティビティ</button>
                 <button class="chip" data-val="sns_hot">📱 SNS人気スポット</button>
@@ -619,6 +627,7 @@
               <div id="planPlacesArea" style="display:none"></div>
               <div id="planVisitKoreaArea" style="display:none"></div>
               <div id="planEventsArea" style="display:none"></div>
+              <div id="planTicketArea" style="display:none"></div>
               <div id="planSportsArea" style="display:none"></div>
               <p id="planRefsEmpty" class="plan-refs-empty" style="display:none">
                 参照データのカードは、スポーツ観戦の選択・希望エリア・Googleマップ連携の飲食店・旅行期間中の公演・行事データがある場合に表示されます。
@@ -646,7 +655,9 @@
     </div>
   </div><!-- /.wizard-container -->
 
+  <script src="/link-preview.js"></script>
   <script src="/plan-map.js"></script>
+  <script src="/region-areas.js"></script>
   <script src="/wizard.js"></script>
 </body>
 </html>
