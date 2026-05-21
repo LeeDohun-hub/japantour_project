@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Japan Tour Planner — AI 여행 계획</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+    background: #f5f6fa;
+    color: #222;
+  }
+
+  /* ── 공통 래퍼 ── */
+  .page { max-width: 430px; margin: 0 auto; background: #fff; min-height: 100vh; }
+
+  /* ── 상단 헤더 ── */
+  .app-header {
+    background: #fff;
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .app-header .logo { font-size: 22px; font-weight: 800; color: #00a8ff; letter-spacing: -1px; }
+  .app-header .sub  { font-size: 12px; color: #888; margin-top: 2px; }
+
+  /* ── 스텝 바 ── */
+  .step-bar {
+    display: flex;
+    padding: 14px 20px;
+    gap: 0;
+    border-bottom: 1px solid #f0f0f0;
+    background: #fafafa;
+  }
+  .step {
+    flex: 1;
+    text-align: center;
+    font-size: 11px;
+    color: #bbb;
+    position: relative;
+  }
+  .step::after {
+    content: '';
+    position: absolute;
+    right: 0; top: 8px;
+    width: 1px; height: 12px;
+    background: #e0e0e0;
+  }
+  .step:last-child::after { display: none; }
+  .step .dot {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: #e0e0e0;
+    margin: 0 auto 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: #fff; font-weight: 700;
+  }
+  .step.done .dot   { background: #00a8ff; }
+  .step.done        { color: #00a8ff; }
+  .step.active .dot { background: #0055cc; }
+  .step.active      { color: #0055cc; font-weight: 700; }
+
+  /* ── 섹션 구분 ── */
+  .section {
+    border-bottom: 8px solid #f5f6fa;
+    padding: 24px 20px 28px;
+  }
+  .section-title {
+    font-size: 18px; font-weight: 800; margin-bottom: 4px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-title .step-badge {
+    background: #00a8ff; color: #fff;
+    font-size: 11px; font-weight: 700;
+    padding: 2px 8px; border-radius: 20px;
+  }
+  .section-sub { font-size: 13px; color: #888; margin-bottom: 18px; }
+
+  /* ── 로그인 ── */
+  .login-box {
+    background: #f7faff;
+    border: 1px solid #d8eaff;
+    border-radius: 14px;
+    padding: 24px 20px;
+    text-align: center;
+  }
+  .login-box .avatar {
+    width: 64px; height: 64px;
+    background: linear-gradient(135deg, #00a8ff, #0055cc);
+    border-radius: 50%;
+    margin: 0 auto 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px; color: #fff;
+  }
+  .login-box .name  { font-size: 16px; font-weight: 700; }
+  .login-box .email { font-size: 12px; color: #888; margin-top: 4px; }
+  .badge-ok {
+    display: inline-block;
+    margin-top: 12px;
+    background: #e6f9f0;
+    color: #00b86b;
+    font-size: 12px; font-weight: 700;
+    padding: 4px 12px; border-radius: 20px;
+  }
+
+  /* ── 항공편 카드 ── */
+  .flight-card {
+    border: 1.5px solid #e8e8e8;
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin-bottom: 12px;
+    position: relative;
+  }
+  .flight-card.selected {
+    border-color: #00a8ff;
+    background: #f0f8ff;
+  }
+  .flight-card .airline {
+    font-size: 12px; color: #888; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .flight-card .airline .iata {
+    background: #00a8ff; color: #fff;
+    font-size: 10px; font-weight: 700;
+    padding: 1px 6px; border-radius: 4px;
+  }
+  .flight-row {
+    display: flex; align-items: center; gap: 0;
+  }
+  .flight-time { font-size: 22px; font-weight: 800; line-height: 1; }
+  .flight-city { font-size: 11px; color: #888; }
+  .flight-mid  {
+    flex: 1; text-align: center;
+    font-size: 11px; color: #aaa;
+    position: relative;
+  }
+  .flight-mid::before {
+    content: '';
+    display: block;
+    height: 1px; background: #ddd;
+    width: 80%; margin: 6px auto 4px;
+  }
+  .flight-mid .plane { font-size: 16px; }
+  .flight-price {
+    text-align: right;
+    font-size: 16px; font-weight: 700; color: #ff5c5c;
+    margin-top: 10px;
+  }
+  .flight-price span { font-size: 11px; color: #888; font-weight: 400; }
+  .select-badge {
+    position: absolute; top: 12px; right: 14px;
+    background: #00a8ff; color: #fff;
+    font-size: 11px; font-weight: 700;
+    padding: 3px 10px; border-radius: 20px;
+  }
+
+  /* ── 숙박 카드 ── */
+  .hotel-card {
+    border: 1.5px solid #e8e8e8;
+    border-radius: 14px;
+    overflow: hidden;
+    margin-bottom: 14px;
+  }
+  .hotel-card.selected { border-color: #00a8ff; }
+  .hotel-img {
+    width: 100%; height: 130px;
+    object-fit: cover;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 36px; color: rgba(255,255,255,0.8);
+  }
+  .hotel-body { padding: 14px 16px; }
+  .hotel-name { font-size: 15px; font-weight: 700; }
+  .hotel-loc  { font-size: 12px; color: #888; margin-top: 2px; }
+  .hotel-stars { color: #ffc107; font-size: 13px; margin-top: 4px; }
+  .hotel-price { font-size: 14px; font-weight: 700; color: #ff5c5c; margin-top: 6px; }
+  .hotel-price span { font-size: 11px; color: #888; font-weight: 400; }
+  .hotel-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .tag {
+    font-size: 11px;
+    background: #f0f8ff; color: #00a8ff;
+    padding: 2px 8px; border-radius: 20px;
+  }
+
+  /* ── 스타일 선택 ── */
+  .style-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .style-item {
+    border: 1.5px solid #e8e8e8;
+    border-radius: 12px;
+    padding: 14px 12px;
+    text-align: center;
+    font-size: 13px;
+  }
+  .style-item.checked {
+    border-color: #00a8ff;
+    background: #f0f8ff;
+    color: #0055cc;
+    font-weight: 700;
+  }
+  .style-item .emoji { font-size: 24px; display: block; margin-bottom: 6px; }
+  .checkmark {
+    display: inline-block;
+    background: #00a8ff; color: #fff;
+    border-radius: 50%; width: 16px; height: 16px;
+    font-size: 10px; line-height: 16px;
+    text-align: center; margin-left: 4px;
+  }
+
+  /* ── 결과 요약 배너 ── */
+  .result-banner {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    color: #fff;
+    padding: 28px 20px 24px;
+    text-align: center;
+  }
+  .result-banner .country { font-size: 13px; color: rgba(255,255,255,0.6); margin-bottom: 6px; }
+  .result-banner .title   { font-size: 26px; font-weight: 900; letter-spacing: -1px; }
+  .result-banner .period  { font-size: 14px; color: rgba(255,255,255,0.8); margin-top: 8px; }
+  .result-banner .pills {
+    display: flex; justify-content: center; gap: 8px;
+    flex-wrap: wrap; margin-top: 14px;
+  }
+  .pill {
+    background: rgba(255,255,255,0.15);
+    font-size: 12px; color: #fff;
+    padding: 4px 12px; border-radius: 20px;
+    backdrop-filter: blur(4px);
+  }
+
+  /* ── 일정 카드 ── */
+  .day-block { padding: 20px 20px 0; }
+  .day-label {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 14px;
+  }
+  .day-label .day-badge {
+    background: #0f3460; color: #fff;
+    font-size: 12px; font-weight: 800;
+    padding: 4px 12px; border-radius: 20px;
+    letter-spacing: 1px;
+  }
+  .day-label .day-date { font-size: 13px; color: #888; }
+  .day-label .day-city {
+    margin-left: auto;
+    font-size: 12px; font-weight: 700;
+    background: #fff3e0; color: #e65100;
+    padding: 3px 10px; border-radius: 20px;
+  }
+
+  .spot-card {
+    display: flex; gap: 14px;
+    border: 1px solid #f0f0f0;
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 10px;
+    position: relative;
+  }
+  .spot-thumb {
+    width: 80px; height: 80px;
+    border-radius: 10px;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px;
+  }
+  .spot-info { flex: 1; }
+  .spot-cat  { font-size: 10px; color: #888; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .spot-name { font-size: 15px; font-weight: 800; margin: 2px 0; }
+  .spot-desc { font-size: 12px; color: #666; line-height: 1.5; margin-top: 4px; }
+  .spot-tag  { font-size: 11px; color: #00a8ff; margin-top: 6px; font-weight: 600; }
+  .spot-time { font-size: 11px; color: #aaa; position: absolute; top: 12px; right: 14px; }
+
+  .timeline-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%; background: #00a8ff;
+    flex-shrink: 0; margin-top: 36px;
+    display: none;
+  }
+
+  /* ── 교통 연결 ── */
+  .transit {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 20px;
+    font-size: 12px; color: #888;
+  }
+  .transit-line { flex: 1; height: 1px; background: #e8e8e8; border-top: 1px dashed #ccc; }
+  .transit-icon { font-size: 16px; }
+
+  /* ── 숙박 인라인 ── */
+  .stay-line {
+    background: #fffbf0;
+    border: 1px solid #ffe0a3;
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin: 0 20px 16px;
+    display: flex; align-items: center; gap: 12px;
+    font-size: 13px;
+  }
+  .stay-line .icon { font-size: 22px; }
+  .stay-line .info { flex: 1; }
+  .stay-line .hotel-n { font-weight: 700; }
+  .stay-line .nights  { font-size: 11px; color: #888; }
+
+  /* ── 총 예산 ── */
+  .budget-box {
+    margin: 0 20px 24px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border-radius: 16px;
+    padding: 20px;
+    color: #fff;
+  }
+  .budget-box h3 { font-size: 14px; font-weight: 600; opacity: 0.85; margin-bottom: 12px; }
+  .budget-row {
+    display: flex; justify-content: space-between;
+    font-size: 13px; padding: 4px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.15);
+  }
+  .budget-row:last-of-type { border: none; }
+  .budget-total {
+    display: flex; justify-content: space-between;
+    font-size: 18px; font-weight: 800;
+    margin-top: 12px; padding-top: 12px;
+    border-top: 1.5px solid rgba(255,255,255,0.4);
+  }
+
+  /* ── CTA 버튼 ── */
+  .cta-row {
+    padding: 16px 20px 32px;
+    display: flex; gap: 10px;
+  }
+  .btn {
+    flex: 1; padding: 15px;
+    border-radius: 14px;
+    font-size: 14px; font-weight: 700;
+    border: none; cursor: pointer;
+    text-align: center;
+  }
+  .btn-primary { background: #0f3460; color: #fff; }
+  .btn-outline  { background: #fff; color: #0f3460; border: 2px solid #0f3460; }
+
+  .divider { height: 8px; background: #f5f6fa; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── 앱 헤더 ── -->
+  <div class="app-header">
+    <div>
+      <div class="logo">✈ JapanTour AI</div>
+      <div class="sub">AI 일본 여행 플래너</div>
+    </div>
+  </div>
+
+  <!-- ── 스텝 진행 바 ── -->
+  <div class="step-bar">
+    <div class="step done">
+      <div class="dot">✓</div>로그인
+    </div>
+    <div class="step done">
+      <div class="dot">✓</div>항공편
+    </div>
+    <div class="step done">
+      <div class="dot">✓</div>숙박
+    </div>
+    <div class="step done">
+      <div class="dot">✓</div>스타일
+    </div>
+    <div class="step active">
+      <div class="dot">5</div>일정
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════
+       STEP 1 · 로그인
+  ══════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="step-badge">STEP 1</span> 로그인
+    </div>
+    <div class="section-sub">소셜 계정으로 간편하게 시작하세요.</div>
+
+    <div class="login-box">
+      <div class="avatar">👤</div>
+      <div class="name">박재훈 님</div>
+      <div class="email">hundo1217@gmail.com</div>
+      <div class="badge-ok">✓ 로그인 완료</div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════
+       STEP 2 · 항공편
+  ══════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="step-badge">STEP 2</span> 항공편 선택
+    </div>
+    <div class="section-sub">인천(ICN) → 오사카 간사이(KIX) · 2025년 7월 10일 출발</div>
+
+    <!-- 선택된 항공편 -->
+    <div class="flight-card selected">
+      <span class="select-badge">✓ 선택됨</span>
+      <div class="airline">
+        <span class="iata">OZ</span> 아시아나항공
+      </div>
+      <div class="flight-row">
+        <div>
+          <div class="flight-time">09:00</div>
+          <div class="flight-city">ICN 인천</div>
+        </div>
+        <div class="flight-mid">
+          <div class="plane">✈</div>
+          1h 55m · 직항
+        </div>
+        <div>
+          <div class="flight-time">11:00</div>
+          <div class="flight-city">KIX 오사카</div>
+        </div>
+      </div>
+      <div class="flight-price">₩189,000 <span>/ 1인</span></div>
+    </div>
+
+    <!-- 복귀 항공편 -->
+    <div class="section-sub" style="margin-top:16px; margin-bottom:10px;">오사카 간사이(KIX) → 인천(ICN) · 2025년 7월 16일 귀국</div>
+    <div class="flight-card selected">
+      <span class="select-badge">✓ 선택됨</span>
+      <div class="airline">
+        <span class="iata">OZ</span> 아시아나항공
+      </div>
+      <div class="flight-row">
+        <div>
+          <div class="flight-time">15:40</div>
+          <div class="flight-city">KIX 오사카</div>
+        </div>
+        <div class="flight-mid">
+          <div class="plane">✈</div>
+          1h 50m · 직항
+        </div>
+        <div>
+          <div class="flight-time">18:30</div>
+          <div class="flight-city">ICN 인천</div>
+        </div>
+      </div>
+      <div class="flight-price">₩175,000 <span>/ 1인</span></div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════
+       STEP 3 · 숙박
+  ══════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="step-badge">STEP 3</span> 숙박 선택
+    </div>
+    <div class="section-sub">오사카 3박 · 교토 2박 선택 완료</div>
+
+    <!-- 오사카 호텔 -->
+    <div style="font-size:13px; font-weight:700; color:#888; margin-bottom:8px;">📍 오사카 (3박)</div>
+    <div class="hotel-card selected">
+      <div class="hotel-img" style="background: linear-gradient(135deg,#f7971e,#ffd200);">🏨</div>
+      <div class="hotel-body">
+        <div class="hotel-name">Cross Hotel Osaka</div>
+        <div class="hotel-loc">📍 신사이바시 · 도톤보리 도보 5분</div>
+        <div class="hotel-stars">★★★★☆ 4.2</div>
+        <div class="hotel-price">₩120,000 <span>/ 박 · 2인 기준</span></div>
+        <div class="hotel-tags">
+          <span class="tag">조식 포함</span>
+          <span class="tag">무료 Wi-Fi</span>
+          <span class="tag">시내 중심</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 교토 호텔 -->
+    <div style="font-size:13px; font-weight:700; color:#888; margin: 8px 0 8px;">📍 교토 (2박)</div>
+    <div class="hotel-card selected">
+      <div class="hotel-img" style="background: linear-gradient(135deg,#667eea,#764ba2);">🏯</div>
+      <div class="hotel-body">
+        <div class="hotel-name">Kyoto Tower Hotel</div>
+        <div class="hotel-loc">📍 교토역 도보 2분 · 기온 지구 근처</div>
+        <div class="hotel-stars">★★★★★ 4.5</div>
+        <div class="hotel-price">₩145,000 <span>/ 박 · 2인 기준</span></div>
+        <div class="hotel-tags">
+          <span class="tag">전망 타워</span>
+          <span class="tag">온천 욕탕</span>
+          <span class="tag">무료 Wi-Fi</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════
+       STEP 4 · 여행 스타일
+  ══════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="step-badge">STEP 4</span> 여행 스타일
+    </div>
+    <div class="section-sub">선호하는 여행 스타일을 선택하면 AI가 맞춤 일정을 만들어 드려요.</div>
+
+    <div class="style-grid">
+      <div class="style-item checked">
+        <span class="emoji">🍜</span>
+        맛집 탐방<span class="checkmark">✓</span>
+      </div>
+      <div class="style-item checked">
+        <span class="emoji">📸</span>
+        SNS 핫플<span class="checkmark">✓</span>
+      </div>
+      <div class="style-item checked">
+        <span class="emoji">🛍️</span>
+        쇼핑<span class="checkmark">✓</span>
+      </div>
+      <div class="style-item">
+        <span class="emoji">⛩️</span>
+        역사·문화
+      </div>
+      <div class="style-item">
+        <span class="emoji">🌿</span>
+        자연·힐링
+      </div>
+      <div class="style-item checked">
+        <span class="emoji">🎢</span>
+        체험·액티비티<span class="checkmark">✓</span>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════
+       STEP 5 · AI 추천 일정 (최종 출력)
+  ══════════════════════════════ -->
+
+  <!-- 결과 배너 -->
+  <div class="result-banner">
+    <div class="country">🇯🇵 일본</div>
+    <div class="title">오사카 &amp; 교토<br>5박 6일</div>
+    <div class="period">2025년 7월 10일(목) — 7월 16일(수)</div>
+    <div class="pills">
+      <span class="pill">2인 여행</span>
+      <span class="pill">맛집 탐방 v</span>
+      <span class="pill">SNS 핫플 v</span>
+      <span class="pill">쇼핑 v</span>
+      <span class="pill">체험·액티비티 v</span>
+    </div>
+  </div>
+
+  <!-- ── DAY 1 ── -->
+  <div class="day-block">
+    <div class="day-label">
+      <span class="day-badge">DAY 1</span>
+      <span class="day-date">7/10(목)</span>
+      <span class="day-city">오사카 도착</span>
+    </div>
+
+    <div class="spot-card">
+      <div class="spot-thumb" style="background:#fff3e0;">✈️</div>
+      <div class="spot-info">
+        <div class="spot-cat">항공 · 이동</div>
+        <div class="spot-name">인천 → 오사카 간사이</div>
+        <div class="spot-desc">아시아나항공 OZ111 · 09:00 출발, 11:00 도착 (직항)</div>
+      </div>
+      <div class="spot-time">09:00</div>
+    </div>
+  </div>
+
+  <div class="transit">
+    <div class="transit-line"></div>
+    <span class="transit-icon">🚆</span>
+    <span>라피트 특급 — 난바역 약 37분</span>
+    <div class="transit-line"></div>
+  </div>
+
+  <div class="day-block" style="padding-top:0;">
+    <div class="spot-card">
+      <div class="spot-thumb" style="background:#fff0f6; font-size:28px;">🏨</div>
+      <div class="spot-info">
+        <div class="spot-cat">숙박 체크인</div>
+        <div class="spot-name">Cross Hotel Osaka</div>
+        <div class="spot-desc">신사이바시 중심 · 체크인 후 짐 정리</div>
+        <div class="spot-tag">숙박 3박</div>
+      </div>
+      <div class="spot-time">13:00</div>
+    </div>
+
+    <div class="spot-card">
+      <div class="spot-thumb" style="background:#e8f5e9; font-size:28px;">🐙</div>
+      <div class="spot-info">
+        <div class="spot-cat">관광명소</div>
+        <div class="spot-name">도톤보리 (道頓堀)</div>
+        <div class="spot-desc">글리코 간판, 가니도라쿠, 타코야키 거리. 오사카 야경의 핵심 명소.</div>
+        <div class="spot-tag">맛집 탐방 · SNS 핫플</div>
+      </div>
+      <div class="spot-time">15:00</div>
+    </div>
+
+    <div class="spot-card">
+      <div class="spot-thumb" style="background:#fce4ec; font-size:28px;">🍜</div>
+      <div class="spot-info">
+        <div class="spot-cat">맛집</div>
+        <div class="spot-name">이치란 라멘 난바점</div>
+        <div class="spot-desc">1인 1칸 좌석의 유명 돈코츠 라멘. 오사카 여행 필수 코스.</div>
+        <div class="spot-tag">맛집 탐방</div>
+      </div>
+      <div class="spot-time">19:00</div>
+    </div>
+  </div>
+
+  <div class="stay-line">
+    <div class="icon">🌙</div>
+    <div class="info">
+      <div class="hotel-n">Cross Hotel Osaka</div>
+      <div class="nights">1박 / 신사이바시</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ── DAY 2 ── -->
+  <div class="day-block">
+    <div class="day-label">
+      <span class="day-badge">DAY 2</span>
+      <span class="day-date">7/11(금)</span>
+      <span class="day-city">오사카 탐방</span>
+    </div>
+
+    <div class="spot-card">
+      <div class="spot-thumb" style="background:#e3f2fd; font-size:28px;">🏯</div>
+      <div class="spot-info">
+        <div class="spot-cat">역사·문화</div>
+        <div class="spot-name">오사카성 (大阪城)</div>
+        <div class="spot-desc">풍신수길이 축성한 국보급 성곽. 천수각 전망대에서 시내 파노라마.</div>
+        <div class="spot-tag">체험·액티비티</div>
+      </div>
+      <div class="spot-time">09:30</div>
+    </div>
+
+    <div class="spot-card">
+      <div class="spot-thumb" style="background:#f3e5f5; font-size:28px;">🎡</div>
+      <div class="spot-info">
+        <div class="spot-cat">테마파크</div>
+        <div class="spot-name">카이유칸 수족관</div>
+        <div class="spot-desc">세계 최대급 수족관. 고래상어와 만타가오리를 만날 수 있는 체험 공간.</div>
+        <div class="spot-tag">체험·액티비티 · SNS 핫플</div>
+      </div>
+      <div class="spot-time">13:00</div>
+    </div>
+
+    <div class="spot-card">
+      <div class="spot-thumb" style="background:#fff8e1; font-size:28px;">🛍️</div>
+      <div class="spot-info">
+        <div class="spot-cat">쇼핑</div>
+        <div class="spot-name">신사이바시 쇼핑 스트리트</div>
+        <div class="spot-desc">600m 아케이드 쇼핑가. 드러그스토어, 패션, 일본 기념품 최다 밀집.</div>
+        <div class="spot-tag">쇼핑</div>
+      </div>
+      <div class="spot-time">17:00</div>
+    </div>
+  </div>
+
+  <div class="stay-line">
+    <div class="icon">🌙</div>
+    <div class="info">
+      <div class="hotel-n">Cross Hotel Osaka</div>
+      <div class="nights">2박 / 신사이바시</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ── DAY 3 ── -->
+  <div class="day-block">
+    <div class="day-label">
+      <span class="day-badge">DAY 3</span>
+      <span class="day-date">7/12(토)</span>
+      <span class="day-city">교토 이동</span>
+    </div>
+
+    <div class="spot-card">
+      <div class="spot-thumb" style="background:#ffebee; font-size:28px;">⛩️</div>
+      <div class="spot-info">
+        <div class="spot-cat">신사</div>
+        <div class="spot-name">후시미이나리 타이샤</div>
+        <div class="spot-desc">수천 개의 붉은 도리이가 이어지는 SNS 최고 명소. 이른 오전 방문 추천.</div>
+        <div class="spot-tag">SNS 핫플 · 역사·문화</div>
+      </div>
+      <div class="spot-time">09:00</div>
+    </div>
+
+    <div class="transit">
+      <div class="transit-line"></div>
+      <span class="transit-icon">🚌</span>
+      <span>교토 시내버스 100번 · 기온 방향 15분</span>
+      <div class="transit-line"></div>
+    </div>
+
+    <div class="spot-card">
+      <div class="spot-thumb" style="background:#e8f5e9; font-size:28px;">🌸</div>
+      <div class="spot-info">
+        <div class="spot-cat">거리·전통</div>
+        <div class="spot-name">기온 지구 (祇園)</div>
+        <div class="spot-desc">마이코·게이코가 왕래하는 교토 최고의 전통 거리. 하나미코지 산책.</div>
+        <div class="spot-tag">SNS 핫플 · 역사·문화</div>
+      </div>
+      <div class="spot-time">12:00</div>
+    </div>
+
+    <div class="spot-card">
+      <div class="spot-thumb" style="background:#fce4ec; font-size:28px;">🍱</div>
+      <div class="spot-info">
+        <div class="spot-cat">맛집</div>
+        <div class="spot-name">니시키 시장 (錦市場)</div>
+        <div class="spot-desc">'교토의 부엌'. 400년 역사의 재래시장. 유바·절임채소·타코스카·교야끼 등.</div>
+        <div class="spot-tag">맛집 탐방</div>
+      </div>
+      <div class="spot-time">15:00</div>
+    </div>
+
+    <div class="spot-card">
+      <div class="spot-thumb" style="background:#fff3e0; font-size:28px;">🏨</div>
+      <div class="spot-info">
+        <div class="spot-cat">숙박 이동</div>
+        <div class="spot-name">Kyoto Tower Hotel 체크인</div>
+        <div class="spot-desc">교토역 도보 2분. 타워 전망 욕탕 이용 가능.</div>
+        <div class="spot-tag">숙박 2박</div>
+      </div>
+      <div class="spot-time">17:00</div>
+    </div>
+  </div>
+
+  <div class="stay-line">
+    <div class="icon">🌙</div>
+    <div class="info">
+      <div class="hotel-n">Kyoto Tower Hotel</div>
+      <div class="nights">3박 / 교토역 앞</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ── DAY 4 ── -->
+  <div class="day-block">
+    <div class="day-label">
+      <span class="day-badge">DAY 4</span>
+      <span class="day-date">7/13(일)</span>
+      <span class="day-city">교토 심층 탐방</span>
+    </div>
+
+    <div class="spot-card">
+      <div class="spot-thumb" style="background:#e3f2fd; font-size:28px;">🌊</div>
+      <div class="spot-info">
+        <div class="spot-cat">자연·관광</div>
+        <div class="spot-name">아라시야마 대나무 숲</div>
+        <div class="spot-desc">대나무가 하늘을 뒤덮는 신비로운 산책로. 일본 풍경 사진 성지.</div>
+        <div class="spot-tag">SNS 핫플 · 자연</div>
+      </div>
+      <div class="spot-time">08:30</div>
+    </div>
+
+    <div class="spot-card">
+      <div class="spot-thumb" style="background:#fffde7; font-size:28px;">🥟</div>
+      <div class="spot-info">
+        <div class="spot-cat">맛집</div>
+        <div class="spot-name">아라시야마 사가노 두부 요리</div>
+        <div class="spot-desc">두부 정식으로 유명한 사가노두부 이즈모야. 교토 전통 회석 분위기.</div>
+        <div class="spot-tag">맛집 탐방</div>
+      </div>
+      <div class="spot-time">12:00</div>
+    </div>
+
+    <div class="spot-card">
+      <div class="spot-thumb" style="background:#f9fbe7; font-size:28px;">🏛️</div>
+      <div class="spot-info">
+        <div class="spot-cat">세계문화유산</div>
+        <div class="spot-name">금각사 (金閣寺)</div>
+        <div class="spot-desc">연못 위에 반짝이는 황금 누각. 교토 여행의 하이라이트.</div>
+        <div class="spot-tag">SNS 핫플 · 역사</div>
+      </div>
+      <div class="spot-time">14:30</div>
+    </div>
+
+    <div class="spot-card">
+      <div class="spot-thumb" style="background:#fce4ec; font-size:28px;">🍵</div>
+      <div class="spot-info">
+        <div class="spot-cat">체험</div>
+        <div class="spot-name">교토 다도 체험</div>
+        <div class="spot-desc">우라센케 스쿨 인근 다도 체험. 한복·기모노 대여 후 말차 정식.</div>
+        <div class="spot-tag">체험·액티비티</div>
+      </div>
+      <div class="spot-time">17:00</div>
+    </div>
+  </div>
+
+  <div class="stay-line">
+    <div class="icon">🌙</div>
+    <div class="info">
+      <div class="hotel-n">Kyoto Tower Hotel</div>
+      <div class="nights">4박 / 교토역 앞</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ── DAY 5 ── -->
+  <div class="day-block">
+    <div class="day-label">
+      <span class="day-badge">DAY 5</span>
+      <span class="day-date">7/14(월)</span>
+      <span class="day-city">나라 + 오사카 귀환</span>
+    </div>
+
+    <div class="spot-card">
+      <div class="spot-thumb" style="background:#e8f5e9; font-size:28px;">🦌</div>
+      <div class="spot-info">
+        <div class="spot-cat">당일 투어</div>
+        <div class="spot-name">나라 사슴공원 (奈良鹿苑)</div>
+        <div class="spot-desc">약 1,300마리의 야생 사슴과 어울리는 세계 유일의 공원. 도다이지 대불 필수.</div>
+        <div class="spot-tag">체험·액티비티 · SNS 핫플</div>
+      </div>
+      <div class="spot-time">09:00</div>
+    </div>
+
+    <div class="transit">
+      <div class="transit-line"></div>
+      <span class="transit-icon">🚆</span>
+      <span>긴테쓰 나라선 → 오사카 난바 약 40분</span>
+      <div class="transit-line"></div>
+    </div>
+
+    <div class="spot-card">
+      <div class="spot-thumb" style="background:#fff3e0; font-size:28px;">🛍️</div>
+      <div class="spot-info">
+        <div class="spot-cat">쇼핑</div>
+        <div class="spot-name">우메다 그랑프론트 오사카</div>
+        <div class="spot-desc">마지막 기념품·쇼핑 스팟. 일본 드러그스토어 싹쓸이.</div>
+        <div class="spot-tag">쇼핑</div>
+      </div>
+      <div class="spot-time">15:00</div>
+    </div>
+
+    <div class="spot-card">
+      <div class="spot-thumb" style="background:#ffe0e0; font-size:28px;">🍣</div>
+      <div class="spot-info">
+        <div class="spot-cat">맛집 · 마지막 만찬</div>
+        <div class="spot-name">우메다 카이텐즈시 네무로 하나마루</div>
+        <div class="spot-desc">홋카이도 유명 회전초밥의 오사카점. 신선한 해산물 회전초밥.</div>
+        <div class="spot-tag">맛집 탐방</div>
+      </div>
+      <div class="spot-time">19:00</div>
+    </div>
+  </div>
+
+  <div class="stay-line">
+    <div class="icon">🌙</div>
+    <div class="info">
+      <div class="hotel-n">Cross Hotel Osaka</div>
+      <div class="nights">5박 / 신사이바시 (재체크인)</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ── DAY 6 ── -->
+  <div class="day-block">
+    <div class="day-label">
+      <span class="day-badge">DAY 6</span>
+      <span class="day-date">7/15(화)</span>
+      <span class="day-city">귀국</span>
+    </div>
+
+    <div class="spot-card">
+      <div class="spot-thumb" style="background:#e8eaf6; font-size:28px;">☕</div>
+      <div class="spot-info">
+        <div class="spot-cat">여유</div>
+        <div class="spot-name">호텔 조식 + 체크아웃</div>
+        <div class="spot-desc">조식 후 체크아웃. 근처 카페에서 마지막 모닝 커피.</div>
+      </div>
+      <div class="spot-time">08:00</div>
+    </div>
+
+    <div class="transit">
+      <div class="transit-line"></div>
+      <span class="transit-icon">🚆</span>
+      <span>라피트 특급 — 간사이 공항 약 37분</span>
+      <div class="transit-line"></div>
+    </div>
+
+    <div class="spot-card">
+      <div class="spot-thumb" style="background:#fff3e0; font-size:28px;">✈️</div>
+      <div class="spot-info">
+        <div class="spot-cat">항공 · 귀국</div>
+        <div class="spot-name">오사카 간사이 → 인천</div>
+        <div class="spot-desc">아시아나항공 OZ112 · 15:40 출발, 18:30 도착 (직항)</div>
+      </div>
+      <div class="spot-time">13:00</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ── 총 예산 요약 ── -->
+  <div class="budget-box">
+    <h3>💰 예상 총 예산 (2인 기준)</h3>
+    <div class="budget-row">
+      <span>✈ 항공권 (왕복 2인)</span>
+      <span>₩728,000</span>
+    </div>
+    <div class="budget-row">
+      <span>🏨 숙박 (5박)</span>
+      <span>₩650,000</span>
+    </div>
+    <div class="budget-row">
+      <span>🚆 현지 교통</span>
+      <span>₩80,000</span>
+    </div>
+    <div class="budget-row">
+      <span>🍜 식비·관광</span>
+      <span>₩400,000</span>
+    </div>
+    <div class="budget-row">
+      <span>🛍️ 쇼핑·기타</span>
+      <span>₩300,000</span>
+    </div>
+    <div class="budget-total">
+      <span>합계</span>
+      <span>₩2,158,000</span>
+    </div>
+  </div>
+
+  <!-- ── CTA ── -->
+  <div class="cta-row">
+    <button class="btn btn-outline">다시 계획하기</button>
+    <button class="btn btn-primary">✓ 내 일정으로 담기</button>
+  </div>
+
+  <!-- ── 하단 안내 ── -->
+  <div style="text-align:center; padding: 0 20px 40px; font-size:11px; color:#aaa; line-height:1.7;">
+    담은 일정은 앱에서 언제든 확인·편집할 수 있어요.<br>
+    새로운 추천받기 &nbsp;|&nbsp; 다시하기
+  </div>
+
+</div>
+</body>
+</html>

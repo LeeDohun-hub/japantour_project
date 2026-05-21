@@ -71,7 +71,7 @@ const Auth = (() => {
 
   async function handleLogin(e) {
     e.preventDefault();
-    const username = $('loginUsername').value.trim();
+    const username = ($('loginEmail') || $('loginUsername'))?.value.trim() || '';
     const password = $('loginPassword').value;
     const errEl = $('loginError');
     const btn = $('loginSubmit');
@@ -85,7 +85,7 @@ const Auth = (() => {
       const res = await fetch('/api/auth/login/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ email: username, username, password }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -105,17 +105,34 @@ const Auth = (() => {
 
   async function handleRegister(e) {
     e.preventDefault();
-    const username = $('signupUsername').value.trim();
+    const display_name = ($('signupDisplayName') || $('signupUsername'))?.value.trim() || '';
     const email = $('signupEmail').value.trim();
     const password = $('signupPassword').value;
     const password2 = $('signupPassword2').value;
+    const terms = $('signupTerms')?.checked ?? true;
     const errEl = $('signupError');
     const btn = $('signupSubmit');
 
     errEl.textContent = '';
 
+    if (!display_name) {
+      errEl.textContent = '表示名を入力してください';
+      return;
+    }
+    if (!email) {
+      errEl.textContent = 'メールアドレスを入力してください';
+      return;
+    }
+    if (password.length < 8) {
+      errEl.textContent = 'パスワードは8文字以上必要です';
+      return;
+    }
     if (password !== password2) {
       errEl.textContent = 'パスワードが一致しません';
+      return;
+    }
+    if ($('signupTerms') && !terms) {
+      errEl.textContent = '利用規約への同意が必要です';
       return;
     }
 
@@ -127,7 +144,14 @@ const Auth = (() => {
       const res = await fetch('/api/auth/register/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, email, password }),
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          display_name,
+          email,
+          password,
+          password_confirm: password2,
+          terms_accepted: terms,
+        }),
       });
       const data = await res.json();
       if (res.ok) {

@@ -187,6 +187,29 @@ def api_places_debug(request):
 
 
 @require_GET
+def api_maps_config(request):
+    """Google Maps JavaScript API 用キー（ブラウザ — HTTPリファラー制限必須）."""
+    maps_key = (os.getenv("GOOGLE_MAPS_API_KEY") or "").strip()
+    hotels_key = (os.getenv("GOOGLE_HOTELS_API_KEY") or "").strip()
+    # ブラウザ地図は GOOGLE_MAPS_API_KEY 専用を推奨（HOTELS はサーバーIP制限のことが多い）
+    if maps_key:
+        api_key, source = maps_key, "GOOGLE_MAPS_API_KEY"
+    elif hotels_key:
+        api_key, source = hotels_key, "GOOGLE_HOTELS_API_KEY"
+    else:
+        api_key, source = "", ""
+    return JsonResponse({
+        "enabled": bool(api_key),
+        "api_key": api_key,
+        "source": source,
+        "browser_note": (
+            "Maps JavaScript API は HTTPリファラー制限のブラウザ用キーが必要です。"
+            "Vertex/Gemini のサービスアカウントキー連携は対象外です。"
+        ),
+    })
+
+
+@require_GET
 def api_photo(request):
     """Google Places 사진 프록시 — API 키를 서버에서 처리해 클라이언트에 노출 방지."""
     name = request.GET.get("name", "").strip()
@@ -214,28 +237,84 @@ def api_photo(request):
         return JsonResponse({"detail": "photo fetch failed"}, status=502)
 
 
+def _norm_iata(code: str | None) -> str:
+    return (code or "").strip().upper()
+
+
+def _dedupe_flight_dicts(flight_dicts: list[dict]) -> list[dict]:
+    """API 원본 행 중복 제거 (동일 편명·時刻·코드쉐어)."""
+    seen: dict[tuple, dict] = {}
+    for f in flight_dicts:
+        key = (
+            _norm_iata(f.get("flight_iata")),
+            f.get("dep_scheduled") or "",
+            f.get("arr_scheduled") or "",
+            _norm_iata(f.get("codeshared_iata")),
+        )
+        if not key[0]:
+            continue
+        prev = seen.get(key)
+        if prev is None:
+            seen[key] = f
+        elif not f.get("codeshared_iata") and prev.get("codeshared_iata"):
+            seen[key] = f
+    return list(seen.values())
+
+
+def _dedupe_display_flights(flight_dicts: list[dict]) -> list[dict]:
+    """표시용 1카드 = 편명 + 출발·도착 시각 (slave 통합 후)."""
+    seen: dict[tuple, dict] = {}
+    for f in flight_dicts:
+        key = (
+            _norm_iata(f.get("flight_iata")),
+            f.get("dep_scheduled") or "",
+            f.get("arr_scheduled") or "",
+        )
+        if not key[0]:
+            continue
+        prev = seen.get(key)
+        if prev is None:
+            seen[key] = f
+        else:
+            aliases = sorted(
+                set(prev.get("codeshare_aliases") or [])
+                | set(f.get("codeshare_aliases") or [])
+            )
+            seen[key] = {**prev, "codeshare_aliases": aliases}
+    return list(seen.values())
+
+
 def _merge_codeshares(flight_dicts: list[dict]) -> list[dict]:
     """코드쉐어 slave 편을 master 편에 통합하여 중복 제거.
 
     codeshared_iata 가 있으면 slave, 없으면 master.
     slave는 master의 codeshare_aliases 리스트에 편명만 추가하고 제거.
-    master가 목록에 없는 경우 slave를 그대로 유지.
+    master가 목록에 없는 경우 slave는 1건만 유지 (_dedupe_flight_dicts).
     """
     from collections import defaultdict
-    master_iatas = {f["flight_iata"] for f in flight_dicts if not f.get("codeshared_iata")}
+
+    flight_dicts = _dedupe_flight_dicts(flight_dicts)
+    master_iatas = {
+        _norm_iata(f.get("flight_iata"))
+        for f in flight_dicts
+        if not _norm_iata(f.get("codeshared_iata"))
+    }
     slave_aliases: dict[str, list[str]] = defaultdict(list)
     for f in flight_dicts:
-        master = f.get("codeshared_iata")
+        master = _norm_iata(f.get("codeshared_iata"))
         if master and master in master_iatas:
-            slave_aliases[master].append(f["flight_iata"])
+            alias = _norm_iata(f.get("flight_iata"))
+            if alias and alias not in slave_aliases[master]:
+                slave_aliases[master].append(alias)
 
     result = []
     for f in flight_dicts:
-        master = f.get("codeshared_iata")
+        master = _norm_iata(f.get("codeshared_iata"))
         if master and master in master_iatas:
-            continue   # master가 있는 slave는 건너뜀
-        result.append({**f, "codeshare_aliases": slave_aliases.get(f["flight_iata"], [])})
-    return result
+            continue
+        iata = _norm_iata(f.get("flight_iata"))
+        result.append({**f, "codeshare_aliases": slave_aliases.get(iata, [])})
+    return _dedupe_display_flights(result)
 
 
 @require_GET
@@ -406,6 +485,30 @@ def api_chat(request):
     return JsonResponse(payload)
 
 
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _serialize_auth_user(u: User) -> dict:
+    return {
+        "id": u.id,
+        "username": u.username,
+        "email": u.email,
+        "display_name": _user_display_name(u),
+    }
+
+
+def _resolve_login_username(identifier: str) -> str | None:
+    """メールまたは従来のユーザー名でログイン用 username を解決。"""
+    ident = (identifier or "").strip()
+    if not ident:
+        return None
+    if "@" in ident:
+        email = ident.lower()
+        u = User.objects.filter(email__iexact=email).first()
+        return u.username if u else None
+    return ident
+
+
 @csrf_exempt
 @require_POST
 def api_register(request):
@@ -414,23 +517,64 @@ def api_register(request):
     except (json.JSONDecodeError, UnicodeDecodeError):
         return JsonResponse({"detail": "Invalid JSON"}, status=400)
 
-    username = (body.get("username") or "").strip()
+    display_name = (body.get("display_name") or body.get("name") or "").strip()
+    email = (body.get("email") or "").strip().lower()
     password = body.get("password") or ""
-    email = (body.get("email") or "").strip()
+    password_confirm = body.get("password_confirm") or body.get("password2") or ""
+    # 旧クライアント: username のみ
+    legacy_username = (body.get("username") or "").strip()
 
-    if not username:
-        return JsonResponse({"detail": "ユーザー名を入力してください"}, status=400)
-    if len(username) > 150 or not re.match(r"^[\w.@+-]+$", username):
-        return JsonResponse({"detail": "ユーザー名は150文字以内の英数字・記号のみ使用できます"}, status=400)
+    if legacy_username and not email:
+        username = legacy_username
+        if len(username) > 150 or not re.match(r"^[\w.@+-]+$", username):
+            return JsonResponse(
+                {"detail": "ユーザー名は150文字以内の英数字・記号のみ使用できます"},
+                status=400,
+            )
+        if len(password) < 8:
+            return JsonResponse({"detail": "パスワードは8文字以上必要です"}, status=400)
+        if User.objects.filter(username=username).exists():
+            return JsonResponse({"detail": "このユーザー名はすでに使われています"}, status=409)
+        user = User.objects.create_user(username=username, password=password, email="")
+        django_login(request, user)
+        return JsonResponse(
+            {"ok": True, "user": _serialize_auth_user(user)},
+            status=201,
+        )
+
+    if not display_name:
+        return JsonResponse({"detail": "表示名を入力してください"}, status=400)
+    if len(display_name) > 50:
+        return JsonResponse({"detail": "表示名は50文字以内で入力してください"}, status=400)
+    if not email:
+        return JsonResponse({"detail": "メールアドレスを入力してください"}, status=400)
+    if len(email) > 254 or not _EMAIL_RE.match(email):
+        return JsonResponse({"detail": "メールアドレスの形式が正しくありません"}, status=400)
     if len(password) < 8:
         return JsonResponse({"detail": "パスワードは8文字以上必要です"}, status=400)
-    if User.objects.filter(username=username).exists():
-        return JsonResponse({"detail": "このユーザー名はすでに使われています"}, status=409)
+    if len(password) > 128:
+        return JsonResponse({"detail": "パスワードは128文字以内にしてください"}, status=400)
+    if password != password_confirm:
+        return JsonResponse({"detail": "パスワード（確認）が一致しません"}, status=400)
+    if not body.get("terms_accepted"):
+        return JsonResponse({"detail": "利用規約への同意が必要です"}, status=400)
 
-    user = User.objects.create_user(username=username, password=password, email=email)
+    if User.objects.filter(email__iexact=email).exists():
+        return JsonResponse({"detail": "このメールアドレスはすでに登録されています"}, status=409)
+
+    username = email
+    if User.objects.filter(username=username).exists():
+        return JsonResponse({"detail": "このメールアドレスはすでに登録されています"}, status=409)
+
+    user = User.objects.create_user(
+        username=username,
+        email=email,
+        password=password,
+        first_name=display_name[:150],
+    )
     django_login(request, user)
     return JsonResponse(
-        {"ok": True, "user": {"id": user.id, "username": user.username, "email": user.email}},
+        {"ok": True, "user": _serialize_auth_user(user)},
         status=201,
     )
 
@@ -443,15 +587,25 @@ def api_login(request):
     except (json.JSONDecodeError, UnicodeDecodeError):
         return JsonResponse({"detail": "Invalid JSON"}, status=400)
 
-    username = (body.get("username") or "").strip()
+    identifier = (body.get("email") or body.get("username") or "").strip()
     password = body.get("password") or ""
 
-    user = authenticate(request, username=username, password=password)
+    login_name = _resolve_login_username(identifier)
+    if not login_name:
+        return JsonResponse(
+            {"detail": "メールアドレスまたはパスワードが正しくありません"},
+            status=401,
+        )
+
+    user = authenticate(request, username=login_name, password=password)
     if user is None:
-        return JsonResponse({"detail": "ユーザー名またはパスワードが正しくありません"}, status=401)
+        return JsonResponse(
+            {"detail": "メールアドレスまたはパスワードが正しくありません"},
+            status=401,
+        )
 
     django_login(request, user)
-    return JsonResponse({"ok": True, "user": {"id": user.id, "username": user.username, "email": user.email}})
+    return JsonResponse({"ok": True, "user": _serialize_auth_user(user)})
 
 
 @csrf_exempt
@@ -461,12 +615,28 @@ def api_logout(request):
     return JsonResponse({"ok": True})
 
 
+def _user_display_name(u: User) -> str:
+    """OAuth 内部 username（google_* 等）をそのまま表示しない。"""
+    first = (u.first_name or "").strip()
+    if first:
+        return first
+    uname = (u.username or "").strip()
+    if uname and not (uname.startswith("google_") or uname.startswith("line_")):
+        return uname
+    email = (u.email or "").strip()
+    if email and "@" in email:
+        local = email.split("@", 1)[0].strip()
+        if local and not local.startswith("google"):
+            return local
+    return "ゲスト"
+
+
 @require_GET
 def api_me(request):
     if not request.user.is_authenticated:
         return JsonResponse({"authenticated": False}, status=401)
     u = request.user
-    display_name = u.first_name.strip() if u.first_name else u.username
+    display_name = _user_display_name(u)
     return JsonResponse({
         "authenticated": True,
         "user": {
@@ -553,7 +723,19 @@ def oauth_google_callback(request):
         return redirect("/?oauth_error=1")
 
     username = f"google_{google_id}"[:150]
-    user, _ = User.objects.get_or_create(username=username, defaults={"email": email})
+    given = (info.get("given_name") or "").strip()
+    full = (info.get("name") or "").strip()
+    display = given or (full.split()[0] if full else "")
+    user, created = User.objects.get_or_create(
+        username=username,
+        defaults={"email": email, "first_name": display[:150]},
+    )
+    if display and user.first_name != display[:150]:
+        user.first_name = display[:150]
+        user.save(update_fields=["first_name"])
+    elif not created and email and not user.email:
+        user.email = email
+        user.save(update_fields=["email"])
     _oauth_login(request, user)
     return redirect("/?oauth_success=1")
 
@@ -662,6 +844,14 @@ def serve_styles(request):
 
 
 @require_GET
+def serve_theme_bg(request):
+    path = _FRONTEND / "assets" / "bg-korea-theme.svg"
+    if not path.is_file():
+        return JsonResponse({"detail": "not found"}, status=404)
+    return FileResponse(path.open("rb"), content_type="image/svg+xml")
+
+
+@require_GET
 def serve_app_js(request):
     path = _FRONTEND / "app.js"
     if not path.is_file():
@@ -680,6 +870,14 @@ def serve_auth_js(request):
 @require_GET
 def serve_wizard_js(request):
     path = _FRONTEND / "wizard.js"
+    if not path.is_file():
+        return JsonResponse({"detail": "not found"}, status=404)
+    return FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")
+
+
+@require_GET
+def serve_plan_map_js(request):
+    path = _FRONTEND / "plan-map.js"
     if not path.is_file():
         return JsonResponse({"detail": "not found"}, status=404)
     return FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")

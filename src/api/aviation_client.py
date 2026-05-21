@@ -227,6 +227,28 @@ def _estimate_other_side(known: str, dep_code: str, arr_code: str, *, known_is_a
         return None
 
 
+def _flight_dedupe_key(f: FlightInfo) -> tuple:
+    return (
+        f.flight_iata.upper(),
+        f.dep_scheduled or "",
+        f.arr_scheduled or "",
+        (f.codeshared_iata or "").upper(),
+    )
+
+
+def _append_flight_unique(results: list[FlightInfo], flight: FlightInfo) -> bool:
+    """동일 API 행이 반복될 때 목록에 한 번만 추가."""
+    key = _flight_dedupe_key(flight)
+    for existing in results:
+        if _flight_dedupe_key(existing) == key:
+            if flight.codeshared_iata and not existing.codeshared_iata:
+                idx = results.index(existing)
+                results[idx] = flight
+            return False
+    results.append(flight)
+    return True
+
+
 class IncheonAirportClient:
     """인천공항 항공편 API 클라이언트.
 
@@ -305,9 +327,8 @@ class IncheonAirportClient:
                     continue
                 if airline_iata and not fid.startswith(airline_iata.upper()):
                     continue
-                results.append(
-                    self._normalize_realtime(item, dep_iata or "", arr_iata or "", is_arrivals)
-                )
+                fl = self._normalize_realtime(item, dep_iata or "", arr_iata or "", is_arrivals)
+                _append_flight_unique(results, fl)
                 if len(results) >= limit:
                     break
             if len(items) < PAGE_SIZE:
@@ -360,7 +381,8 @@ class IncheonAirportClient:
         terminal     = item.get("terminalId") or None
         remark       = item.get("remark") or ""
         status       = _REMARK_STATUS.get(remark.strip(), "scheduled")
-        codeshare_master = item.get("masterflightid") or None
+        raw_master = (item.get("masterflightid") or "").strip().upper()
+        codeshare_master = raw_master or None
 
         if is_arrivals:   # ???→ICN  scheduleDateTime = ICN 도착 시각
             dep_code = other_code or dep_iata.upper()
@@ -435,9 +457,8 @@ class IncheonAirportClient:
                         continue
                 if target_date and not _operates_on(item, target_date):
                     continue
-                results.append(
-                    self._normalize_scheduled(item, dep_iata or "", arr_iata or "", is_arrivals)
-                )
+                fl = self._normalize_scheduled(item, dep_iata or "", arr_iata or "", is_arrivals)
+                _append_flight_unique(results, fl)
                 if len(results) >= limit:
                     break
             if len(items) < PAGE_SIZE:
@@ -482,7 +503,8 @@ class IncheonAirportClient:
 
         other_airport = item.get("airport") or ""
         other_code    = (item.get("airportcode") or "").upper()
-        codeshare_master = item.get("masterflightid") or None
+        raw_master = (item.get("masterflightid") or "").strip().upper()
+        codeshare_master = raw_master or None
 
         if is_arrivals:   # ???→ICN  st = ICN 도착 시각
             dep_code = other_code or dep_iata.upper()

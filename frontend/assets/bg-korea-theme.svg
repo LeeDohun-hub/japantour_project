@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" fill="none" aria-hidden="true">
+  <defs>
+    <radialGradient id="glowR" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#CD2E3A" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="#CD2E3A" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0047A0" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#0047A0" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="wave" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#E85A6B" stop-opacity="0.25"/>
+      <stop offset="50%" stop-color="#D4A853" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#5B8FD4" stop-opacity="0.22"/>
+    </linearGradient>
+  </defs>
+
+  <!-- @@\ \X èt (Xè) -->
+  <path d="M0 720 Q240 680 480 710 T960 700 T1440 730 L1440 900 L0 900 Z" fill="url(#wave)" opacity="0.35"/>
+  <path d="M0 780 Q360 740 720 770 T1440 760 L1440 900 L0 900 Z" fill="#fff" opacity="0.4"/>
+
+  <!-- Üù (°Áè · ÁÕ) -->
+  <g transform="translate(1180, 120)" opacity="0.11">
+    <circle cx="0" cy="0" r="200" fill="url(#glowR)"/>
+    <circle cx="0" cy="0" r="200" fill="url(#glowB)" transform="translate(0,0)"/>
+    <circle cx="0" cy="0" r="165" fill="#F8FAFD" stroke="#B8C5D8" stroke-width="2"/>
+    <path d="M0,-165 A165,165 0 0,1 0,165 A82.5,82.5 0 0,0 0,-82.5 A82.5,82.5 0 0,1 0,0 A82.5,82.5 0 0,0 0,82.5 A165,165 0 0,1 0,-165Z" fill="#CD2E3A"/>
+    <path d="M0,165 A165,165 0 0,1 0,-165 A82.5,82.5 0 0,0 0,82.5 A82.5,82.5 0 0,1 0,0 A82.5,82.5 0 0,0 0,-82.5 A165,165 0 0,1 0,165Z" fill="#0047A0"/>
+    <circle cx="0" cy="-82.5" r="28" fill="#0047A0"/>
+    <circle cx="0" cy="82.5" r="28" fill="#CD2E3A"/>
+  </g>
+
+  <!-- ‘@ Üù (ŒXè) -->
+  <g transform="translate(140, 680)" opacity="0.07">
+    <circle cx="0" cy="0" r="90" fill="#F8FAFD" stroke="#C5D0E0" stroke-width="1.5"/>
+    <path d="M0,-90 A90,90 0 0,1 0,90 A45,45 0 0,0 0,-45 A45,45 0 0,1 0,0 A45,45 0 0,0 0,45 A90,90 0 0,1 0,-90Z" fill="#CD2E3A"/>
+    <path d="M0,90 A90,90 0 0,1 0,-90 A45,45 0 0,0 0,45 A45,45 0 0,1 0,0 A45,45 0 0,0 0,-45 A90,90 0 0,1 0,90Z" fill="#0047A0"/>
+    <circle cx="0" cy="-45" r="15" fill="#0047A0"/>
+    <circle cx="0" cy="45" r="15" fill="#CD2E3A"/>
+  </g>
+
+  <!-- \X · L\ -->
+  <g transform="translate(80, 200)" opacity="0.1" fill="#5B3D8C">
+    <ellipse cx="28" cy="95" rx="22" ry="22" fill="#E85A6B" opacity="0.5"/>
+    <rect x="48" y="35" width="6" height="60" rx="2" fill="#1C2838"/>
+    <path d="M54 35 Q120 20 130 55 Q140 90 54 95" stroke="#1C2838" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <circle cx="130" cy="55" r="14" fill="#E85A6B" opacity="0.6"/>
+  </g>
+  <g transform="translate(200, 320)" opacity="0.08">
+    <path d="M0 0 Q40 -30 80 0" stroke="#E85A6B" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M20 25 Q60 -5 100 25" stroke="#D4A853" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <path d="M40 50 Q80 20 120 50" stroke="#5B8FD4" stroke-width="3" fill="none" stroke-linecap="round"/>
+  </g>
+  <text x="320" y="180" font-family="Segoe UI, sans-serif" font-size="72" fill="#E85A6B" opacity="0.06">j</text>
+  <text x="380" y="240" font-family="Segoe UI, sans-serif" font-size="48" fill="#5B8FD4" opacity="0.06">k</text>
+  <text x="260" y="260" font-family="Segoe UI, sans-serif" font-size="36" fill="#D4A853" opacity="0.07">j</text>
+
+  <!-- K-ì˜ ¤t -->
+  <g opacity="0.12" fill="#D4A853">
+    <polygon points="1050,520 1058,540 1080,542 1064,556 1068,578 1050,566 1032,578 1036,556 1020,542 1042,540"/>
+    <polygon points="1280,400 1286,414 1302,416 1290,426 1293,442 1280,434 1267,442 1270,426 1258,416 1274,414"/>
+  </g>
+
+  <!-- \õ 4¬ ŒX ð\ á  -->
+  <g opacity="0.06" stroke="#CD2E3A" stroke-width="2" fill="none">
+    <path d="M900 600 Q1000 520 1100 600 Q1200 680 1300 600"/>
+    <path d="M920 640 Q1020 560 1120 640 Q1220 720 1320 640"/>
+  </g>
+</svg>

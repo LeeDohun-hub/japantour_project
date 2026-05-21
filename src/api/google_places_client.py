@@ -67,6 +67,78 @@ class NearbyPlace:
     search_area: str | None = None       # itinerary 검색 시 에리어 라벨
 
 
+# 食事候補から除外（ウェディングホール・イベント会場など）
+_MEAL_NAME_EXCLUDE_RE = re.compile(
+    r"ウェディング|웨딩|婚礼|wedding|"
+    r"コンベンション|컨벤션|convention|"
+    r"結婚式|예식|식장|ウェディングホール|웨딩홀|"
+    r"イベントホール|event\s*venue|宴会場|연회장|"
+    r"葬儀|장례|funeral|チャペル|예식장",
+    re.IGNORECASE,
+)
+_DELIVERY_ONLY_RE = re.compile(
+    r"배달\s*전용|배달전용|배달\s*만|デリバリー専門|delivery\s*only|"
+    r"テイクアウト専門|포장\s*전문|出前専門|テイクアウトのみ|"
+    r"takeaway\s*only|ghost\s*kitchen",
+    re.IGNORECASE,
+)
+_MEAL_TYPE_EXCLUDE = frozenset({
+    "wedding_venue",
+    "event_venue",
+    "convention_center",
+    "conference_center",
+    "banquet_hall",
+    "church",
+    "hindu_temple",
+    "mosque",
+    "cemetery",
+    "corporate_office",
+})
+_MEAL_TYPE_ALLOW = frozenset({
+    "restaurant",
+    "cafe",
+    "coffee_shop",
+    "bakery",
+    "bar",
+    "meal_takeaway",
+    "fast_food_restaurant",
+    "korean_restaurant",
+    "japanese_restaurant",
+    "brunch_restaurant",
+})
+
+
+def is_suitable_meal_place(place: NearbyPlace) -> bool:
+    """昼食・夕食に使える店か（ウェディングホール等を除外）。"""
+    name = (place.name or "").strip()
+    addr = (place.address or "").strip()
+    blob = f"{name} {addr}"
+    if _MEAL_NAME_EXCLUDE_RE.search(blob) or _DELIVERY_ONLY_RE.search(blob):
+        return False
+
+    cat = (place.category or "").strip().lower()
+    if cat in _MEAL_TYPE_EXCLUDE:
+        return False
+
+    if cat and cat not in _MEAL_TYPE_ALLOW:
+        if place.has_restaurant is False:
+            return False
+        if any(
+            k in blob.lower()
+            for k in ("wedding", "ウェディング", "웨딩", "컨벤션", "コンベンション")
+        ):
+            return False
+
+    if place.has_restaurant is False and cat not in _MEAL_TYPE_ALLOW:
+        return False
+
+    return True
+
+
+def filter_meal_places(places: list[NearbyPlace]) -> list[NearbyPlace]:
+    return [p for p in places if is_suitable_meal_place(p)]
+
+
 def _resolve_api_key(explicit: str | None = None) -> str | None:
     """GOOGLE_HOTELS_API_KEY 우선, 없으면 GOOGLE_MAPS_API_KEY."""
     return (

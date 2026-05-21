@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#0a0f18" />
+  <meta name="theme-color" content="#eef3fb" />
   <title>韓国旅行プランナー</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -31,7 +31,7 @@
       <section class="wiz-card" data-step="1">
         <div class="wiz-card-inner">
           <div class="wiz-hero">
-            <span class="wiz-badge">Korea · Japan Guide</span>
+            <span class="wiz-badge">🇰🇷 Korea · 韓流ガイド</span>
             <h2>韓国旅行へようこそ</h2>
             <p class="wiz-lead">ログインしてパーソナライズされた旅行プランを作成しましょう。<br>ゲストとしても続けられます。</p>
           </div>
@@ -50,17 +50,51 @@
 
             <div class="auth-divider"><span>または</span></div>
 
-            <form class="auth-inline-form" id="step1Form" novalidate>
-              <div class="auth-inline-fields">
-                <input type="text" id="s1Username" placeholder="ユーザー名" autocomplete="username" />
-                <input type="password" id="s1Password" placeholder="パスワード" autocomplete="current-password" />
+            <div class="auth-panel">
+              <div class="auth-panel-tabs" role="tablist">
+                <button type="button" class="auth-panel-tab active" data-auth-tab="login" role="tab" aria-selected="true">ログイン</button>
+                <button type="button" class="auth-panel-tab" data-auth-tab="signup" role="tab" aria-selected="false">新規登録</button>
               </div>
-              <div class="auth-inline-btns">
-                <button type="submit" class="btn primary">ログイン</button>
-                <button type="button" class="btn wiz-btn-outline" id="s1BtnSignup">新規登録</button>
-              </div>
-              <p class="auth-error" id="s1Error"></p>
-            </form>
+
+              <form class="auth-inline-form" id="s1LoginForm" novalidate>
+                <label class="auth-field">
+                  <span class="auth-label">メールアドレス</span>
+                  <input type="email" id="s1LoginEmail" placeholder="example@email.com" autocomplete="email" required />
+                </label>
+                <label class="auth-field">
+                  <span class="auth-label">パスワード</span>
+                  <input type="password" id="s1LoginPassword" placeholder="8文字以上" autocomplete="current-password" required />
+                </label>
+                <button type="submit" class="btn primary auth-submit">ログイン</button>
+                <p class="auth-error" id="s1LoginError"></p>
+              </form>
+
+              <form class="auth-inline-form" id="s1SignupForm" novalidate style="display:none">
+                <label class="auth-field">
+                  <span class="auth-label">お名前（表示名）</span>
+                  <input type="text" id="s1DisplayName" placeholder="例：田中 花子" autocomplete="name" maxlength="50" required />
+                </label>
+                <label class="auth-field">
+                  <span class="auth-label">メールアドレス</span>
+                  <input type="email" id="s1SignupEmail" placeholder="example@email.com" autocomplete="email" required />
+                </label>
+                <label class="auth-field">
+                  <span class="auth-label">パスワード</span>
+                  <input type="password" id="s1SignupPassword" placeholder="8文字以上" autocomplete="new-password" minlength="8" required />
+                </label>
+                <label class="auth-field">
+                  <span class="auth-label">パスワード（確認）</span>
+                  <input type="password" id="s1SignupPassword2" placeholder="もう一度入力" autocomplete="new-password" minlength="8" required />
+                </label>
+                <label class="auth-terms">
+                  <input type="checkbox" id="s1Terms" required />
+                  <span><a href="#" id="s1TermsLink" class="auth-terms-link">利用規約</a>に同意する</span>
+                </label>
+                <button type="submit" class="btn primary auth-submit">アカウントを作成</button>
+                <p class="auth-hint">登録後、すぐに旅行プランの作成を始められます。</p>
+                <p class="auth-error" id="s1SignupError"></p>
+              </form>
+            </div>
 
             <div id="oauthErrorMsg" class="auth-error" style="display:none;margin-top:.5rem">
               ログインに失敗しました。もう一度お試しください。
@@ -380,10 +414,29 @@
             <button class="chip" data-val="shopping">🛍 ショッピング</button>
             <button class="chip" data-val="nightview">🌃 夜景</button>
             <button class="chip" data-val="tradition">🏛 伝統文化</button>
-            <button class="chip" data-val="hallyu">🎵 韓流・K-pop</button>
+            <button class="chip" data-val="drama">🎭 ドラマ</button>
+            <button class="chip" data-val="kpop">🎵 K-pop</button>
+            <button class="chip" data-val="cafe">☕ カフェ巡り</button>
             <button class="chip" data-val="nature">🌿 自然</button>
             <button class="chip" data-val="photo">📸 フォトスポット</button>
             <button class="chip" data-val="sports">🏟 スポーツ観戦</button>
+            <button class="chip" data-val="vacation">🏖 バカンス</button>
+          </div>
+          <div id="vacationDetailBlock" class="wiz-sub-block" style="display:none;margin-top:1rem">
+            <div class="wiz-section-label">バカンスの宿タイプ <span class="opt">複数選択可</span></div>
+            <div class="chip-grid" id="vacationChips">
+              <button class="chip" data-val="poolvilla">🏊 プールヴィラ</button>
+              <button class="chip" data-val="pension">🏡 ペンション</button>
+            </div>
+          </div>
+          <div id="sportsDetailBlock" class="wiz-sub-block" style="display:none;margin-top:1rem">
+            <div class="wiz-section-label">観戦する競技 <span class="opt">複数選択可</span></div>
+            <div class="chip-grid" id="sportsChips">
+              <button class="chip" data-val="soccer">⚽ サッカー</button>
+              <button class="chip" data-val="baseball">⚾ 野球</button>
+              <button class="chip" data-val="basketball">🏀 バスケ</button>
+              <button class="chip" data-val="volleyball">🏐 バレー</button>
+            </div>
           </div>
         </div>
       </section>
@@ -457,12 +510,31 @@
                 <button class="chip" data-val="wheelchair">♿ ベビーカー・車椅子</button>
               </div>
             </div>
+            <div class="add-group add-group--wide">
+              <div class="wiz-section-label">好きな韓国料理メニュー <span class="opt">複数選択可</span></div>
+              <p class="accom-search-hint">選んだメニューが食べられる<strong>韓国料理店</strong>を、プランの昼食・夕食に優先します（配達専門店は除外）。</p>
+              <div class="chip-grid" id="foodPreferenceChips">
+                <button class="chip" data-val="grilled_meat">🥩 焼肉・サムギョプサル</button>
+                <button class="chip" data-val="stew">🍲 チゲ・鍋・チョンタン</button>
+                <button class="chip" data-val="noodles">🍜 麺類（冷麺・チャジャン等）</button>
+                <button class="chip" data-val="seafood">🦐 海鮮・生魚</button>
+                <button class="chip" data-val="chicken">🍗 韓国チキン・タッカン</button>
+                <button class="chip" data-val="gukbap">🍲 국밥（곰탕・설렁탕など）</button>
+                <button class="chip" data-val="rice_meal">🍚 ビビンバ・石焼・定食</button>
+                <button class="chip" data-val="soup">🥣 スープ・寄せ鍋</button>
+                <button class="chip" data-val="jeon">🥞 チヨン・海鮮チヨン</button>
+                <button class="chip" data-val="street">🌭 屋台・スンデ</button>
+                <button class="chip" data-val="cafe_sweet">☕ コーヒー・カフェ</button>
+                <button class="chip" data-val="healthy">🥗 野菜・ヘルシー韓食</button>
+              </div>
+            </div>
             <div class="add-group">
-              <div class="wiz-section-label">食事制限</div>
-              <div class="chip-grid" id="foodRestrictionChips">
-                <button class="chip" data-val="spicy">🌶 辛いもの苦手</button>
+              <div class="wiz-section-label">避けたいこと <span class="opt">任意</span></div>
+              <div class="chip-grid" id="foodAvoidChips">
+                <button class="chip" data-val="no_spicy">🌶 辛いもの苦手</button>
                 <button class="chip" data-val="allergy">⚕ アレルギーあり</button>
                 <button class="chip" data-val="vegan">🥗 ベジタリアン</button>
+                <button class="chip" data-val="no_pork">🐷 豚肉なし</button>
               </div>
             </div>
             <div class="add-group">
@@ -472,13 +544,19 @@
                 <button class="chip" data-val="relaxed">☁ のんびり余裕</button>
               </div>
             </div>
-            <div class="add-group">
-              <div class="wiz-section-label">韓流の関心</div>
-              <div class="chip-grid" id="hallyuChips">
-                <button class="chip" data-val="drama">🎭 ドラマ</button>
-                <button class="chip" data-val="kpop">🎵 K-pop</button>
-                <button class="chip" data-val="cafe">☕ カフェ巡り</button>
-                <button class="chip" data-val="traditional">🏛 伝統文化</button>
+            <div class="add-group add-group--wide">
+              <div class="wiz-section-label">好みの旅行スタイル <span class="opt">複数選択可</span></div>
+              <p class="accom-search-hint">あなたに合ったプラン構成の参考にします。</p>
+              <div class="chip-grid" id="travelStyleChips">
+                <button class="chip" data-val="experience">🎯 体験・アクティビティ</button>
+                <button class="chip" data-val="sns_hot">📱 SNS人気スポット</button>
+                <button class="chip" data-val="nature">🌲 自然と一緒に</button>
+                <button class="chip" data-val="must_see">📍 有名観光地は必須</button>
+                <button class="chip" data-val="healing">🧘 ゆったり癒し</button>
+                <button class="chip" data-val="culture">🎨 文化・芸術・歴史</button>
+                <button class="chip" data-val="local_vibe">✨ 旅行地の雰囲気たっぷり</button>
+                <button class="chip" data-val="shop_hard">🛒 ショッピングは本気</button>
+                <button class="chip" data-val="food_first">🍽 観光よりグルメ</button>
               </div>
             </div>
             <div class="add-group">
@@ -516,7 +594,23 @@
             <div class="plan-source-badge plan-source-badge--primary">
               📚 K-Culture 관광 콘텐츠 특화 일본어 말뭉치 데이터 기반 — 全体旅行プラン
             </div>
-            <div class="plan-content" id="planContent"></div>
+
+            <div id="planMapShell" class="plan-map-shell" style="display:none" aria-label="旅行ルートマップ">
+              <div class="plan-map-header">
+                <h3 id="planMapTitle" class="plan-map-title">旅行ルート</h3>
+                <p id="planMapSubtitle" class="plan-map-subtitle">マップの番号順にスポットを巡るルートです。</p>
+              </div>
+              <div id="planMapStatus" class="plan-map-status" style="display:none" role="status"></div>
+              <div id="planMapCanvas" class="plan-map-canvas"></div>
+              <div id="planMapFallback" class="plan-map-fallback" style="display:none"></div>
+              <div id="planDayTabs" class="plan-day-tabs" role="tablist"></div>
+              <div id="planDayStops" class="plan-day-stops"></div>
+            </div>
+
+            <details class="plan-text-details" open>
+              <summary class="plan-text-summary">📋 テキスト詳細プラン</summary>
+              <div class="plan-content" id="planContent"></div>
+            </details>
 
             <div id="planRefsBlock" class="plan-refs-block">
               <div class="plan-source-badge plan-source-badge--refs">
@@ -532,7 +626,8 @@
             </div>
             <div class="plan-actions">
               <a href="/chat/" class="btn primary">💬 AIチャットで詳しく聞く</a>
-              <button class="btn wiz-btn-outline" id="btnRestart">最初からやり直す</button>
+              <button type="button" class="btn wiz-btn-outline" id="btnRerollPlan">🔄 別のプランを生成</button>
+              <button type="button" class="btn wiz-btn-outline" id="btnRestart">最初からやり直す</button>
             </div>
           </div>
 
@@ -551,6 +646,7 @@
     </div>
   </div><!-- /.wizard-container -->
 
+  <script src="/plan-map.js"></script>
   <script src="/wizard.js"></script>
 </body>
 </html>

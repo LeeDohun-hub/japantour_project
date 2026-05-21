@@ -29,11 +29,15 @@ async function init() {
   setupChipGroup("budgetStyleChips",     true);
   setupChipGroup("companionChips",       true);
   setupChipGroup("mobilityChips",        true);
-  setupChipGroup("foodRestrictionChips", false);
+  setupChipGroup("foodPreferenceChips", false);
+  setupChipGroup("foodAvoidChips",        false);
   setupChipGroup("paceChips",            true);
-  setupChipGroup("hallyuChips",          false);
   setupChipGroup("languageChips",        true);
+  setupChipGroup("vacationChips",        false);
   setupChipGroup("sportsChips",          false);
+  setupChipGroup("travelStyleChips",     false);
+  setupSportsDetailToggle();
+  setupVacationDetailToggle();
   setupStep6();
   setupNavigation();
   setupTransportInfo();
@@ -42,7 +46,6 @@ async function init() {
   setupHotelManualSearch();
   setupAccomSearch();
   setupAccomDetailSearch();
-  setupSportsDetailToggle();
 
   const params = new URLSearchParams(location.search);
   const oauthError = params.get("oauth_error") === "1";
@@ -136,11 +139,18 @@ function setupNavigation() {
   });
 
   $("btnRestart")?.addEventListener("click", () => {
+    if (window.PlanMapView?.destroy) window.PlanMapView.destroy();
     wizardData = {};
     _selectedAccomPlace = null;
     const regionIn = $("regionCitiesInput");
     if (regionIn) regionIn.value = "";
     goToStep(1);
+  });
+
+  $("btnRerollPlan")?.addEventListener("click", () => {
+    collect(7);
+    generatePlan(true);
+    window.scrollTo(0, 0);
   });
 }
 
@@ -232,8 +242,12 @@ function collect(step) {
       else delete wizardData.regionCities;
       wizardData.activities = chips("activityChips");
       wizardData.sports     = chips("sportsChips");
+      wizardData.vacationTypes = chips("vacationChips");
       if (wizardData.activities.includes("sports") && !wizardData.sports.length) {
         wizardData.sports = ["sports"];
+      }
+      if (!wizardData.activities.includes("vacation")) {
+        wizardData.vacationTypes = [];
       }
       break;
     }
@@ -250,9 +264,10 @@ function collect(step) {
       wizardData.additional = {
         companion:        chips("companionChips")[0]  || "",
         mobility:         chips("mobilityChips")[0]   || "",
-        foodRestrictions: chips("foodRestrictionChips"),
+        foodPreferences:  chips("foodPreferenceChips"),
+        foodAvoid:        chips("foodAvoidChips"),
         pace:             chips("paceChips")[0]        || "",
-        hallyu:           chips("hallyuChips"),
+        travelStyles:     chips("travelStyleChips"),
         language:         chips("languageChips")[0]   || "jp_first",
         note:             $("additionalNote")?.value  || "",
       };
@@ -267,54 +282,166 @@ function chips(id) {
 }
 
 // ── STEP 1: AUTH ──────────────────────────────────────────────────────────
+function switchAuthTab(tab) {
+  const isLogin = tab === "login";
+  document.querySelectorAll(".auth-panel-tab").forEach((btn) => {
+    const active = btn.dataset.authTab === tab;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  const loginForm = $("s1LoginForm");
+  const signupForm = $("s1SignupForm");
+  if (loginForm) loginForm.style.display = isLogin ? "flex" : "none";
+  if (signupForm) signupForm.style.display = isLogin ? "none" : "flex";
+  const errLogin = $("s1LoginError");
+  const errSignup = $("s1SignupError");
+  if (errLogin) errLogin.textContent = "";
+  if (errSignup) errSignup.textContent = "";
+}
+
 function setupStep1() {
   $("btnLogout")?.addEventListener("click", handleLogout);
   $("btnNavLogout")?.addEventListener("click", handleLogout);
 
-  $("step1Form")?.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const username = $("s1Username").value.trim();
-    const password = $("s1Password").value;
-    const errEl = $("s1Error");
-    errEl.textContent = "";
-    try {
-      const res  = await fetch("/api/auth/login/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) { errEl.textContent = data.detail || "ログイン失敗"; return; }
-      setLoggedIn(data.user);
-      goToStep(2);
-    } catch { errEl.textContent = "ネットワークエラー"; }
+  document.querySelectorAll(".auth-panel-tab").forEach((btn) => {
+    btn.addEventListener("click", () => switchAuthTab(btn.dataset.authTab || "login"));
   });
 
-  $("s1BtnSignup")?.addEventListener("click", async () => {
-    const username = $("s1Username").value.trim();
-    const password = $("s1Password").value;
-    const errEl = $("s1Error");
-    errEl.textContent = "";
-    if (!username || password.length < 8) {
-      errEl.textContent = "ユーザー名と8文字以上のパスワードを入力してください";
+  $("s1TermsLink")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    alert(
+      "【利用規約（概要）】\n\n" +
+        "・本サービスは韓国旅行プラン作成の補助を目的とします。\n" +
+        "・入力いただいた情報はプラン作成・ログイン管理に利用します。\n" +
+        "・外部OAuth（Google/LINE）またはメール登録でログインできます。\n" +
+        "・詳細な規約は運営者にお問い合わせください。"
+    );
+  });
+
+  $("s1LoginForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = $("s1LoginEmail")?.value.trim() || "";
+    const password = $("s1LoginPassword")?.value || "";
+    const errEl = $("s1LoginError");
+    const btn = e.submitter;
+    if (errEl) errEl.textContent = "";
+    if (!email || !password) {
+      if (errEl) errEl.textContent = "メールアドレスとパスワードを入力してください";
       return;
     }
+    if (btn) btn.disabled = true;
     try {
-      const res  = await fetch("/api/auth/register/", {
+      const res = await fetch("/api/auth/login/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        credentials: "same-origin",
+        body: JSON.stringify({ email, password }),
       });
       const data = await res.json();
-      if (!res.ok) { errEl.textContent = data.detail || "登録失敗"; return; }
+      if (!res.ok) {
+        if (errEl) errEl.textContent = data.detail || "ログインに失敗しました";
+        return;
+      }
       setLoggedIn(data.user);
       goToStep(2);
-    } catch { errEl.textContent = "ネットワークエラー"; }
+    } catch {
+      if (errEl) errEl.textContent = "ネットワークエラー";
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  $("s1SignupForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const display_name = $("s1DisplayName")?.value.trim() || "";
+    const email = $("s1SignupEmail")?.value.trim() || "";
+    const password = $("s1SignupPassword")?.value || "";
+    const password_confirm = $("s1SignupPassword2")?.value || "";
+    const terms_accepted = $("s1Terms")?.checked;
+    const errEl = $("s1SignupError");
+    const btn = e.submitter;
+    if (errEl) errEl.textContent = "";
+
+    if (!display_name) {
+      if (errEl) errEl.textContent = "表示名を入力してください";
+      return;
+    }
+    if (!email) {
+      if (errEl) errEl.textContent = "メールアドレスを入力してください";
+      return;
+    }
+    if (password.length < 8) {
+      if (errEl) errEl.textContent = "パスワードは8文字以上必要です";
+      return;
+    }
+    if (password !== password_confirm) {
+      if (errEl) errEl.textContent = "パスワード（確認）が一致しません";
+      return;
+    }
+    if (!terms_accepted) {
+      if (errEl) errEl.textContent = "利用規約への同意が必要です";
+      return;
+    }
+
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch("/api/auth/register/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          display_name,
+          email,
+          password,
+          password_confirm,
+          terms_accepted: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (errEl) errEl.textContent = data.detail || "登録に失敗しました";
+        return;
+      }
+      setLoggedIn(data.user);
+      goToStep(2);
+    } catch {
+      if (errEl) errEl.textContent = "ネットワークエラー";
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   });
 }
 
+function _isOAuthInternalName(s) {
+  return /^google_\d+$/i.test(s) || /^line_[\w-]+$/i.test(s);
+}
+
 function _displayName(user) {
-  return (user.display_name || user.username || "ゲスト").trim();
+  const name = (user.display_name || "").trim();
+  if (name && !_isOAuthInternalName(name)) return name;
+  const email = (user.email || "").trim();
+  if (email && email.includes("@")) {
+    const local = email.split("@")[0].trim();
+    if (local && !/^google/i.test(local)) return local;
+  }
+  return "ゲスト";
+}
+
+function _planLoadingTitle(user) {
+  const n = _displayName(user);
+  return n === "ゲスト"
+    ? "あなた専用の旅行プランを作成しています…"
+    : `${n}さんの旅行プランを作成しています…`;
+}
+
+function _planResultTitle(user) {
+  const n = _displayName(user);
+  return n === "ゲスト" ? "あなたの旅行プラン" : `${n}さんの旅行プラン`;
+}
+
+function _promptGreeting(user) {
+  const n = _displayName(user);
+  return n === "ゲスト" ? "あなた専用の" : `${n}さんの`;
 }
 
 function setLoggedIn(user) {
@@ -333,7 +460,7 @@ function setLoggedIn(user) {
 
 async function handleLogout() {
   try {
-    await fetch("/api/auth/logout/", { method: "POST" });
+    await fetch("/api/auth/logout/", { method: "POST", credentials: "same-origin" });
   } catch (_) {}
   currentUser = null;
   delete wizardData.user;
@@ -346,6 +473,8 @@ async function handleLogout() {
   if (lbl) lbl.textContent = "";
   const navLogout = $("btnNavLogout");
   if (navLogout) navLogout.style.display = "none";
+  ["s1LoginForm", "s1SignupForm"].forEach((id) => $(id)?.reset());
+  switchAuthTab("login");
   goToStep(1);
 }
 
@@ -651,9 +780,12 @@ function renderFlightSelectCard(f, idx, leg = "arrival") {
         : "";
   const delay = f.arr_delay > 0 ? `<span class="fsc-delay">+${f.arr_delay}분 지연</span>` : "";
   const days = f.operating_days ? `<span class="fsc-days">${f.operating_days}</span>` : "";
-  const aliases = (f.codeshare_aliases || []);
-  const aliasHtml = aliases.length
-    ? `<span class="fsc-aliases">+ ${aliases.join(" · ")}</span>`
+  const aliases = [...new Set((f.codeshare_aliases || []).filter(Boolean))];
+  const MAX_ALIASES = 4;
+  const aliasShown = aliases.slice(0, MAX_ALIASES);
+  const aliasMore = aliases.length > MAX_ALIASES ? ` 외 ${aliases.length - MAX_ALIASES}편` : "";
+  const aliasHtml = aliasShown.length
+    ? `<span class="fsc-aliases">+ ${aliasShown.join(" · ")}${aliasMore}</span>`
     : "";
   return `
 <div class="flight-sel-card" data-idx="${idx}">
@@ -752,6 +884,25 @@ function syncSportsDetail() {
   }
 }
 
+function setupVacationDetailToggle() {
+  const activityEl = $("activityChips");
+  if (activityEl) {
+    activityEl.addEventListener("click", () => setTimeout(syncVacationDetail, 0));
+  }
+}
+
+function syncVacationDetail() {
+  const block = $("vacationDetailBlock");
+  if (!block) return;
+  const show = chips("activityChips").includes("vacation");
+  block.style.display = show ? "block" : "none";
+  if (!show) {
+    $("vacationChips")?.querySelectorAll(".chip.selected").forEach((c) => {
+      c.classList.remove("selected");
+    });
+  }
+}
+
 // ── KOREAN ADDRESS DATA ───────────────────────────────────────────────────
 const ADDR_DATA = {
   "서울특별시":      ["강남구","강동구","강북구","강서구","관악구","광진구","구로구","금천구","노원구","도봉구","동대문구","동작구","마포구","서대문구","서초구","성동구","성북구","송파구","양천구","영등포구","용산구","은평구","종로구","중구","중랑구"],
@@ -774,6 +925,8 @@ const ADDR_DATA = {
 };
 
 // ── PLAN GENERATION ───────────────────────────────────────────────────────
+let _planRerollCount = 0;
+
 const PLAN_MSGS = [
   "情報を整理しています...",
   "旅行データを分析しています...",
@@ -781,16 +934,27 @@ const PLAN_MSGS = [
   "プランを生成しています...",
 ];
 
-async function generatePlan() {
+function _collectPlanPlaceNames(reply, places) {
+  const names = new Set();
+  for (const p of _placesLinkedInPlan(reply, places)) {
+    if (p.name) names.add(p.name.trim());
+  }
+  for (const ln of (reply || "").split(/\r?\n/)) {
+    const m = ln.match(/^\[(?:午前|午後|昼食|夕食|夜)\]\s*(.+?)(?:\s*（|\s*$)/);
+    if (m && m[1].length < 80) names.add(m[1].trim());
+  }
+  return [...names].slice(0, 30);
+}
+
+async function generatePlan(isReroll = false) {
   const barEl    = $("planBar");
   const pctEl    = $("planPct");
   const statusEl = $("planStatus");
-  const userName = _displayName(currentUser || {});
-
-  $("planTitle").textContent     = `${userName}さんの旅行プランを生成中...`;
+  $("planTitle").textContent     = _planLoadingTitle(currentUser || {});
   $("planLoadingArea").style.display = "block";
   $("planOutputArea").style.display  = "none";
   $("planErrorArea").style.display   = "none";
+  if (window.PlanMapView?.destroy) window.PlanMapView.destroy();
 
   let progress = 0;
   const timer = setInterval(() => {
@@ -804,16 +968,29 @@ async function generatePlan() {
     pctEl.textContent    = Math.floor(progress) + "%";
   }, 300);
 
+  if (isReroll) {
+    _planRerollCount += 1;
+    wizardData.plan_reroll = _planRerollCount;
+    wizardData.plan_variant_seed = Date.now();
+  } else {
+    _planRerollCount = 0;
+    wizardData.plan_reroll = 0;
+    delete wizardData.plan_variant_seed;
+    delete wizardData.avoid_place_names;
+  }
+
+  const profilePayload = { ...wizardData };
+
   try {
     const res  = await fetch("/api/chat/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        message:         buildPrompt(),
+        message:         buildPrompt(isReroll),
         reply_language:  "日本語",
         session_id:      null,
         history:         [],
-        traveler_profile: wizardData,
+        traveler_profile: profilePayload,
       }),
     });
     const data = await res.json();
@@ -823,7 +1000,7 @@ async function generatePlan() {
 
     setTimeout(async () => {
       $("planLoadingArea").style.display = "none";
-      $("planTitle").textContent = `${userName}さんの旅行プラン`;
+      $("planTitle").textContent = _planResultTitle(currentUser || {});
       await _displayPlanOutput(data);
       $("planOutputArea").style.display = "block";
     }, 400);
@@ -836,13 +1013,20 @@ async function generatePlan() {
   }
 }
 
-function buildPrompt() {
+function buildPrompt(isReroll = false) {
   const d = wizardData;
   const sym = d.budget?.currency === "KRW" ? "₩" : "¥";
   const rMap = { seoul:"ソウル", gyeonggi:"京畿道", incheon:"仁川", gangwon:"江原道",
                  chungcheong:"忠清道", jeolla:"全羅道", gyeongsang:"慶尚道", jeju:"済州島" };
   const aMap = { food:"グルメ", shopping:"ショッピング", nightview:"夜景", tradition:"伝統文化",
-                 hallyu:"韓流", nature:"自然", photo:"フォトスポット", sports:"スポーツ観戦" };
+                 hallyu:"韓流・K-pop", drama:"ドラマ", kpop:"K-pop", cafe:"カフェ巡り",
+                 nature:"自然", photo:"フォトスポット", sports:"スポーツ観戦", vacation:"バカンス" };
+  const vacMap = { poolvilla:"プールヴィラ", pension:"ペンション" };
+  const tsMap = {
+    experience:"体験・アクティビティ", sns_hot:"SNS人気スポット", nature:"自然と一緒に",
+    must_see:"有名観光地は必須", healing:"ゆったり癒し", culture:"文化・芸術・歴史",
+    local_vibe:"旅行地の雰囲気たっぷり", shop_hard:"ショッピングは本気", food_first:"観光よりグルメ",
+  };
   const tMap = { rail:"鉄道・地下鉄（AREX・広域鉄道）", taxi:"タクシー", bus:"空港バス", rental:"レンタカー",
                  arex:"鉄道・地下鉄（AREX）", subway:"鉄道・地下鉄" }; // 하위호환
   const cMap = { solo:"一人旅", couple:"カップル", friends:"友人", family:"ファミリー", parents:"親孝行" };
@@ -850,7 +1034,7 @@ function buildPrompt() {
   const sMap = { budget:"コスパ重視", normal:"バランス", premium:"プレミアム" };
 
   const lines = [
-    `${_displayName(currentUser || {})}さんの韓国旅行プランを日本語で作成してください。以下の情報を基に、日程ごとの具体的なプランを提案してください。`,
+    `${_promptGreeting(currentUser || {})}韓国旅行プランを日本語で作成してください。以下の情報を基に、日程ごとの具体的なプランを提案してください。`,
   ];
 
   if (d.flight) {
@@ -916,7 +1100,13 @@ function buildPrompt() {
   if (d.regionCities)
     lines.push(`【重点都市・区】${d.regionCities}（この都市を中心に日程・食事を組むこと）`);
   const spMap = { soccer:"サッカー観戦", baseball:"野球観戦", basketball:"バスケ観戦", volleyball:"バレー観戦", sports:"スポーツ観戦（全競技）" };
-  const actFiltered = (d.activities || []).filter((a) => a !== "sports");
+  const legacyHallyu = (d.additional?.hallyu || []).filter((h) => h !== "traditional");
+  const actMerged = [...(d.activities || [])];
+  for (const h of legacyHallyu) {
+    const v = h === "hallyu" ? "kpop" : h;
+    if (v && !actMerged.includes(v)) actMerged.push(v);
+  }
+  const actFiltered = actMerged.filter((a) => a !== "sports");
   const activityParts = actFiltered.map((a) => aMap[a] || a);
   const sportParts = (d.sports || []).map((s) => spMap[s] || s);
   if (activityParts.length) {
@@ -924,6 +1114,12 @@ function buildPrompt() {
   }
   if (sportParts.length) {
     lines.push(`【スポーツ観戦】${sportParts.join("・")} — Reference Dataの試合日程をプランに組み込むこと`);
+  }
+  const vacParts = (d.vacationTypes || []).map((v) => vacMap[v] || v);
+  if (vacParts.length || actMerged.includes("vacation")) {
+    lines.push(
+      `【バカンス】${vacParts.length ? vacParts.join("・") : "バカンス"} — プールヴィラ・ペンション・リゾート滞在を意識した日程にすること`
+    );
   }
 
   if (d.budget?.total) {
@@ -938,14 +1134,37 @@ function buildPrompt() {
     const parts = [];
     if (add.companion)              parts.push(cMap[add.companion]||add.companion);
     if (add.pace)                   parts.push(pMap[add.pace]||add.pace);
-    if (add.foodRestrictions?.length) {
-      const frMap = {
-        spicy:   "辛いものは苦手（辛い料理は避ける）",
-        allergy: "アレルギーあり",
-        vegan:   "ベジタリアン向けを優先",
-      };
-      const frLabels = add.foodRestrictions.map((f) => frMap[f] || f);
-      parts.push(`食事制限:${frLabels.join("・")}`);
+    const prefMap = {
+      grilled_meat: "焼肉・サムギョプサル", stew: "チゲ・鍋・チョンタン", noodles: "麺類",
+      seafood: "海鮮・生魚", chicken: "韓国チキン", gukbap: "국밥（곰탕・설렁탕）",
+      rice_meal: "ビビンバ・石焼・定食",
+      soup: "クッパ・寄せ鍋", jeon: "チヨン", street: "屋台・スンデ",
+      cafe_sweet: "カフェ・韓国スイーツ", healthy: "野菜・ヘルシー韓食",
+    };
+    const avoidMap = {
+      no_spicy: "辛いものは苦手", allergy: "アレルギーあり", vegan: "ベジタリアン",
+      no_pork: "豚肉なし",
+      spicy: "辛いものは苦手", // 旧データ互換
+    };
+    const prefs = add.foodPreferences?.length
+      ? add.foodPreferences
+      : [];
+    const avoid = [
+      ...(add.foodAvoid || []),
+      ...(add.foodRestrictions || []).filter((x) => x !== "vegan" || !prefs.includes("healthy")),
+    ];
+    if (prefs.length) {
+      lines.push(
+        `【食事の好み】${prefs.map((p) => prefMap[p] || p).join("・")} — 韓国料理店で上記メニューが食べられる店を昼食・夕食に優先（配達専門・持ち帰り専門店は不可）`
+      );
+    }
+    if (avoid.length) {
+      const avoidUnique = [...new Set(avoid.map((a) => avoidMap[a] || a))];
+      lines.push(`【食事で避ける】${avoidUnique.join("・")}`);
+    }
+    if (add.travelStyles?.length) {
+      const tsLabels = add.travelStyles.map((t) => tsMap[t] || t);
+      parts.push(`好みの旅行スタイル:${tsLabels.join("・")}`);
     }
     if (add.note)                   parts.push(add.note);
     if (parts.length) lines.push(`【その他】${parts.join("、")}`);
@@ -954,9 +1173,19 @@ function buildPrompt() {
   if (d.accommodation?.type === "friend" || (d.accommodation?.address || "").includes("고양")) {
     lines.push("【到着日】友人宅・京畿道宿泊のため、1日目の夕食は高陽・宿泊近郊のみ。明洞・弘大への移動は2日目以降。");
   }
+  if (isReroll) {
+    const avoid = wizardData.avoid_place_names || [];
+    lines.push(
+      "【プラン再生成】前回とは別の店・観光スポットを優先すること。Reference Data内の別候補を積極的に使う。",
+      avoid.length
+        ? `【前回使用した店・スポット（今回は使わない）】${avoid.join("、")}`
+        : "【前回使用した店・スポット】直前プランに出た店名・施設名はできるだけ避け、別の候補を選ぶ。",
+    );
+  }
   lines.push(
     "\n地図アプリへの検索依頼は禁止。",
-    "【食事】Reference Dataのレストラン名を昼食・夕食ブロックに必ず記載し、GoogleマップURLを付ける。データがなければ料理ジャンル＋エリアのみ。",
+    "【表示形式】時刻レンジ（例:[10:00〜11:00]）は書かない。各日は「①②③」または「午前」「昼食」「午後」「夕食」の順序で、ゆったりした旅行プランに見える構成にする。",
+    "【食事】韓国料理店（한식）で【食事の好み】に合う店を選ぶ。ウェディングホール・配達専門は禁止。店名＋GoogleマップURLを昼食・夕食に記載。",
     "【スポーツ】Sports Schedule Resultsの試合またはオフシーズン案内をそのまま記載。ジム・ストリートへの置き換え禁止。",
     "営業時間・料金・チケットは文末で一言のみ。"
   );
@@ -1453,6 +1682,9 @@ function _renderPlacesResults(places, { resultsEl, mode }) {
 
 // ── PLAN HTML RENDERER ────────────────────────────────────────────────────
 const _PLAN_MAPS_URL_RE = /^https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps)\/\S+/i;
+const _PLAN_MAPS_URL_EXTRACT =
+  /https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps)\/[^\s\]<")]+/gi;
+const _PLAN_TICKET_URL_RE = /^https?:\/\/(?:tickets\.)?interpark\.com\/\S+/i;
 
 function _escapeHtml(s) {
   return String(s || "").replace(/[&<>"']/g, (c) =>
@@ -1461,41 +1693,103 @@ function _escapeHtml(s) {
 }
 
 function _mapsUrlKey(url) {
-  const m = url.match(/[?&]cid=(\d+)/);
-  return m ? `cid:${m[1]}` : url.split("&g_mp=")[0].split("&")[0];
+  const m = String(url).match(/[?&]cid=(\d+)/);
+  return m ? `cid:${m[1]}` : String(url).split("&g_mp=")[0].split("&")[0];
 }
 
-function _buildPlaceIndex(apiPlaces) {
-  const idx = {};
-  for (const p of apiPlaces) {
+function _normalizePlaceName(s) {
+  return String(s || "")
+    .replace(/[『』「」'"`\u2018\u2019\u201C\u201D]/g, "")
+    .replace(/\s+/g, "")
+    .toLowerCase();
+}
+
+function _buildPlaceIndexes(apiPlaces) {
+  const byUrl = {};
+  const byName = {};
+  for (const p of apiPlaces || []) {
     const uri = p.google_maps_uri || p.maps_url;
-    if (uri) idx[_mapsUrlKey(uri)] = p;
+    if (uri) byUrl[_mapsUrlKey(uri)] = p;
+    const nk = _normalizePlaceName(p.name);
+    if (nk && !byName[nk]) byName[nk] = p;
   }
-  return idx;
+  return { byUrl, byName };
+}
+
+/** @deprecated use _buildPlaceIndexes — PlanMapView 호환 */
+function _buildPlaceIndex(apiPlaces) {
+  return _buildPlaceIndexes(apiPlaces).byUrl;
 }
 
 function _extractMapsUrlsFromPlan(text) {
   const found = new Set();
-  for (const line of text.split(/\r?\n/)) {
-    const t = line.trim();
-    if (_PLAN_MAPS_URL_RE.test(t)) found.add(t.split(/\s/)[0]);
-  }
+  const re = new RegExp(_PLAN_MAPS_URL_EXTRACT.source, "gi");
+  let m;
+  while ((m = re.exec(text)) !== null) found.add(m[0]);
   return [...found];
 }
 
-function _queryLabelForUrl(lines, url) {
-  const i = lines.findIndex((ln) => ln.trim().startsWith(url) || ln.includes(url));
-  if (i <= 0) return "";
+function _extractUrlsFromLine(line) {
+  const re = new RegExp(_PLAN_MAPS_URL_EXTRACT.source, "gi");
+  return [...line.matchAll(re)].map((m) => m[0]);
+}
+
+function _isEchoCardLine(t) {
+  const s = String(t || "").trim();
+  if (!s) return true;
+  if (/^[★⭐][\d.]/u.test(s)) return true;
+  if (/^\([\d,.\s件건]+?\)\s*$/.test(s)) return true;
+  if (/^(営業中|영업\s*중|時間外|営業時間外)/i.test(s)) return true;
+  if (/^(地図|経路|지도|통로|ルート|Map|Directions)$/i.test(s)) return true;
+  if (/^[¥￥$€]+\s*$/.test(s)) return true;
+  if (/^주소\s*[:：]/i.test(s)) return true;
+  if (/^住所\s*[:：]/.test(s)) return true;
+  if (/^\d+[\d\-.,\s]+(ro|gu|si|do|kyeonggi|seoul)/i.test(s) && s.length < 120) return true;
+  return false;
+}
+
+function _nameKeysFromLine(line) {
+  const keys = [];
+  const quoted = [...line.matchAll(/[『「']([^』」']+)[』」']|[「『]([^」』]+)[」』]/g)];
+  for (const m of quoted) keys.push(_normalizePlaceName(m[1] || m[2]));
+  const bare = line.match(
+    /([\u3131-\uD79D]{2,}(?:한우|마을|식당|카페|공원|역|몰|호텔|박물관|시장|맛집|레스토랑|restaurant|cafe|park|station))/i
+  );
+  if (bare) keys.push(_normalizePlaceName(bare[1]));
+  return keys.filter(Boolean);
+}
+
+function _queryLabelForUrl(lines, url, lineIdx) {
+  const i =
+    lineIdx != null
+      ? lineIdx
+      : lines.findIndex((ln) => ln.includes(url));
+  if (i < 0) return "";
+  const same = lines[i].trim();
+  const prefix = same.split(url)[0].replace(/[:：]\s*$/, "").trim();
+  if (prefix && prefix.length >= 2 && prefix.length < 80) {
+    return prefix.replace(/^[-・*]\s*/, "").trim();
+  }
   for (let j = i - 1; j >= 0; j--) {
     const t = lines[j].trim();
-    if (!t || _PLAN_MAPS_URL_RE.test(t) || t.startsWith("http")) continue;
-    return t.replace(/^[-・*]\s*/, "").replace(/（[^）]*）$/g, "").trim();
+    if (!t || _isEchoCardLine(t)) continue;
+    if (_extractUrlsFromLine(t).length) continue;
+    return t
+      .replace(/^\[[\d:〜~\-]+\]\s*/, "")
+      .replace(/^[-・*]\s*/, "")
+      .replace(/（[^）]*）$/g, "")
+      .trim();
   }
   return "";
 }
 
-function _lookupPlace(index, url) {
-  return index[_mapsUrlKey(url)] || null;
+function _lookupPlace(indexes, url) {
+  return indexes.byUrl[_mapsUrlKey(url)] || null;
+}
+
+function _placeRenderKey(place) {
+  const uri = place?.google_maps_uri || place?.maps_url;
+  return uri ? _mapsUrlKey(uri) : _normalizePlaceName(place?.name);
 }
 
 function _directionsUrl(p) {
@@ -1531,32 +1825,174 @@ function _renderInlinePlaceCard(p) {
   return `<div class="plan-inline-spot"><article class="plan-place-card"><a class="plan-place-card__thumb-link" href="${_escapeHtml(thumbLink)}" target="_blank" rel="noopener">${thumb}</a><div class="plan-place-card__body"><h4 class="plan-place-card__name">${name}</h4>${meta ? `<div class="plan-place-card__meta">${meta}</div>` : ""}${addr}<div class="plan-place-card__actions">${mapsUri ? `<a href="${_escapeHtml(mapsUri)}" target="_blank" rel="noopener" class="plan-place-card__btn">地図</a>` : ""}<a href="${_escapeHtml(dirUri)}" target="_blank" rel="noopener" class="plan-place-card__btn plan-place-card__btn--route">経路</a></div></div></article></div>`;
 }
 
-function _formatPlanTextLine(line) {
-  return _escapeHtml(line).replace(/【(.*?)】/g, "<strong>【$1】</strong>");
+const _PLAN_CLOCK_RE = /\[[\d０-９]{1,2}\s*[:：]\s*[\d０-９]{2}[^\]]*\]/g;
+const _PLAN_DAY_HEAD_RE = /^(【\s*)?(\d+)\s*日目|^(【\s*)?最終日|帰国日|最終\s*日|^#{1,3}\s*\d+\s*日目/i;
+const _PLAN_SLOT_RE = /^\[(午前|午後|昼食|夕食|夜|朝食|朝|ランチ|ディナー)\]/;
+const _PLAN_STEP_RE = /^[①②③④⑤⑥⑦⑧⑨⑩]\s*/;
+
+function _stripPlanClocks(line) {
+  return (line || "")
+    .replace(_PLAN_CLOCK_RE, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
-function _renderPlanHtml(text, placeIndex) {
+function _isPlanDayHeader(line) {
+  const t = (line || "").trim();
+  return _PLAN_DAY_HEAD_RE.test(t) || /^Day\s*\d+/i.test(t);
+}
+
+function _isPlanSlotLabel(line) {
+  return _PLAN_SLOT_RE.test((line || "").trim());
+}
+
+function _formatPlanTextLine(line) {
+  return _escapeHtml(_stripPlanClocks(line)).replace(/【(.*?)】/g, "<strong>【$1】</strong>");
+}
+
+function _tryRenderPlaceCard(indexes, rendered, url) {
+  const key = _mapsUrlKey(url);
+  if (rendered.has(key)) return false;
+  const place = _lookupPlace(indexes, url);
+  if (!place) return false;
+  const pk = _placeRenderKey(place);
+  if (pk && rendered.has(pk)) return false;
+  rendered.add(key);
+  if (pk) rendered.add(pk);
+  return true;
+}
+
+function _renderPlanHtml(text, placeIndexes) {
   const lines = text.split(/\r?\n/);
   const out = [];
-  for (const line of lines) {
+  const rendered = new Set();
+  let timelineOpen = false;
+
+  const closeTimeline = () => {
+    if (timelineOpen) {
+      out.push("</ol></div>");
+      timelineOpen = false;
+    }
+  };
+
+  const openTimeline = (headingHtml) => {
+    closeTimeline();
+    out.push('<div class="plan-day-block">');
+    if (headingHtml) out.push(headingHtml);
+    out.push('<ol class="plan-timeline">');
+    timelineOpen = true;
+  };
+
+  const pushSlot = (labelHtml) => {
+    if (!timelineOpen) openTimeline("");
+    out.push(`<li class="plan-timeline-slot">${labelHtml}</li>`);
+  };
+
+  const pushStep = (innerHtml) => {
+    if (!timelineOpen) openTimeline("");
+    out.push(`<li class="plan-timeline-item"><div class="plan-timeline-body">${innerHtml}</div></li>`);
+  };
+
+  const emitCard = (place) => _renderInlinePlaceCard(place);
+
+  const processContentLine = (rawLine) => {
+    const line = _stripPlanClocks(rawLine);
     const trimmed = line.trim();
+    if (!trimmed || _isEchoCardLine(trimmed)) return;
+
+    if (_PLAN_TICKET_URL_RE.test(trimmed)) {
+      const ticketUrl = trimmed.split(/\s/)[0];
+      const label = trimmed.length > ticketUrl.length + 2 ? trimmed : "インターパーク チケット";
+      pushStep(
+        `<a href="${_escapeHtml(ticketUrl)}" target="_blank" rel="noopener" class="plan-ticket-link">🎫 ${_escapeHtml(label.replace(ticketUrl, "").trim() || "公演チケット")}</a>`
+      );
+      return;
+    }
+
+    const urls = _extractUrlsFromLine(line);
+    if (urls.length) {
+      let prose = line;
+      const cardParts = [];
+      for (const url of urls) {
+        const place = _lookupPlace(placeIndexes, url);
+        if (place && _tryRenderPlaceCard(placeIndexes, rendered, url)) {
+          cardParts.push(emitCard(place));
+        } else if (!rendered.has(_mapsUrlKey(url))) {
+          rendered.add(_mapsUrlKey(url));
+          cardParts.push(
+            `<a href="${_escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="plan-maps-fallback">${_escapeHtml(url)}</a>`
+          );
+        }
+        prose = prose.replace(url, "");
+      }
+      prose = prose.replace(/^\s*[^:：\n]{1,40}[:：]\s*$/u, "").trim();
+      if (prose && !_isEchoCardLine(prose)) {
+        pushStep(`<p class="plan-line">${_formatPlanTextLine(prose)}</p>${cardParts.join("")}`);
+      } else if (cardParts.length) {
+        pushStep(cardParts.join(""));
+      }
+      return;
+    }
+
     if (_PLAN_MAPS_URL_RE.test(trimmed)) {
       const url = trimmed.split(/\s/)[0];
-      const place = _lookupPlace(placeIndex, url);
-      if (place) {
-        out.push(_renderInlinePlaceCard(place));
-        continue;
+      const place = _lookupPlace(placeIndexes, url);
+      if (place && _tryRenderPlaceCard(placeIndexes, rendered, url)) {
+        pushStep(emitCard(place));
+      } else if (!rendered.has(_mapsUrlKey(url))) {
+        rendered.add(_mapsUrlKey(url));
+        pushStep(
+          `<a href="${_escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="plan-maps-fallback">${_escapeHtml(url)}</a>`
+        );
       }
-      const esc = _escapeHtml(trimmed);
-      out.push(`<a href="${esc}" target="_blank" rel="noopener noreferrer" class="plan-maps-fallback">${esc}</a>`);
+      return;
+    }
+
+    for (const nk of _nameKeysFromLine(trimmed)) {
+      const place = placeIndexes.byName[nk];
+      if (!place) continue;
+      const uri = place.google_maps_uri || place.maps_url;
+      if (uri && _tryRenderPlaceCard(placeIndexes, rendered, uri)) {
+        pushStep(emitCard(place));
+        return;
+      }
+    }
+
+    if (_isPlanSlotLabel(trimmed)) {
+      const slot = trimmed.match(_PLAN_SLOT_RE)?.[1] || trimmed;
+      pushSlot(`<span class="plan-slot-label">${_escapeHtml(slot)}</span>`);
+      const rest = trimmed.replace(_PLAN_SLOT_RE, "").trim();
+      if (rest) pushStep(`<p class="plan-line">${_formatPlanTextLine(rest)}</p>`);
+      return;
+    }
+
+    if (_PLAN_STEP_RE.test(trimmed)) {
+      pushStep(`<p class="plan-line">${_formatPlanTextLine(trimmed)}</p>`);
+      return;
+    }
+
+    if (/^【(予算|旅行)/.test(trimmed)) {
+      closeTimeline();
+      out.push(`<p class="plan-line plan-line--meta">${_formatPlanTextLine(trimmed)}</p>`);
+      return;
+    }
+
+    pushStep(`<p class="plan-line">${_formatPlanTextLine(trimmed)}</p>`);
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (!trimmed) continue;
+
+    if (_isPlanDayHeader(trimmed)) {
+      openTimeline(`<h3 class="plan-day-heading">${_formatPlanTextLine(trimmed)}</h3>`);
       continue;
     }
-    if (!trimmed) {
-      out.push('<div class="plan-line-spacer" aria-hidden="true"></div>');
-      continue;
-    }
-    out.push(`<p class="plan-line">${_formatPlanTextLine(line)}</p>`);
+
+    processContentLine(lines[i]);
   }
+
+  closeTimeline();
   return out.join("");
 }
 
@@ -1590,22 +2026,55 @@ function _renderVisitKoreaCards(stays, festivals, attractions) {
   return html;
 }
 
-function _renderPlanPlacesRefSection(places) {
-  if (!places.length) return "";
-  const cards = places.slice(0, 12).map((p) => _renderInlinePlaceCard(p)).join("");
-  return `<div class="plan-refs-section"><h3 class="plan-refs-title">📍 周辺スポット・飲食店（Google Places）</h3>
+function _placesLinkedInPlan(reply, places) {
+  const keys = new Set(_extractMapsUrlsFromPlan(reply).map(_mapsUrlKey));
+  if (!keys.size) return [];
+  return (places || []).filter((p) => {
+    const u = p.google_maps_uri || p.maps_url;
+    return u && keys.has(_mapsUrlKey(u));
+  });
+}
+
+const _FOOD_PREF_KW = {
+  chicken: ["치킨", "닭", "chicken", "フライド"],
+  gukbap: ["국밥", "곰탕", "설렁탕", "감자탕", "해장국", "순대국"],
+  cafe_sweet: ["카페", "커피", "coffee", "베이커리"],
+  grilled_meat: ["삼겹", "갈비", "한우", "고기", "고기마을", "정육"],
+  seafood: ["생선", "회", "해물", "구이", "어류"],
+  noodles: ["국수", "guksu", "국수집", "냉면", "칼국수"],
+};
+
+function _placeMatchesUserFoodPref(place) {
+  const prefs = wizardData.additional?.foodPreferences || [];
+  if (!prefs.length) return true;
+  const blob = `${place.name || ""} ${place.address || ""}`.toLowerCase();
+  if (!prefs.some((p) => (_FOOD_PREF_KW[p] || []).some((kw) => blob.includes(kw)))) return false;
+  const unselected = Object.keys(_FOOD_PREF_KW).filter((k) => !prefs.includes(k));
+  for (const k of unselected) {
+    if ((_FOOD_PREF_KW[k] || []).some((kw) => blob.includes(kw))) return false;
+  }
+  return true;
+}
+
+function _renderPlanPlacesRefSection(places, reply) {
+  let linked = _placesLinkedInPlan(reply, places);
+  linked = linked.filter((p) => _placeMatchesUserFoodPref(p));
+  if (!linked.length) return "";
+  const cards = linked.slice(0, 4).map((p) => _renderInlinePlaceCard(p)).join("");
+  return `<div class="plan-refs-section"><h3 class="plan-refs-title">📍 プラン内のスポット（Google Places）</h3>
     <div class="plan-place-grid">${cards}</div>
-    <p class="plan-refs-note">※ 評価・料金帯・写真は Google データ。プラン本文の店名とあわせてご利用ください。</p></div>`;
+    <p class="plan-refs-note">※ 本文にURLが付いた店舗のみ表示。評価・写真は Google データです。</p></div>`;
 }
 
 async function _displayPlanOutput(data) {
   const reply = data.reply || "";
-  const placeIndex = _buildPlaceIndex(data.places || []);
+  const placeIndexes = _buildPlaceIndexes(data.places || []);
   const lines = reply.split(/\r?\n/);
   const missing = [];
   for (const url of _extractMapsUrlsFromPlan(reply)) {
-    if (_lookupPlace(placeIndex, url)) continue;
-    missing.push({ url, query: _queryLabelForUrl(lines, url) });
+    if (_lookupPlace(placeIndexes, url)) continue;
+    const idx = lines.findIndex((ln) => ln.includes(url));
+    missing.push({ url, query: _queryLabelForUrl(lines, url, idx >= 0 ? idx : undefined) });
   }
   if (missing.length) {
     try {
@@ -1617,16 +2086,41 @@ async function _displayPlanOutput(data) {
       const body = await res.json();
       if (res.ok && body.places) {
         for (const [url, p] of Object.entries(body.places)) {
-          placeIndex[_mapsUrlKey(url)] = p;
+          placeIndexes.byUrl[_mapsUrlKey(url)] = p;
+          const nk = _normalizePlaceName(p.name);
+          if (nk) placeIndexes.byName[nk] = p;
         }
       }
     } catch (_) { /* プラン本文のみ */ }
   }
-  $("planContent").innerHTML = _renderPlanHtml(reply, placeIndex);
+  $("planContent").innerHTML = _renderPlanHtml(reply, placeIndexes);
+
+  if (window.PlanMapView) {
+    const rMap = {
+      seoul: "ソウル", gyeonggi: "京畿", incheon: "仁川", gangwon: "江原",
+      chungcheong: "忠清", jeolla: "全羅", gyeongsang: "慶尚", jeju: "済州",
+    };
+    const regions = (wizardData.regions || []).map((r) => rMap[r] || r).filter(Boolean);
+    const stay = regions.length ? regions.join("·") : "韓国";
+    const nights = wizardData.nights || "";
+    const days = wizardData.days || "";
+    const title =
+      nights && days
+        ? `${stay}、${nights}泊${days}日のおすすめルート`
+        : `${stay}の旅行ルート`;
+    await window.PlanMapView.render(reply, placeIndexes.byUrl, {
+      days: wizardData.days,
+      nights: wizardData.nights,
+      title,
+      subtitle: "Dayタブで日程を切り替え。番号順にルートを表示します。",
+    });
+    setTimeout(() => window.PlanMapView?.refreshMapLayout?.(), 450);
+    setTimeout(() => window.PlanMapView?.refreshMapLayout?.(), 1200);
+  }
 
   const places = data.places || [];
   const placesEl = $("planPlacesArea");
-  const placesHtml = _renderPlanPlacesRefSection(places);
+  const placesHtml = _renderPlanPlacesRefSection(places, reply);
   if (placesEl) {
     placesEl.innerHTML = placesHtml;
     placesEl.style.display = placesHtml ? "block" : "none";
@@ -1664,6 +2158,8 @@ async function _displayPlanOutput(data) {
     const hasRefs = Boolean(placesHtml || vkHtml || eventsHtml || sportsHtml);
     refsEmpty.style.display = hasRefs ? "none" : "block";
   }
+
+  wizardData.avoid_place_names = _collectPlanPlaceNames(reply, places);
 }
 
 const _LEAGUE_LABELS = {
