@@ -34,6 +34,55 @@ _FRONTEND: Path = settings.FRONTEND_DIR
 
 
 @require_GET
+def api_juso_search(request):
+    """행정안전부 도로명주소 검색 — 위저드 숙소·상세주소 (시/도·구 선택 후 목록)."""
+    import sys
+    from pathlib import Path as _P
+
+    _root = _P(settings.BASE_DIR).parent
+    if str(_root / "src") not in sys.path:
+        sys.path.insert(0, str(_root / "src"))
+
+    from src.api.juso_client import is_juso_configured, search_road_addresses
+
+    keyword = (
+        request.GET.get("keyword", "").strip()
+        or request.GET.get("q", "").strip()
+    )
+    if not keyword:
+        return JsonResponse({"addresses": [], "error": "keyword_required"})
+
+    try:
+        page = max(int(request.GET.get("page", 1)), 1)
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        count = min(max(int(request.GET.get("count", 20)), 1), 100)
+    except (TypeError, ValueError):
+        count = 20
+
+    addresses, meta = search_road_addresses(keyword, page=page, count_per_page=count)
+    payload: dict = {
+        "addresses": [
+            {
+                **a.to_dict(),
+                "display_name": a.display_name,
+            }
+            for a in addresses
+        ],
+        "total": meta.get("count", len(addresses)),
+        "page": page,
+        "source": "juso",
+        "configured": is_juso_configured(),
+    }
+    if meta.get("error"):
+        payload["error"] = meta["error"]
+    if meta.get("total_count") is not None:
+        payload["total_count"] = meta["total_count"]
+    return JsonResponse(payload)
+
+
+@require_GET
 def api_places_search(request):
     """위저드 Step 3 숙박시설 검색 — Google Places Text Search."""
     import sys
@@ -317,6 +366,16 @@ def _merge_codeshares(flight_dicts: list[dict]) -> list[dict]:
     return _dedupe_display_flights(result)
 
 
+def _flight_dep_sort_key(f: dict) -> tuple[int, str]:
+    """출발 시각 오름차순 (HH:MM)."""
+    raw = (f.get("dep_scheduled") or f.get("arr_scheduled") or "99:99").strip()
+    try:
+        h, m = raw.split(":", 1)
+        return int(h) * 60 + int(m), raw
+    except (ValueError, AttributeError):
+        return 9999, raw
+
+
 @require_GET
 def api_flights(request):
     """노선·날짜별 항공편 목록 (마법사 Step 2: 到着便·帰国便 공용)."""
@@ -325,26 +384,29 @@ def api_flights(request):
     _root = _P(settings.BASE_DIR).parent
     if str(_root / "src") not in sys.path:
         sys.path.insert(0, str(_root / "src"))
-    from api.aviation_client import IncheonAirportClient
+    from api.aviation_client import search_route_flights
 
     dep_iata    = (request.GET.get("dep") or "").upper() or None
     arr_iata    = (request.GET.get("arr") or "ICN").upper()
     flight_date = request.GET.get("date") or None
-    client = IncheonAirportClient()
-    if not client.is_configured:
-        return JsonResponse({"error": "API key not configured"}, status=503)
+    if not dep_iata:
+        return JsonResponse({"error": "dep is required"}, status=400)
     try:
-        flights = client.search_flights(
-            dep_iata=dep_iata,
-            arr_iata=arr_iata,
-            flight_date=flight_date,
-            limit=999,   # 해당 노선 전체 반환
+        flights, warning, source = search_route_flights(
+            dep_iata, arr_iata, flight_date=flight_date, limit=999
         )
-        # 출발 시각 기준 정렬 (추정값 포함)
-        flights.sort(key=lambda f: f.dep_scheduled or f.arr_scheduled or "99:99")
-        # 코드쉐어 중복 제거: slave 편을 master에 통합
         flight_dicts = [dataclasses.asdict(f) for f in flights]
-        return JsonResponse({"flights": _merge_codeshares(flight_dicts)})
+        merged = _merge_codeshares(flight_dicts)
+        merged.sort(key=_flight_dep_sort_key)
+        payload: dict = {
+            "flights": merged,
+            "source": source,
+        }
+        if warning:
+            payload["warning"] = warning
+        return JsonResponse(payload)
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=500)
 

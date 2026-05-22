@@ -443,7 +443,10 @@
           .filter((s) => s.lat != null)
           .map((s) => `${s.lat},${s.lng}`)
           .join("/");
-        fallback.innerHTML = `<p class="plan-map-fallback-msg">地図APIキー未設定です。.env に <code>GOOGLE_MAPS_API_KEY</code> を設定しサーバーを再起動してください。${pts ? `<br><a href="https://www.google.com/maps/dir/${pts}" target="_blank" rel="noopener">Google Mapsでルートを開く</a>` : ""}</p>`;
+        const naver = pts
+          ? `<a href="https://map.naver.com/" target="_blank" rel="noopener">ネイバーマップでルート</a> · <a href="https://map.kakao.com/" target="_blank" rel="noopener">カカオマップ</a>`
+          : "";
+        fallback.innerHTML = `<p class="plan-map-fallback-msg">地図APIキー未設定のためルート地図は表示しません。${naver}${pts ? `<br><small>（参考）<a href="https://www.google.com/maps/dir/${pts}" target="_blank" rel="noopener">Google Maps</a></small>` : ""}</p>`;
       }
       return;
     }

@@ -65,7 +65,65 @@ _SEARCH_KEYWORDS_BY_REGION: dict[str, tuple[str, ...]] = {
     "seoul": ("서울 페스티벌", "서울 콘서트"),
     "incheon": ("인천 페스티벌",),
     "busan": ("부산 페스티벌",),
+    "jeju": (
+        "제주 공연",
+        "서귀포 공연",
+        "제주 콘서트",
+        "제주 뮤지컬",
+        "제주 전시",
+    ),
 }
+
+_JEJU_REGION_MARKERS: tuple[str, ...] = (
+    "제주",
+    "서귀포",
+    "済州",
+    "jeju",
+    "西歸浦",
+    "제주시",
+    "제주도",
+)
+
+# 관광 지역(위저드 regions) ↔ 공연 장소 매칭
+_REGION_VENUE_MARKERS: dict[str, tuple[str, ...]] = {
+    "seoul": (
+        "서울", "ソウル", "seoul", "江南", "弘大", "明洞", "蚕室", "奧林匹克",
+        "三成", "景福宮", "北村", "大学路", "貞洞", "鐘路", "龍山", "永登浦",
+        "国立", "세종", "coex", "ロッテ", "lotte",
+    ),
+    "gyeonggi": (
+        "경기", "京畿", "고양", "일산", "킨텍스", "kintex", "수원", "水原",
+        "성남", "城南", "용인", "龍仁", "파주", "坡州", "南極", "정극", "京畿アート",
+    ),
+    "incheon": (
+        "인천", "仁川", "incheon", "송도", "松島", "영종", "永宗", "パラダイス",
+        "paradise", "월미", "青羅",
+    ),
+    "jeju": _JEJU_REGION_MARKERS,
+    "busan": ("부산", "釜山", "busan", "金海", "海雲臺", "海雲台"),
+    "gyeongsang": ("부산", "대구", "경상", "庆尚", "大邱", "金海"),
+    "gangwon": ("강원", "江原", "춘천", "春川", "강릉", "江陵", "속초", "束草"),
+    "jeolla": ("전주", "全州", "광주", "光州", "全羅", "光州"),
+    "chungcheong": ("대전", "大田", "忠清", "청주", "清州"),
+}
+
+_CAPITAL_REGION_KEYS = frozenset({"seoul", "gyeonggi", "incheon"})
+
+# 수도권 여행인데 타 지역 전용 공연 제외
+_FAR_FROM_CAPITAL_MARKERS: tuple[str, ...] = (
+    "대구",
+    "大邱",
+    "광주",
+    "光州",
+    "대전",
+    "大田",
+    "전주",
+    "全州",
+    "울산",
+    "蔚山",
+    "창원",
+    "昌原",
+)
 
 _REQUEST_HEADERS = {
     "User-Agent": (
@@ -105,7 +163,77 @@ _REGION_HINTS_DEFAULT: tuple[str, ...] = (
     "성남",
     "부천",
     "의정부",
+    "제주",
+    "서귀포",
+    "済州",
+    "jeju",
 )
+
+
+def _profile_jeju_only(profile: dict | None) -> bool:
+    if not profile:
+        return False
+    return _trip_active_region_keys(profile) == {"jeju"}
+
+
+def _trip_active_region_keys(profile: dict | None) -> set[str]:
+    """위저드 관광 지역 + 도착 공항 기준."""
+    keys = {str(r).lower() for r in (profile or {}).get("regions") or [] if r}
+    flight = (profile or {}).get("flight") or {}
+    arr = (flight.get("to") or flight.get("arrival_airport") or "").upper()
+    if arr == "CJU":
+        return {"jeju"}
+    if arr == "PUS":
+        keys.add("busan")
+    if not keys:
+        if arr == "GMP":
+            keys = {"seoul", "gyeonggi"}
+        elif arr == "ICN":
+            keys = {"seoul", "gyeonggi", "incheon"}
+        else:
+            keys = {"seoul", "gyeonggi"}
+    return keys
+
+
+def _event_matches_trip_region(
+    ev: TicketPlatformEvent, profile: dict | None
+) -> bool:
+    """여행 목적지·도착 공항과 무관한 지역 공연은 제외."""
+    if not profile:
+        return True
+    keys = _trip_active_region_keys(profile)
+    hay = f"{ev.title} {ev.venue} {ev.place_region}".lower()
+
+    if keys == {"jeju"}:
+        return any(m.lower() in hay for m in _JEJU_REGION_MARKERS)
+
+    capital_trip = bool(keys & _CAPITAL_REGION_KEYS) and not keys & {
+        "busan",
+        "gyeongsang",
+        "jeju",
+        "jeolla",
+        "gangwon",
+        "chungcheong",
+    }
+    if capital_trip:
+        for ex in _FAR_FROM_CAPITAL_MARKERS:
+            if ex.lower() in hay:
+                return False
+        if "부산" in hay or "釜山" in hay:
+            return False
+
+    markers: list[str] = []
+    for k in keys:
+        markers.extend(_REGION_VENUE_MARKERS.get(k, ()))
+    if markers and any(m.lower() in hay for m in markers):
+        return True
+
+    blob = _profile_location_blob(profile)
+    for s in _MAJOR_EVENT_SUBSTRINGS:
+        if s.lower() in hay and blob and s.lower() in blob:
+            return True
+
+    return False
 
 
 @dataclass(frozen=True)
@@ -183,6 +311,9 @@ def _build_search_queries(traveler_profile: dict | None, start_d: date, end_d: d
             out.extend(("고양 페스티벌", "킨텍스 페스티벌"))
     if "서울" in addr or "seoul" in addr:
         out.extend(_SEARCH_KEYWORDS_BY_REGION["seoul"])
+    for reg in [str(r).lower() for r in (prof.get("regions") or [])]:
+        if reg == "jeju":
+            out.extend(_SEARCH_KEYWORDS_BY_REGION["jeju"])
 
     return list(dict.fromkeys(q.strip() for q in out if q and q.strip()))[:28]
 
@@ -461,7 +592,9 @@ def _fetch_interpark_search(keyword: str, *, timeout: int = 12) -> list[TicketPl
     return out
 
 
-def _is_major_or_region_relevant(ev: TicketPlatformEvent, blob: str) -> tuple[int, str]:
+def _is_major_or_region_relevant(
+    ev: TicketPlatformEvent, blob: str, profile: dict | None = None
+) -> tuple[int, str]:
     """정렬용 점수: 높을수록 여행자에게 유용."""
     hay = f"{ev.title} {ev.venue} {ev.place_region}".lower()
     score = 0
@@ -475,6 +608,12 @@ def _is_major_or_region_relevant(ev: TicketPlatformEvent, blob: str) -> tuple[in
         if hint in blob and hint in hay:
             score += 30
             reason = reason or "region_match"
+    if _profile_jeju_only(profile):
+        if any(m.lower() in hay for m in _JEJU_REGION_MARKERS):
+            score += 40
+            reason = reason or "jeju_match"
+        elif not any(m.lower() in hay for m in _JEJU_REGION_MARKERS):
+            score -= 25
     if blob:
         for token in blob.replace(",", " ").split():
             if len(token) >= 2 and token in hay:
@@ -543,12 +682,18 @@ def fetch_ticket_platform_events(
 
     scored: list[tuple[int, TicketPlatformEvent]] = []
     for ev in deduped:
-        sc, _ = _is_major_or_region_relevant(ev, blob)
+        sc, _ = _is_major_or_region_relevant(ev, blob, traveler_profile)
         # 기간 내 전부 후보로 두되, 점수 0도 소량 포함(지역 무관 대형 공연 놓침 방지)
         scored.append((sc, ev))
 
     scored.sort(key=lambda x: (-x[0], x[1].play_start or date.min))
-    return [ev for _, ev in scored[:max_total]]
+    filtered = [ev for _, ev in scored if _event_matches_trip_region(ev, traveler_profile)]
+    if not filtered:
+        logger.info(
+            "interpark: no events for regions %s",
+            sorted(_trip_active_region_keys(traveler_profile)),
+        )
+    return filtered[:max_total]
 
 
 def fmt_ticket_platform_events(events: list[TicketPlatformEvent], lang: str = "ja") -> str:

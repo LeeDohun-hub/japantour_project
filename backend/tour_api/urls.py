@@ -6,6 +6,7 @@ urlpatterns = [
     path("health/", views.api_health, name="api_health"),
     path("flights/", views.api_flights, name="api_flights"),
     path("places/search/", views.api_places_search, name="api_places_search"),
+    path("address/juso/", views.api_juso_search, name="api_juso_search"),
     path("places/enrich/", views.api_places_enrich, name="api_places_enrich"),
     path("link-preview/", views.api_link_preview, name="api_link_preview"),
     path("maps/config/", views.api_maps_config, name="api_maps_config"),

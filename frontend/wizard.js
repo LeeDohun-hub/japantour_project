@@ -37,6 +37,7 @@ async function init() {
   setupChipGroup("vacationChips",        false);
   setupChipGroup("sportsChips",          false);
   setupChipGroup("travelStyleChips",     false);
+  setupChipGroup("flightTripTypeChips",  true);
   setupSportsDetailToggle();
   setupVacationDetailToggle();
   setupStep6();
@@ -114,7 +115,11 @@ function goToStep(step) {
     wizBtnNext.textContent = step === TOTAL_STEPS - 1 ? "プランを生成 ✨" : "次へ";
   }
 
-  if (step === 5) restoreRegionCityStep();
+  if (step === 4) syncTransportChipsForAirport();
+  if (step === 5) {
+    restoreRegionCityStep();
+    syncSportsChipsForRegion();
+  }
 
   window.scrollTo(0, 0);
 }
@@ -166,7 +171,7 @@ function validate(step) {
     }
     if (errArr) errArr.style.display = "none";
 
-    if (!wizardData.flight?.selectedReturn) {
+    if (isRoundTrip() && !wizardData.flight?.selectedReturn) {
       if (errRet) errRet.style.display = "block";
       return false;
     }
@@ -215,15 +220,23 @@ function calcNights(departStr, returnStr) {
 function collect(step) {
   switch (step) {
     case 2: {
-      const { nights, days } = calcNights($("flightDepart").value, $("flightReturn").value);
+      const roundtrip = isRoundTrip();
+      const { nights, days } = roundtrip
+        ? calcNights($("flightDepart").value, $("flightReturn").value)
+        : { nights: 0, days: 1 };
       const prevSelected = wizardData.flight?.selected;
-      const prevReturn   = wizardData.flight?.selectedReturn;
+      const prevReturn   = roundtrip ? wizardData.flight?.selectedReturn : null;
       wizardData.flight = {
+        tripType:   roundtrip ? "roundtrip" : "oneway",
         from:       $("flightFrom").value,
         to:         $("flightTo").value,
         depart:     $("flightDepart").value,
-        returnDate: $("flightReturn").value,
+        returnDate: roundtrip ? $("flightReturn").value : "",
         passengers: +$("passengerStepper").querySelector(".step-val").textContent || 1,
+        arrival_airport:   normalizeAirportIata($("flightTo")?.value),
+        departure_airport: normalizeAirportIata(
+          prevReturn?.dep_iata || $("flightTo")?.value || $("flightFrom")?.value
+        ),
         ...(prevSelected && { selected: prevSelected }),
         ...(prevReturn && { selectedReturn: prevReturn }),
       };
@@ -323,7 +336,17 @@ function switchAuthTab(tab) {
   if (errSignup) errSignup.textContent = "";
 }
 
+function setupNavPlanMode() {
+  $("btnNavPlanMode")?.addEventListener("click", (e) => {
+    const path = (window.location.pathname || "/").replace(/\/$/, "") || "/";
+    if (path !== "/") return;
+    e.preventDefault();
+    goToStep(1);
+  });
+}
+
 function setupStep1() {
+  setupNavPlanMode();
   $("btnLogout")?.addEventListener("click", handleLogout);
   $("btnNavLogout")?.addEventListener("click", handleLogout);
 
@@ -521,7 +544,20 @@ let _flightPage = 0;
 let _returnFlightPage = 0;
 let _fetchGen = 0;
 let _returnFetchGen = 0;
+let _flightListWarning = "";
+let _returnFlightListWarning = "";
 const FLIGHTS_PER_PAGE = 10;
+
+function _flightDepMinutes(f) {
+  const raw = (f?.dep_scheduled || f?.arr_scheduled || "99:99").trim();
+  const m = /^(\d{1,2}):(\d{2})$/.exec(raw);
+  if (!m) return 9999;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+function _sortFlightsByDepTime(list) {
+  return [...list].sort((a, b) => _flightDepMinutes(a) - _flightDepMinutes(b));
+}
 let _allHotels = [];
 let _hotelPage = 0;
 let _hotelArea = "";
@@ -529,7 +565,102 @@ let _hotelSearchMode = "recommend"; // "recommend" | "manual"
 let _selectedHotel = null;          // hotel chosen while in undecided mode
 const HOTELS_PER_PAGE = 5;
 
+const AIRPORT_IATA_LABELS = {
+  ICN: "仁川国際空港",
+  CJU: "済州国際空港",
+  PUS: "金海国際空港",
+  GMP: "金浦国際空港",
+};
+
+function normalizeAirportIata(code) {
+  const c = String(code || "").trim().toUpperCase().slice(0, 3);
+  return Object.prototype.hasOwnProperty.call(AIRPORT_IATA_LABELS, c) ? c : "ICN";
+}
+
+function getArrivalAirportIata() {
+  const to = wizardData.flight?.to || $("flightTo")?.value;
+  return normalizeAirportIata(to);
+}
+
+function getDepartureAirportIata() {
+  const ret = wizardData.flight?.selectedReturn?.dep_iata
+    || wizardData.flight?.from
+    || $("flightFrom")?.value;
+  return normalizeAirportIata(ret);
+}
+
+function _isJejuOnlyTrip() {
+  const regions = chips("regionChips");
+  return regions.length === 1 && regions[0] === "jeju";
+}
+
+function isRoundTrip() {
+  const v = document.querySelector("#flightTripTypeChips .chip.selected")?.dataset.val;
+  return v !== "oneway";
+}
+
+function _clearFlightSelections() {
+  if (!wizardData.flight) return;
+  delete wizardData.flight.selected;
+  delete wizardData.flight.selectedReturn;
+  $("flightListCards")?.querySelectorAll(".flight-sel-card").forEach((c) => {
+    c.classList.remove("selected");
+  });
+  $("returnFlightListCards")?.querySelectorAll(".flight-sel-card").forEach((c) => {
+    c.classList.remove("selected");
+  });
+}
+
+function _scheduleFlightRefetch() {
+  clearTimeout(_flightFetchTimer);
+  clearTimeout(_returnFlightFetchTimer);
+  _flightFetchTimer = setTimeout(fetchFlightList, 300);
+  _returnFlightFetchTimer = setTimeout(fetchReturnFlightList, 300);
+}
+
+function syncFlightTripUi() {
+  const roundtrip = isRoundTrip();
+  const retField = $("flightReturnField");
+  const retSection = $("returnFlightListSection");
+  const retLabel = $("returnFlightLegLabel");
+  const errRet = $("flightReturnSelError");
+
+  if (retField) retField.style.display = roundtrip ? "" : "none";
+  if (retLabel) retLabel.style.display = roundtrip ? "" : "none";
+  if (errRet) errRet.style.display = "none";
+
+  if (!roundtrip) {
+    if (retSection) retSection.style.display = "none";
+    _allReturnFlights = [];
+    if (wizardData.flight) delete wizardData.flight.selectedReturn;
+    $("returnFlightListCards")?.querySelectorAll(".flight-sel-card").forEach((c) => {
+      c.classList.remove("selected");
+    });
+  } else {
+    fetchReturnFlightList();
+  }
+}
+
 function setupStep2() {
+  const onAirportChange = () => {
+    if (wizardData.flight) {
+      wizardData.flight.to = $("flightTo")?.value;
+      wizardData.flight.from = $("flightFrom")?.value;
+    }
+    _clearFlightSelections();
+    _scheduleFlightRefetch();
+    if (currentStep === 4) syncTransportChipsForAirport();
+  };
+  $("flightTo")?.addEventListener("change", onAirportChange);
+  $("flightFrom")?.addEventListener("change", onAirportChange);
+
+  $("flightTripTypeChips")?.addEventListener("click", () => {
+    setTimeout(() => {
+      syncFlightTripUi();
+      _clearFlightSelections();
+      _scheduleFlightRefetch();
+    }, 0);
+  });
   const depart = $("flightDepart");
   const ret    = $("flightReturn");
 
@@ -560,31 +691,36 @@ function setupStep2() {
     const tmp  = from.value;
     from.value = to.value;
     to.value   = tmp;
-    clearTimeout(_flightFetchTimer);
-    clearTimeout(_returnFlightFetchTimer);
-    _flightFetchTimer = setTimeout(fetchFlightList, 100);
-    _returnFlightFetchTimer = setTimeout(fetchReturnFlightList, 100);
+    _clearFlightSelections();
+    _scheduleFlightRefetch();
   });
 
-  ["flightFrom", "flightTo", "flightDepart"].forEach((id) => {
+  ["flightFrom", "flightTo", "flightDepart", "flightReturn"].forEach((id) => {
     $(id)?.addEventListener("change", () => {
-      clearTimeout(_flightFetchTimer);
-      _flightFetchTimer = setTimeout(fetchFlightList, 300);
+      if (id === "flightReturn" || id === "flightDepart") {
+        _clearFlightSelections();
+      }
+      _scheduleFlightRefetch();
     });
   });
 
-  $("flightReturn")?.addEventListener("change", () => {
-    clearTimeout(_returnFlightFetchTimer);
-    _returnFlightFetchTimer = setTimeout(fetchReturnFlightList, 300);
-  });
-
+  syncFlightTripUi();
   fetchFlightList();
-  fetchReturnFlightList();
+  if (isRoundTrip()) fetchReturnFlightList();
 }
 
 async function fetchFlightList() {
   const dep  = ($("flightFrom")?.value || "").trim();
   const arr  = ($("flightTo")?.value  || "ICN").trim();
+  if (dep && arr && dep === arr) {
+    const section = $("flightListSection");
+    const label = $("flightListLabel");
+    if (section) section.style.display = "block";
+    if (label) label.textContent = "出発地と目的地が同じです";
+    $("flightListCards").innerHTML =
+      `<p class="flight-list-empty">別の空港を選んでください。</p>`;
+    return;
+  }
   const date = $("flightDepart")?.value || "";
   const section = $("flightListSection");
   const cards   = $("flightListCards");
@@ -596,7 +732,7 @@ async function fetchFlightList() {
   // Guard: dep must be selected before fetching
   if (!dep) {
     section.style.display = "block";
-    label.textContent = "출발지를 선택해주세요";
+    label.textContent = "出発地を選択してください";
     cards.innerHTML = "";
     if (pager) pager.style.display = "none";
     return;
@@ -608,7 +744,7 @@ async function fetchFlightList() {
   section.style.display = "block";
   if (pager) pager.style.display = "none";
   spinner.style.display = "inline";
-  label.textContent = `${dep} → ${arr} 항공편 조회 중…`;
+  label.textContent = `${dep} → ${arr}  到着便 照会中…`;
   cards.innerHTML = "";
   _allFlights = [];
   _flightPage = 0;
@@ -621,19 +757,22 @@ async function fetchFlightList() {
     // Discard if a newer fetch was started while we awaited
     if (gen !== _fetchGen) return;
 
-    if (!res.ok || data.error) throw new Error(data.error || "조회 실패");
+    if (!res.ok || data.error) throw new Error(data.error || "照会に失敗しました");
 
-    _allFlights = data.flights || [];
-    label.textContent = `${dep} → ${arr}  ${date || "오늘"}  총 ${_allFlights.length}편`;
+    _allFlights = _sortFlightsByDepTime(data.flights || []);
+    _flightListWarning = data.warning || "";
+    const src =
+      data.source === "airport_co_kr" ? " · 韓国空港公社API" : "";
+    label.textContent = `${dep} → ${arr}  ${date || "出発日"}  計${_allFlights.length}便${src}`;
     if (_allFlights.length === 0) {
-      cards.innerHTML = `<p class="flight-list-empty">해당 노선·날짜의 항공편 정보가 없습니다.</p>`;
+      cards.innerHTML = `<p class="flight-list-empty">該当する便がありません。路線または日付を変更してください。</p>`;
       return;
     }
     renderFlightPage(0);
     setupPager();
   } catch (err) {
     if (gen !== _fetchGen) return;
-    label.textContent = "조회 실패";
+    label.textContent = "照会失敗";
     cards.innerHTML = `<p class="flight-list-empty">${err.message}</p>`;
   } finally {
     if (gen === _fetchGen) spinner.style.display = "none";
@@ -641,15 +780,30 @@ async function fetchFlightList() {
 }
 
 async function fetchReturnFlightList() {
+  const section = $("returnFlightListSection");
+  if (!isRoundTrip()) {
+    if (section) section.style.display = "none";
+    _allReturnFlights = [];
+    return;
+  }
+
   const dep  = ($("flightTo")?.value || "ICN").trim();
   const arr  = ($("flightFrom")?.value || "").trim();
   const date = $("flightReturn")?.value || "";
-  const section = $("returnFlightListSection");
   const cards   = $("returnFlightListCards");
   const label   = $("returnFlightListLabel");
   const spinner = $("returnFlightListLoading");
   const pager   = $("returnFlightListPager");
   if (!section || !cards) return;
+
+  if (dep && arr && dep === arr) {
+    section.style.display = "block";
+    label.textContent = "出発地と目的地が同じです";
+    cards.innerHTML =
+      `<p class="flight-list-empty">別の空港を選んでください。</p>`;
+    if (pager) pager.style.display = "none";
+    return;
+  }
 
   if (!arr) {
     section.style.display = "block";
@@ -676,10 +830,13 @@ async function fetchReturnFlightList() {
 
     if (gen !== _returnFetchGen) return;
 
-    if (!res.ok || data.error) throw new Error(data.error || "조회 실패");
+    if (!res.ok || data.error) throw new Error(data.error || "照会に失敗しました");
 
-    _allReturnFlights = data.flights || [];
-    label.textContent = `${dep} → ${arr}  ${date || "帰国日"}  計${_allReturnFlights.length}便`;
+    _allReturnFlights = _sortFlightsByDepTime(data.flights || []);
+    _returnFlightListWarning = data.warning || "";
+    const srcRet =
+      data.source === "airport_co_kr" ? " · 韓国空港公社API" : "";
+    label.textContent = `${dep} → ${arr}  ${date || "帰国日"}  計${_allReturnFlights.length}便${srcRet}`;
     if (_allReturnFlights.length === 0) {
       cards.innerHTML =
         `<p class="flight-list-empty">該当する帰国便がありません。帰国日または路線を変更してください。</p>`;
@@ -701,9 +858,12 @@ function renderFlightPage(page) {
   if (!cards) return;
   const start = page * FLIGHTS_PER_PAGE;
   const slice = _allFlights.slice(start, start + FLIGHTS_PER_PAGE);
-  cards.innerHTML = slice
-    .map((f, i) => renderFlightSelectCard(f, start + i, "arrival"))
-    .join("");
+  const warn = _flightListWarning
+    ? `<p class="flight-list-warn">${escHtml(_flightListWarning)}</p>`
+    : "";
+  cards.innerHTML =
+    warn +
+    slice.map((f, i) => renderFlightSelectCard(f, start + i, "arrival")).join("");
   cards.querySelectorAll(".flight-sel-card").forEach((el) => {
     el.addEventListener("click", () => selectFlight(el, _allFlights[+el.dataset.idx]));
   });
@@ -728,9 +888,12 @@ function renderReturnFlightPage(page) {
   if (!cards) return;
   const start = page * FLIGHTS_PER_PAGE;
   const slice = _allReturnFlights.slice(start, start + FLIGHTS_PER_PAGE);
-  cards.innerHTML = slice
-    .map((f, i) => renderFlightSelectCard(f, start + i, "departure"))
-    .join("");
+  const warn = _returnFlightListWarning
+    ? `<p class="flight-list-warn">${escHtml(_returnFlightListWarning)}</p>`
+    : "";
+  cards.innerHTML =
+    warn +
+    slice.map((f, i) => renderFlightSelectCard(f, start + i, "departure")).join("");
   cards.querySelectorAll(".flight-sel-card").forEach((el) => {
     el.addEventListener("click", () =>
       selectReturnFlight(el, _allReturnFlights[+el.dataset.idx])
@@ -899,7 +1062,12 @@ function setupRegionCityPicker() {
   const panels = $("regionCityPanels");
   if (!regionEl || !panels) return;
 
-  regionEl.addEventListener("click", () => setTimeout(syncRegionCityPanels, 0));
+  regionEl.addEventListener("click", () => {
+    setTimeout(() => {
+      syncRegionCityPanels();
+      syncSportsChipsForRegion();
+    }, 0);
+  });
 
   panels.addEventListener("click", (e) => {
     const chip = e.target.closest(".chip");
@@ -1024,7 +1192,12 @@ function restoreRegionCityStep() {
 function setupSportsDetailToggle() {
   const activityEl = $("activityChips");
   if (activityEl) {
-    activityEl.addEventListener("click", () => setTimeout(syncSportsDetail, 0));
+    activityEl.addEventListener("click", () => {
+      setTimeout(() => {
+        syncSportsDetail();
+        syncSportsChipsForRegion();
+      }, 0);
+    });
   }
 }
 
@@ -1135,7 +1308,11 @@ async function generatePlan(isReroll = false) {
     delete wizardData.avoid_place_names;
   }
 
-  const profilePayload = { ...wizardData };
+  const profilePayload = {
+    ...wizardData,
+    arrival_airport: wizardData.flight?.arrival_airport || getArrivalAirportIata(),
+    departure_airport: wizardData.flight?.departure_airport || getDepartureAirportIata(),
+  };
 
   try {
     const res  = await fetch("/api/chat/", {
@@ -1195,7 +1372,24 @@ function buildPrompt(isReroll = false) {
 
   if (d.flight) {
     const f = d.flight;
-    lines.push(`【フライト】${f.from}→${f.to}、出発:${f.depart||"未定"}、帰国:${f.returnDate||"未定"}、${f.passengers}名`);
+    const arrAp = f.arrival_airport || normalizeAirportIata(f.to);
+    const depAp = f.departure_airport || normalizeAirportIata(f.from);
+    lines.push(
+      `【フライト】${f.from}→${f.to}、出発:${f.depart||"未定"}、帰国:${f.returnDate||"未定"}、${f.passengers}名`,
+      `【到着空港】${AIRPORT_IATA_LABELS[arrAp] || arrAp}（IATA:${arrAp}）`,
+      `【出国空港】${AIRPORT_IATA_LABELS[depAp] || depAp}（IATA:${depAp}）`,
+    );
+    if (arrAp === "CJU") {
+      lines.push(
+        "【済州到着 — 交通】仁川AREX・仁川リムジンは使わない。空港→宿泊は済州空港バス（リムジン）を優先。地下鉄は利用可だが必須ではない。"
+      );
+    } else if (arrAp === "PUS") {
+      lines.push("【金海到着 — 交通】AREXは使わない。金海空港バスを優先。");
+    } else if (arrAp === "GMP") {
+      lines.push("【金浦到着 — 交通】AREXは使わない。地下鉄・空港リムジンを優先。");
+    } else if (arrAp === "ICN") {
+      lines.push("【仁川到着 — 交通】AREX・リムジン・地下鉄のいずれか1つを明示（路線名・所要時間）。");
+    }
     if (f.selected) {
       const sel = f.selected;
       const arrTime = sel.arr_scheduled || "未定";
@@ -1207,11 +1401,12 @@ function buildPrompt(isReroll = false) {
       const depTime = retSel.dep_scheduled || "未定";
       const term = retSel.dep_terminal ? ` ${retSel.dep_terminal}ターミナル` : "";
       const gate = retSel.dep_gate ? ` ゲート${retSel.dep_gate}` : "";
+      const depApLabel = AIRPORT_IATA_LABELS[depAp] || depAp;
       lines.push(
-        `【最終日 出国便】${retSel.flight_iata || ""} ICN出発予定:${depTime}${term}${gate}`
+        `【最終日 出国便】${retSel.flight_iata || ""} ${depApLabel}出発予定:${depTime}${term}${gate}`
       );
       lines.push(
-        "（国際線:出発2〜3時間前にICN到着・チェックイン推奨。最終日の観光・食事は出発時刻から逆算して終了）"
+        `（国際線:出発2〜3時間前に${depApLabel}到着・チェックイン推奨。最終日の観光・食事は出発時刻から逆算して終了）`
       );
     }
   }
@@ -1362,47 +1557,114 @@ function buildPrompt(isReroll = false) {
 }
 
 // ── TRANSPORT INFO PANEL ──────────────────────────────────────────────────
-function setupTransportInfo() {
-  const TRANSPORT_INFO = {
-    rail: `<div class="ti-card"><strong>🚆 鉄道・地下鉄（AREX・広域鉄道）</strong>
-<strong>AREX（空港鉄道）</strong>: 仁川空港↔ソウル駅 直通約43分 / 一般列車約51分（DMC・弘大入口など途中停車）<br>
-AREX一般でDMC駅乗換 → 京義中央線で高陽・能谷方面へも接続<br>
-<strong>ソウル地下鉄・広域鉄道</strong>: 1〜9号線・水仁盆唐線・新盆唐線・경의중앙선など。釜山・大邱・仁川・大田・光州でも地下鉄が利用できます。<br>
-経路検索には <strong>ネイバーマップ</strong> または <strong>カカオマップ</strong> が便利です（日本語対応）。<br>
-<a href="https://www.arex.or.kr/jp/" target="_blank" rel="noopener">▶ AREX 公式サイト（時刻表・料金）</a>
-<a href="https://map.naver.com/" target="_blank" rel="noopener">▶ ネイバーマップ（経路検索）</a>
-<a href="https://www.seoulmetro.co.kr/jp/" target="_blank" rel="noopener">▶ ソウル交通公社（路線図）</a></div>`,
-    taxi: `<div class="ti-card"><strong>🚕 タクシー / KakaoTaxi</strong>
-KakaoTaxiアプリで配車。インチョン空港からソウル市内は約60〜90分<br>
-<a href="https://www.kakaomobility.com/" target="_blank" rel="noopener">▶ KakaoTaxi 公式サイト・アプリ</a></div>`,
-    bus: `<div class="ti-card"><strong>🚌 空港リムジンバス</strong>
-ソウル市内・地方都市への直行バス（6000〜18000ウォン台）<br>
-<a href="https://www.airportlimousine.co.kr/jp/" target="_blank" rel="noopener">▶ リムジンバス 公式サイト（時刻表・乗り場）</a></div>`,
-    rental: `<div class="ti-card"><strong>🚗 インチョン空港 レンタカー</strong>
-第1・第2旅客ターミナル地下1階に各社カウンターあり<br>
-<a href="https://www.lotterentacar.net/" target="_blank" rel="noopener">▶ ロッテレンタカー</a>
-<a href="https://www.skrentacar.co.kr/" target="_blank" rel="noopener">▶ SKレンタカー</a>
-<a href="https://www.ajrentacar.co.kr/" target="_blank" rel="noopener">▶ AJレンタカー</a></div>`,
-    // 하위호환: 구 데이터에 arex/subway가 저장된 경우
-    arex:   `<div class="ti-card"><strong>🚆 AREX（空港鉄道）</strong>
-仁川空港↔ソウル駅 直通約43分 / 一般列車約51分<br>
-<a href="https://www.arex.or.kr/jp/" target="_blank" rel="noopener">▶ AREX 公式サイト</a></div>`,
-    subway: `<div class="ti-card"><strong>🚇 地下鉄・広域鉄道</strong>
-<a href="https://map.naver.com/" target="_blank" rel="noopener">▶ ネイバーマップ（経路検索）</a></div>`,
-  };
+const TRANSPORT_BUS_BY_AIRPORT = {
+  ICN: `<div class="ti-card"><strong>🚌 空港リムジンバス（仁川）</strong>
+ソウル市内・京畿方面への直行バス（6000〜18000番台など）<br>
+<a href="https://www.airportlimousine.co.kr/" target="_blank" rel="noopener">▶ 空港リムジン 公式（時刻表・乗り場）</a>
+ · <a href="https://www.bustago.or.kr/newweb/kr/index.do" target="_blank" rel="noopener">バスタゴ（全国）</a></div>`,
+  CJU: `<div class="ti-card"><strong>🚌 済州空港バス</strong>
+<a href="https://bus.jeju.go.kr/?lang=ko" target="_blank" rel="noopener">▶ 済州空港バス 公式</a></div>`,
+  PUS: `<div class="ti-card"><strong>🚌 金海空港バス</strong>
+<a href="https://newbusan.net/airportbus/info_bus_stop.html" target="_blank" rel="noopener">▶ 金海国際空港 バス案内</a></div>`,
+  GMP: `<div class="ti-card"><strong>🚌 金浦空港バス</strong>
+ソウル市内へのリムジン・空港バス<br>
+<a href="https://www.airportlimousine.co.kr/" target="_blank" rel="noopener">▶ 空港リムジン 公式</a></div>`,
+};
 
+const TRANSPORT_RAIL_BY_AIRPORT = {
+  ICN: `<div class="ti-card"><strong>🚆 鉄道・地下鉄（AREX・広域鉄道）</strong>
+仁川空港↔ソウル駅 AREX直通約43分 / 一般約51分。乗換で広域鉄道・地下鉄（1・9号線等）<br>
+<a href="https://www.arex.or.kr/jp/" target="_blank" rel="noopener">▶ AREX 公式</a> ·
+<a href="https://www.seoulmetro.co.kr/jp/" target="_blank" rel="noopener">ソウル交通公社</a></div>`,
+  GMP: `<div class="ti-card"><strong>🚆 鉄道・地下鉄（広域鉄道）</strong>
+金浦空港↔ソウル市内 空港鉄道・9号線等（AREXは利用しません）<br>
+<a href="https://www.seoulmetro.co.kr/jp/" target="_blank" rel="noopener">▶ ソウル交通公社</a></div>`,
+};
+
+const TRANSPORT_INFO = {
+  rail: TRANSPORT_RAIL_BY_AIRPORT.ICN,
+  subway: TRANSPORT_RAIL_BY_AIRPORT.ICN,
+  taxi: `<div class="ti-card"><strong>🚕 タクシー / KakaoTaxi</strong>
+<a href="https://www.kakaomobility.com/" target="_blank" rel="noopener">▶ KakaoTaxi</a></div>`,
+  bus: TRANSPORT_BUS_BY_AIRPORT.ICN,
+  rental: `<div class="ti-card"><strong>🚗 レンタカー</strong>
+<a href="https://www.lotterentacar.net/" target="_blank" rel="noopener">▶ 各社レンタカー</a></div>`,
+  arex: TRANSPORT_RAIL_BY_AIRPORT.ICN,
+};
+
+function syncTransportChipsForAirport() {
+  const iata = getArrivalAirportIata();
+  const label = AIRPORT_IATA_LABELS[iata] || iata;
+  const hint = $("transportAirportHint");
+  const chipRail = $("transportChipRail");
+  const chipBus = $("transportChipBus");
+
+  if (hint) {
+    hint.style.display = "block";
+    hint.textContent = `到着空港: ${label} — 利用可能な交通手段を表示しています。`;
+  }
+
+  const showRail = iata === "ICN" || iata === "GMP";
+
+  if (chipRail) {
+    chipRail.style.display = showRail ? "" : "none";
+    chipRail.textContent =
+      iata === "GMP"
+        ? "🚆 地下鉄・広域鉄道"
+        : "🚆 鉄道・地下鉄（AREX・広域鉄道）";
+    if (!showRail && chipRail.classList.contains("selected")) chipRail.classList.remove("selected");
+    TRANSPORT_INFO.rail = TRANSPORT_RAIL_BY_AIRPORT[iata] || TRANSPORT_RAIL_BY_AIRPORT.ICN;
+    TRANSPORT_INFO.subway = TRANSPORT_INFO.rail;
+    TRANSPORT_INFO.arex = TRANSPORT_INFO.rail;
+  }
+  if (chipBus) {
+    chipBus.style.display = "";
+    chipBus.textContent =
+      iata === "CJU"
+        ? "🚌 済州空港バス"
+        : iata === "PUS"
+          ? "🚌 空港バス（金海）"
+          : iata === "GMP"
+            ? "🚌 空港バス（金浦）"
+            : "🚌 空港リムジン";
+  }
+  TRANSPORT_INFO.bus = TRANSPORT_BUS_BY_AIRPORT[iata] || TRANSPORT_BUS_BY_AIRPORT.ICN;
+}
+
+function setupTransportInfo() {
   const el = $("transportChips");
   const panel = $("transportInfoPanel");
   if (!el || !panel) return;
 
+  syncTransportChipsForAirport();
+
   el.addEventListener("click", () => {
     requestAnimationFrame(() => {
       const selected = chips("transportChips");
-      if (!selected.length) { panel.style.display = "none"; panel.innerHTML = ""; return; }
+      if (!selected.length) {
+        panel.style.display = "none";
+        panel.innerHTML = "";
+        return;
+      }
       panel.innerHTML = selected.map((t) => TRANSPORT_INFO[t] || "").join("");
       panel.style.display = "block";
     });
   });
+}
+
+function syncSportsChipsForRegion() {
+  const jejuOnly = _isJejuOnlyTrip();
+  const chipBaseball = $("sportsChipBaseball");
+  const chipSoccer = $("sportsChipSoccer");
+  if (chipBaseball) {
+    chipBaseball.style.display = jejuOnly ? "none" : "";
+    if (jejuOnly && chipBaseball.classList.contains("selected")) {
+      chipBaseball.classList.remove("selected");
+    }
+  }
+  if (chipSoccer) {
+    chipSoccer.textContent = jejuOnly ? "⚽ Kリーグ（済州・SK等）" : "⚽ サッカー";
+  }
 }
 
 // ── UNDECIDED HOTEL RECOMMEND ─────────────────────────────────────────────
@@ -1738,25 +2000,115 @@ async function _fetchPlaces(query) {
   return data.places || [];
 }
 
+async function _fetchJusoAddresses(keyword, page = 1) {
+  const res = await fetch(
+    `/api/address/juso/?keyword=${encodeURIComponent(keyword)}&page=${page}&count=25`
+  );
+  const data = await res.json();
+  return { addresses: data.addresses || [], error: data.error || "", configured: data.configured !== false };
+}
+
+function _applyJusoAddress(addr) {
+  const road = (addr.road_addr || addr.display_name || "").trim();
+  const jibun = (addr.jibun_addr || "").trim();
+  if ($("accomDetailManual")) {
+    $("accomDetailManual").value = _stripAccomBase(road, _buildAccomBase()) || road;
+  }
+  if ($("accomAddress")) $("accomAddress").value = road || jibun;
+  if (addr.building_name && $("accomName") && !($("accomName").value || "").trim()) {
+    $("accomName").value = addr.building_name;
+  }
+  _storeAccomPlace({
+    name: addr.building_name || "",
+    address: road || jibun,
+    latitude: null,
+    longitude: null,
+    maps_url: "",
+  });
+  _syncAccomDisplay();
+}
+
+function _renderJusoResults(addresses, { resultsEl, error, configured }) {
+  if (!resultsEl) return;
+  resultsEl.style.display = "block";
+
+  if (!configured) {
+    resultsEl.innerHTML =
+      '<p class="accom-search-msg">道路名住所API（JUSO_API_KEY）が未設定です。.env にキーを追加してサーバーを再起動してください。</p>';
+    return;
+  }
+  if (error && !addresses.length) {
+    resultsEl.innerHTML =
+      `<p class="accom-search-msg">住所検索エラー: ${escHtml(error)}</p>`;
+    return;
+  }
+  if (!addresses.length) {
+    resultsEl.innerHTML =
+      '<p class="accom-no-result">該当する道路名住所がありません。キーワードを変えるか、詳細住所を直接入力してください。</p>';
+    return;
+  }
+
+  resultsEl.innerHTML =
+    '<p class="accom-search-msg accom-search-msg--hint">行政安全部 道路名住所 API の結果です。行をクリックして選択してください。</p>' +
+    addresses
+      .map(
+        (a, i) => `
+    <button type="button" class="accom-result-item accom-result-item--juso" data-idx="${i}">
+      <strong>${escHtml(a.display_name || a.road_addr || "住所")}</strong>
+      ${a.jibun_addr ? `<span class="accom-result-addr">${escHtml(a.jibun_addr)}</span>` : ""}
+      ${a.zip_no ? `<span class="accom-result-zip">〒${escHtml(a.zip_no)}</span>` : ""}
+    </button>`
+      )
+      .join("");
+
+  resultsEl.querySelectorAll(".accom-result-item--juso").forEach((item) => {
+    item.addEventListener("click", () => {
+      const a = addresses[+item.dataset.idx];
+      _applyJusoAddress(a);
+      resultsEl.style.display = "none";
+    });
+  });
+}
+
 // ── ACCOMMODATION SEARCH ──────────────────────────────────────────────────
 function setupAccomSearch() {
   const btn = $("accomSearchBtn");
   if (!btn) return;
 
   btn.addEventListener("click", async () => {
-    const query = _accomSearchQuery($("accomSearchInput")?.value);
-    if (!query) return;
+    const facility = ($("accomSearchInput")?.value || "").trim();
+    const base = _buildAccomBase();
+    const resultsEl = $("accomSearchResults");
+    if (!facility && !base) {
+      if (resultsEl) {
+        resultsEl.style.display = "block";
+        resultsEl.innerHTML =
+          '<p class="accom-search-msg">道・市・区を選んでから検索するか、施設名を入力してください。</p>';
+      }
+      return;
+    }
 
     btn.disabled = true;
     btn.textContent = "検索中…";
     try {
+      if (!facility && base) {
+        const { addresses, error, configured } = await _fetchJusoAddresses(base);
+        _renderJusoResults(addresses, { resultsEl, error, configured });
+        return;
+      }
+      const query = _accomSearchQuery(facility);
+      if (!query) return;
       const places = await _fetchPlaces(query);
       _renderPlacesResults(places, {
-        resultsEl: $("accomSearchResults"),
+        resultsEl,
         mode: "facility",
       });
     } catch {
-      _renderPlacesResults([], { resultsEl: $("accomSearchResults"), mode: "facility" });
+      if (!facility && base) {
+        _renderJusoResults([], { resultsEl, error: "network_error", configured: true });
+      } else {
+        _renderPlacesResults([], { resultsEl, mode: "facility" });
+      }
     } finally {
       btn.disabled = false;
       btn.textContent = "検索";
@@ -1769,19 +2121,31 @@ function setupAccomDetailSearch() {
   if (!btn) return;
 
   btn.addEventListener("click", async () => {
-    const query = _accomSearchQuery($("accomDetailSearchInput")?.value);
-    if (!query) return;
+    const detailKw = ($("accomDetailSearchInput")?.value || "").trim();
+    const base = _buildAccomBase();
+    const query = _accomSearchQuery(detailKw);
+    const resultsEl = $("accomDetailSearchResults");
+    if (!query) {
+      if (resultsEl) {
+        resultsEl.style.display = "block";
+        resultsEl.innerHTML =
+          '<p class="accom-search-msg">道・市・区を選ぶか、詳細キーワードを入力してください。</p>';
+      }
+      return;
+    }
 
     btn.disabled = true;
     btn.textContent = "検索中…";
     try {
+      const { addresses, error, configured } = await _fetchJusoAddresses(query);
+      if (addresses.length || !configured) {
+        _renderJusoResults(addresses, { resultsEl, error, configured });
+        if (addresses.length) return;
+      }
       const places = await _fetchPlaces(query);
-      _renderPlacesResults(places, {
-        resultsEl: $("accomDetailSearchResults"),
-        mode: "detail",
-      });
+      _renderPlacesResults(places, { resultsEl, mode: "detail" });
     } catch {
-      _renderPlacesResults([], { resultsEl: $("accomDetailSearchResults"), mode: "detail" });
+      _renderPlacesResults([], { resultsEl, mode: "detail" });
     } finally {
       btn.disabled = false;
       btn.textContent = "検索";

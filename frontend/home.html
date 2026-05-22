@@ -14,6 +14,7 @@
     <div class="nav-right">
       <span class="nav-user-label" id="navUserLabel"></span>
       <button type="button" id="btnNavLogout" class="btn btn-sm ghost nav-logout-btn" style="display:none">ログアウト</button>
+      <a href="/" id="btnNavPlanMode" class="btn btn-sm secondary nav-plan-mode" aria-current="page" title="1〜8ステップで旅行プランを作成">プランモード</a>
       <a href="/chat/" class="btn btn-sm secondary nav-chat-shortcut">💬 AIチャット</a>
     </div>
   </header>
@@ -126,7 +127,7 @@
           <div class="wiz-step-header">
             <span class="wiz-step-num">✈ フライト</span>
             <h2>どこから、どこへ？</h2>
-            <p class="wiz-lead">仁川空港発着の定期便スケジュールをチャットで検索できます</p>
+            <p class="wiz-lead">仁川·金浦·済州·金海などの定期便スケジュールを検索できます（国際線は韓国空港公社データ）</p>
           </div>
 
           <div class="wiz-flight-card">
@@ -174,12 +175,20 @@
               </div>
             </div>
 
+            <div class="flight-trip-type">
+              <span class="flight-trip-type-label">旅程</span>
+              <div class="chip-grid" id="flightTripTypeChips">
+                <button type="button" class="chip selected" data-val="roundtrip">往復</button>
+                <button type="button" class="chip" data-val="oneway">片道</button>
+              </div>
+            </div>
+
             <div class="flight-dates">
               <div class="field-sm">
                 <label>出発日</label>
                 <input type="date" id="flightDepart" />
               </div>
-              <div class="field-sm">
+              <div class="field-sm flight-return-field" id="flightReturnField">
                 <label>帰国日</label>
                 <input type="date" id="flightReturn" />
               </div>
@@ -196,27 +205,27 @@
             <p class="flight-leg-label">到着便（韓国入国）</p>
             <div id="flightListSection" class="flight-list-section" style="display:none">
               <div class="flight-list-header">
-                <span id="flightListLabel">편명을 선택하세요</span>
-                <span id="flightListLoading" class="flight-list-spinner" style="display:none">조회 중…</span>
+                <span id="flightListLabel">便名を選択してください</span>
+                <span id="flightListLoading" class="flight-list-spinner" style="display:none">照会中…</span>
               </div>
               <div id="flightListCards" class="flight-list-cards"></div>
               <div id="flightListPager" class="flight-list-pager" style="display:none">
-                <button type="button" id="flightPagePrev" class="pager-btn">‹ 이전</button>
+                <button type="button" id="flightPagePrev" class="pager-btn">‹ 前へ</button>
                 <span id="flightPageInfo" class="pager-info"></span>
-                <button type="button" id="flightPageNext" class="pager-btn">다음 ›</button>
+                <button type="button" id="flightPageNext" class="pager-btn">次へ ›</button>
               </div>
             </div>
-            <p class="flight-leg-label">出国便（帰国・韓国発）</p>
+            <p class="flight-leg-label" id="returnFlightLegLabel">出国便（帰国・韓国発）</p>
             <div id="returnFlightListSection" class="flight-list-section" style="display:none">
               <div class="flight-list-header">
                 <span id="returnFlightListLabel">帰国便を選択してください</span>
-                <span id="returnFlightListLoading" class="flight-list-spinner" style="display:none">조회 중…</span>
+                <span id="returnFlightListLoading" class="flight-list-spinner" style="display:none">照会中…</span>
               </div>
               <div id="returnFlightListCards" class="flight-list-cards"></div>
               <div id="returnFlightListPager" class="flight-list-pager" style="display:none">
-                <button type="button" id="returnFlightPagePrev" class="pager-btn">‹ 이전</button>
+                <button type="button" id="returnFlightPagePrev" class="pager-btn">‹ 前へ</button>
                 <span id="returnFlightPageInfo" class="pager-info"></span>
-                <button type="button" id="returnFlightPageNext" class="pager-btn">다음 ›</button>
+                <button type="button" id="returnFlightPageNext" class="pager-btn">次へ ›</button>
               </div>
             </div>
             <p class="field-error" id="flightSelError" style="display:none;margin-top:.5rem">
@@ -287,7 +296,7 @@
             </div>
             <div class="accom-search-block">
               <label class="addr-label">詳細住所で検索 <span class="opt">任意</span></label>
-              <p class="accom-search-hint">도・시・구を選んだ上で、施設名や建物名などで検索できます。</p>
+              <p class="accom-search-hint">道・市・区のみで検索すると道路名住所一覧（行政安全部 API）が表示されます。施設名入力時は Google Places で検索します。</p>
               <div class="accom-search-row">
                 <input type="text" id="accomDetailSearchInput" placeholder="例：강남구12、서울아파트" />
                 <button type="button" id="accomDetailSearchBtn" class="btn btn-sm secondary">検索</button>
@@ -369,11 +378,12 @@
             <p class="wiz-lead">複数選択可</p>
           </div>
           <div class="chip-grid" id="transportChips">
-            <button class="chip" data-val="rail">🚆 鉄道・地下鉄（AREX・広域鉄道）</button>
-            <button class="chip" data-val="taxi">🚕 タクシー / KakaoTaxi</button>
-            <button class="chip" data-val="bus">🚌 空港バス・リムジン</button>
-            <button class="chip" data-val="rental">🚗 レンタカー</button>
+            <button type="button" class="chip transport-chip" data-val="rail" id="transportChipRail">🚆 鉄道・地下鉄（AREX・広域鉄道）</button>
+            <button type="button" class="chip transport-chip" data-val="taxi">🚕 タクシー / KakaoTaxi</button>
+            <button type="button" class="chip transport-chip" data-val="bus" id="transportChipBus">🚌 空港バス・リムジン</button>
+            <button type="button" class="chip transport-chip" data-val="rental">🚗 レンタカー</button>
           </div>
+          <p id="transportAirportHint" class="accom-search-hint" style="display:none;margin-top:.5rem"></p>
           <div id="transportInfoPanel" class="transport-info-panel" style="display:none"></div>
           <p class="wiz-sub">リアルタイム料金・時刻は各サービスでご確認ください</p>
         </div>
@@ -441,7 +451,8 @@
             <div class="wiz-section-label">観戦する競技 <span class="opt">複数選択可</span></div>
             <div class="chip-grid" id="sportsChips">
               <button class="chip" data-val="soccer">⚽ サッカー</button>
-              <button class="chip" data-val="baseball">⚾ 野球</button>
+              <button type="button" class="chip" data-val="baseball" id="sportsChipBaseball">⚾ 野球（KBO）</button>
+              <button type="button" class="chip" data-val="soccer" id="sportsChipSoccer">⚽ Kリーグ</button>
               <button class="chip" data-val="basketball">🏀 バスケ</button>
               <button class="chip" data-val="volleyball">🏐 バレー</button>
             </div>

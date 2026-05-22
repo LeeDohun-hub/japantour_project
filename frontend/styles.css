@@ -878,11 +878,18 @@ a.btn {
 }
 
 .page-wizard .nav-logout-btn,
+.page-wizard .nav-plan-mode,
 .page-wizard .nav-chat-shortcut {
   width: auto !important;
   margin-top: 0 !important;
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+.nav-plan-mode[aria-current="page"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .nav-chat-shortcut { margin-left: 0; }
@@ -1240,7 +1247,30 @@ a.btn {
   max-height: 340px; overflow-y: auto;
   scrollbar-width: thin; scrollbar-color: var(--border) transparent;
 }
+.flight-trip-type {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  margin: .65rem 0 .35rem;
+  flex-wrap: wrap;
+}
+.flight-trip-type-label {
+  font-size: .78rem;
+  color: var(--text-muted);
+  min-width: 2.5rem;
+}
+.flight-trip-type .chip-grid { flex: 1; }
+.flight-return-field { min-width: 0; }
 .flight-list-empty { font-size: .78rem; color: var(--text-muted); padding: .4rem 0; }
+.flight-list-warn {
+  font-size: .75rem;
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  padding: .45rem .6rem;
+  margin-bottom: .5rem;
+}
 
 .flight-sel-card {
   padding: .55rem .8rem; border-radius: var(--radius-sm);
@@ -1591,6 +1621,7 @@ a.btn {
   box-shadow: 0 4px 14px rgba(28, 48, 88, 0.08);
 }
 .ticket-preview-card--loading { pointer-events: none; opacity: 0.92; }
+.ticket-preview-card--no-thumb { gap: 0; }
 .ticket-preview-thumb {
   flex: 0 0 72px;
   width: 72px;
@@ -2392,6 +2423,22 @@ a.plan-place-card-wide:hover { border-color: var(--accent); }
   border-radius: 10px;
 }
 .add-group--wide { grid-column: 1 / -1; }
+.accom-search-msg {
+  margin: 0;
+  padding: .65rem .85rem;
+  font-size: .88rem;
+  color: var(--text-muted);
+}
+.accom-search-msg--hint {
+  padding-bottom: .35rem;
+  border-bottom: 1px solid var(--border, #e8e8e8);
+  margin-bottom: .25rem;
+}
+.accom-result-zip {
+  display: block;
+  font-size: .78rem;
+  color: var(--text-muted);
+}
 
 .plan-day-block { margin: 1.25rem 0 1.5rem; }
 .plan-day-heading {

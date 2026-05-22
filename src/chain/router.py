@@ -1161,6 +1161,70 @@ def _flight_leg_line(flight: dict, *, leg: str) -> str:
     return f"出国便 {iata} ({airline}) {ap}出発 {t}{extra}"
 
 
+_AIRPORT_GEO: dict[str, tuple[float, float, str]] = {
+    "ICN": (37.4602, 126.4407, "仁川国際空港"),
+    "CJU": (33.5113, 126.4930, "제주국제공항"),
+    "PUS": (35.1796, 128.9382, "김해국제공항"),
+    "GMP": (37.5583, 126.7906, "김포국제공항"),
+}
+
+
+def _normalize_airport_iata(code: str | None) -> str:
+    c = (code or "").strip().upper()[:3]
+    return c if c in _AIRPORT_GEO else "ICN"
+
+
+def arrival_airport_iata(profile: dict | None) -> str:
+    if not profile:
+        return "ICN"
+    ap = profile.get("arrival_airport")
+    if ap:
+        return _normalize_airport_iata(str(ap))
+    flight = profile.get("flight") or {}
+    if not isinstance(flight, dict):
+        flight = {}
+    return _normalize_airport_iata(flight.get("to"))
+
+
+def _jeju_only_profile(profile: dict | None) -> bool:
+    if not profile:
+        return False
+    regions = [str(r).lower() for r in profile.get("regions") or []]
+    return len(regions) == 1 and regions[0] == "jeju"
+
+
+def _fmt_airport_itinerary_transport(profile: dict | None) -> str:
+    """到着空港に応じた移動・1日目ルール（LLM Reference）。"""
+    ap = arrival_airport_iata(profile)
+    if ap == "CJU":
+        return (
+            "【到着空港・交通ルール — 厳守】\n"
+            "- 到着空港は済州国際空港（CJU）。仁川AREX・仁川リムジンは**使用禁止**。\n"
+            "- 1日目: ① CJU到着・入国 ② 済州空港バス（リムジン）で宿泊エリアへ（約60〜90分） ③ チェックイン・休息\n"
+            "- 深夜到着時は外食・観光ブロックなし。コンビニ・軽食のみ可。\n"
+            "- 最終日: 宿泊先→CJU→出国便（便時刻はReference Dataの出国便）\n"
+        )
+    if ap == "PUS":
+        return (
+            "【到着空港・交通ルール — 厳守】\n"
+            "- 到着空港は金海国際空港（PUS）。AREX・仁川リムジンは**使用禁止**。\n"
+            "- 1日目: ① PUS到着・入国 ② 金海空港バスで宿泊方面 ③ チェックイン・休息\n"
+            "- 参考: https://newbusan.net/airportbus/info_bus_stop.html\n"
+        )
+    if ap == "GMP":
+        return (
+            "【到着空港・交通ルール — 厳守】\n"
+            "- 到着空港は金浦国際空港（GMP）。AREX・仁川リムジンは**使用禁止**。\n"
+            "- 1日目: ① GMP到着・入国 ② 地下鉄または空港リムジンで宿泊方面 ③ チェックイン・休息\n"
+            "- 参考: https://www.airportlimousine.co.kr/\n"
+        )
+    return (
+        "【到着空港・交通ルール — 仁川（ICN）】\n"
+        "- 1日目例: ① ICN到着・入国 ② AREX一般またはリムジン→宿泊エリア ③ チェックイン\n"
+        "- 仁川以外のエリア観光は2日目以降。路線名・所要時間を明示（曖昧な「地下鉄利用」のみは禁止）\n"
+    )
+
+
 def _fmt_traveler_flight_constraints(profile: dict | None) -> str:
     """위저드 확정 입국·귀국편 → 일정 LLM용 구조화 블록."""
     if not profile:
@@ -2147,7 +2211,14 @@ def _search_places_for_itinerary(
     food_batches: list[list[NearbyPlace]] = []
     attr_batches: list[list[NearbyPlace]] = []
 
-    center = _resolve_itinerary_center(traveler_profile, pclient, lang)
+    ap_iata = arrival_airport_iata(traveler_profile)
+    if ap_iata in _AIRPORT_GEO and ap_iata != "ICN":
+        lat, lng, label = _AIRPORT_GEO[ap_iata]
+        center = (lat, lng, label)
+        logger.info("itinerary center from arrival airport %s: %.4f,%.4f", ap_iata, lat, lng)
+
+    if not center:
+        center = _resolve_itinerary_center(traveler_profile, pclient, lang)
     if center:
         lat, lng, label = center
         logger.info("itinerary center: %.4f,%.4f (%s)", lat, lng, label)
@@ -3148,9 +3219,9 @@ def route_and_answer(
         late_hint = _fmt_late_arrival_day1_hint(traveler_profile)
         if late_hint:
             ctx_parts.append(late_hint)
-        transit_hint = _build_airport_transit_hint(traveler_profile)
-        if transit_hint:
-            ctx_parts.append(transit_hint)
+        airport_transport = _fmt_airport_itinerary_transport(traveler_profile)
+        if airport_transport:
+            ctx_parts.append(airport_transport)
         food_pref_hint = _fmt_food_preference_hint(traveler_profile)
         if food_pref_hint:
             ctx_parts.append(food_pref_hint)

@@ -994,6 +994,13 @@ class SportsScheduleClient:
         return None
 
 
+def _profile_jeju_only(profile: dict | None) -> bool:
+    if not profile:
+        return False
+    regions = [str(r).lower() for r in profile.get("regions") or []]
+    return len(regions) == 1 and regions[0] == "jeiju"
+
+
 def leagues_from_profile(profile: dict | None) -> list[str]:
     if not profile:
         return []
@@ -1005,6 +1012,8 @@ def leagues_from_profile(profile: dict | None) -> list[str]:
     out: list[str] = []
     for s in sports:
         for lg in _SPORT_TO_LEAGUES.get(s, []):
+            if lg == "kbo" and _profile_jeju_only(profile):
+                continue
             if lg not in seen:
                 seen.add(lg)
                 out.append(lg)

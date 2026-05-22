@@ -62,6 +62,11 @@
     };
   }
 
+  function _thumbHtml(image) {
+    if (!image) return "";
+    return `<div class="ticket-preview-thumb"><img src="${escapeHtml(image)}" alt="" loading="lazy" decoding="async" onerror="var t=this.parentElement,c=t.closest('.ticket-preview-card');t.remove();if(c)c.classList.add('ticket-preview-card--no-thumb')"/></div>`;
+  }
+
   function renderCard(preview) {
     const url = escapeHtml(preview.url || "");
     const title = escapeHtml(preview.title || "チケット詳細");
@@ -69,15 +74,14 @@
       ? `<p class="ticket-preview-desc">${escapeHtml(preview.description)}</p>`
       : "";
     const site = escapeHtml(preview.site_name || "INTERPARK TICKET");
-    const img = preview.image
-      ? `<div class="ticket-preview-thumb"><img src="${escapeHtml(preview.image)}" alt="" loading="lazy" decoding="async" onerror="this.parentElement.classList.add('ticket-preview-thumb--fallback')"/></div>`
-      : `<div class="ticket-preview-thumb ticket-preview-thumb--fallback" aria-hidden="true">🎫</div>`;
-    return `<a class="ticket-preview-card" href="${url}" target="_blank" rel="noopener noreferrer">${img}<div class="ticket-preview-body"><span class="ticket-preview-site">${site}</span><strong class="ticket-preview-title">${title}</strong>${desc}<span class="ticket-preview-cta">チケットを見る →</span></div></a>`;
+    const img = _thumbHtml(preview.image);
+    const noThumb = img ? "" : " ticket-preview-card--no-thumb";
+    return `<a class="ticket-preview-card${noThumb}" href="${url}" target="_blank" rel="noopener noreferrer">${img}<div class="ticket-preview-body"><span class="ticket-preview-site">${site}</span><strong class="ticket-preview-title">${title}</strong>${desc}<span class="ticket-preview-cta">チケットを見る →</span></div></a>`;
   }
 
   function renderSkeleton(url) {
     const u = escapeHtml(normalizeUrl(url));
-    return `<div class="ticket-preview-card ticket-preview-card--loading" data-preview-url="${u}"><div class="ticket-preview-thumb ticket-preview-thumb--fallback" aria-hidden="true">🎫</div><div class="ticket-preview-body"><span class="ticket-preview-site">INTERPARK TICKET</span><strong class="ticket-preview-title">プレビューを読み込み中…</strong></div></div>`;
+    return `<div class="ticket-preview-card ticket-preview-card--loading ticket-preview-card--no-thumb" data-preview-url="${u}"><div class="ticket-preview-body"><span class="ticket-preview-site">INTERPARK TICKET</span><strong class="ticket-preview-title">プレビューを読み込み中…</strong></div></div>`;
   }
 
   async function fetchPreview(url) {
@@ -116,7 +120,7 @@
           const anchor = card.firstElementChild;
           if (anchor) el.replaceWith(anchor);
         } catch (_) {
-          el.innerHTML = `<a class="ticket-preview-card ticket-preview-card--fallback" href="${escapeHtml(url)}" target="_blank" rel="noopener"><div class="ticket-preview-thumb ticket-preview-thumb--fallback">🎫</div><div class="ticket-preview-body"><span class="ticket-preview-site">INTERPARK TICKET</span><strong class="ticket-preview-title">チケットページを開く</strong><span class="ticket-preview-cta">リンクを開く →</span></div></a>`;
+          el.innerHTML = `<a class="ticket-preview-card ticket-preview-card--no-thumb" href="${escapeHtml(url)}" target="_blank" rel="noopener"><div class="ticket-preview-body"><span class="ticket-preview-site">INTERPARK TICKET</span><strong class="ticket-preview-title">チケットページを開く</strong><span class="ticket-preview-cta">リンクを開く →</span></div></a>`;
         }
       })
     );

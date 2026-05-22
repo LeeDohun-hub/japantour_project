@@ -54,6 +54,8 @@ _ROUTE_DURATION_MIN: dict[tuple[str, str], int] = {
     ("CTS", "ICN"): 175, ("ICN", "CTS"): 175,
     ("OKA", "ICN"): 155, ("ICN", "OKA"): 155,
     ("NGO", "ICN"): 120, ("ICN", "NGO"): 120,
+    ("HND", "GMP"): 150, ("GMP", "HND"): 150,
+    ("NRT", "GMP"): 155, ("GMP", "NRT"): 155,
     ("HIJ", "ICN"): 125, ("ICN", "HIJ"): 125,
     ("SDJ", "ICN"): 160, ("ICN", "SDJ"): 160,
     ("KOJ", "ICN"): 135, ("ICN", "KOJ"): 135,
@@ -552,9 +554,14 @@ class IncheonAirportClient:
         dep = (dep_iata or "").upper()
         arr = (arr_iata or "").upper()
         if dep and arr:
-            if arr == ICN_IATA: return dep, True
-            if dep == ICN_IATA: return arr, False
-            return dep, True
+            if arr == ICN_IATA:
+                return dep, True
+            if dep == ICN_IATA:
+                return arr, False
+            raise ValueError(
+                f"인천공항 API는 ICN 연관 노선만 지원합니다 (요청: {dep}→{arr}). "
+                "김포·김해·제주 등은 한국공항공사(odcloud) API를 사용하세요."
+            )
         if dep: return ("", False) if dep == ICN_IATA else (dep, True)
         if arr: return ("", True)  if arr == ICN_IATA else (arr, False)
         return "", True
@@ -562,6 +569,42 @@ class IncheonAirportClient:
 
 # router.py 호환
 AviationClient = IncheonAirportClient
+
+
+def search_route_flights(
+    dep_iata: str,
+    arr_iata: str,
+    flight_date: str | None = None,
+    limit: int = 500,
+) -> tuple[list[FlightInfo], str | None, str]:
+    """노선별 항공편 조회. (flights, warning, source)."""
+    dep = (dep_iata or "").upper()
+    arr = (arr_iata or "").upper()
+    if not dep or not arr:
+        raise ValueError("dep·arr IATA가 필요합니다.")
+
+    from src.api.korea_airports_flight_client import (
+        KoreaAirportsFlightClient,
+        uses_korea_regional_airport,
+    )
+
+    if uses_korea_regional_airport(dep, arr):
+        kac = KoreaAirportsFlightClient()
+        if not kac.is_configured:
+            raise ValueError("INCHEONTRANSPORT_API_KEY가 설정되지 않았습니다.")
+        try:
+            return kac.search_flights(dep, arr, flight_date, limit=limit)
+        except Exception as exc:
+            logger.warning("KAC %s→%s failed: %s", dep, arr, exc)
+            return [], None, "odcloud"
+
+    icn = IncheonAirportClient()
+    if not icn.is_configured:
+        raise ValueError("INCHEONTRANSPORT_API_KEY가 설정되지 않았습니다.")
+    flights = icn.search_flights(
+        dep_iata=dep, arr_iata=arr, flight_date=flight_date, limit=limit
+    )
+    return flights, None, "icn"
 
 
 def _safe_int(val: Any) -> int | None:
