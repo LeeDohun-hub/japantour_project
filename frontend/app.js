@@ -1,6 +1,12 @@
 /**
  * Django `/api/chat/` と会話。同一オリジン前提（runserver）。
  */
+function getCsrfToken() {
+  return document.cookie.split(';')
+    .map(c => c.trim())
+    .find(c => c.startsWith('csrftoken='))
+    ?.split('=')[1] ?? '';
+}
 const chatLog = document.getElementById("chatLog");
 const chatForm = document.getElementById("chatForm");
 const messageInput = document.getElementById("messageInput");
@@ -530,7 +536,8 @@ chatForm.addEventListener("submit", async (e) => {
   try {
     const res = await fetch("/api/chat/", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrfToken() },
+      credentials: "same-origin",
       body: JSON.stringify({
         message: text,
         reply_language: replyLanguage.value,

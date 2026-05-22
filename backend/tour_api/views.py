@@ -20,7 +20,8 @@ from django.contrib.auth import logout as django_logout
 from django.contrib.auth.models import User
 from django.http import FileResponse, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect
-from django.views.decorators.csrf import csrf_exempt
+from django.core.cache import cache
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 
 from tour_api.chat_persistence import (
@@ -31,6 +32,31 @@ from tour_api.chat_persistence import (
 from tour_api.llm_service import get_client, run_chat
 
 _FRONTEND: Path = settings.FRONTEND_DIR
+
+# ── Rate limiting (캐시 기반, 멀티워커 환경에서도 동작) ──────────────────────
+_CHAT_RATE_PER_MIN: int = int(os.environ.get("CHAT_RATE_PER_MIN", "30"))
+_CHAT_RATE_PER_DAY: int = int(os.environ.get("CHAT_RATE_PER_DAY", "300"))
+
+
+def _rl_key(request: HttpRequest) -> str:
+    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    ip = forwarded.split(",")[0].strip() if forwarded else request.META.get("REMOTE_ADDR", "anon")
+    if request.user.is_authenticated:
+        return f"rl_chat_u{request.user.id}"
+    return f"rl_chat_{ip}"
+
+
+def _check_chat_rate(request: HttpRequest) -> "JsonResponse | None":
+    key = _rl_key(request)
+    min_key = f"{key}_m"
+    day_key = f"{key}_d"
+    if (cache.get(min_key) or 0) >= _CHAT_RATE_PER_MIN:
+        return JsonResponse({"detail": "リクエストが多すぎます。少し待ってからお試しください。"}, status=429)
+    if (cache.get(day_key) or 0) >= _CHAT_RATE_PER_DAY:
+        return JsonResponse({"detail": "本日の利用上限に達しました。明日またお試しください。"}, status=429)
+    cache.set(min_key, (cache.get(min_key) or 0) + 1, timeout=60)
+    cache.set(day_key, (cache.get(day_key) or 0) + 1, timeout=86400)
+    return None
 
 
 @require_GET
@@ -135,7 +161,6 @@ def api_places_search(request):
         return JsonResponse({"places": [], "error": str(exc)})
 
 
-@csrf_exempt
 @require_POST
 def api_places_enrich(request):
     """プラン本文の Google Maps URL を Places 詳細（写真・評価等）に変換."""
@@ -423,7 +448,6 @@ def api_health(request):
     )
 
 
-@csrf_exempt
 @require_POST
 def api_chat(request):
     try:
@@ -436,6 +460,10 @@ def api_chat(request):
     history = body.get("history") or []
     session_id = body.get("session_id")
     traveler_profile = body.get("traveler_profile")
+
+    rl_err = _check_chat_rate(request)
+    if rl_err:
+        return rl_err
 
     if not isinstance(message, str) or not message.strip():
         return JsonResponse({"detail": "message is required"}, status=400)
@@ -521,9 +549,8 @@ def api_chat(request):
         payload["places_count"] = rr.places_count
         if rr.places_error:
             payload["places_error"] = rr.places_error
-        # 진단용 — 원인 파악 후 제거
-        print(f"[DIAG] category={rr.category!r} keyword={rr.keyword!r} "
-              f"places={rr.places_count} error={rr.places_error!r}")
+        logger.debug("category=%r keyword=%r places=%s error=%r",
+                     rr.category, rr.keyword, rr.places_count, rr.places_error)
     if chat_result.places:
         payload["places"] = chat_result.places
     if chat_result.visitkorea_stays:
@@ -571,7 +598,6 @@ def _resolve_login_username(identifier: str) -> str | None:
     return ident
 
 
-@csrf_exempt
 @require_POST
 def api_register(request):
     try:
@@ -641,7 +667,6 @@ def api_register(request):
     )
 
 
-@csrf_exempt
 @require_POST
 def api_login(request):
     try:
@@ -670,7 +695,6 @@ def api_login(request):
     return JsonResponse({"ok": True, "user": _serialize_auth_user(user)})
 
 
-@csrf_exempt
 @require_POST
 def api_logout(request):
     django_logout(request)
@@ -693,6 +717,7 @@ def _user_display_name(u: User) -> str:
     return "ゲスト"
 
 
+@ensure_csrf_cookie
 @require_GET
 def api_me(request):
     if not request.user.is_authenticated:

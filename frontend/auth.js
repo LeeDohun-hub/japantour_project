@@ -3,6 +3,13 @@ const Auth = (() => {
 
   const $ = id => document.getElementById(id);
 
+  function getCsrfToken() {
+    return document.cookie.split(';')
+      .map(c => c.trim())
+      .find(c => c.startsWith('csrftoken='))
+      ?.split('=')[1] ?? '';
+  }
+
   async function checkSession() {
     try {
       const res = await fetch('/api/auth/me/');
@@ -84,7 +91,8 @@ const Auth = (() => {
     try {
       const res = await fetch('/api/auth/login/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+        credentials: 'same-origin',
         body: JSON.stringify({ email: username, username, password }),
       });
       const data = await res.json();
@@ -143,7 +151,7 @@ const Auth = (() => {
     try {
       const res = await fetch('/api/auth/register/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
         credentials: 'same-origin',
         body: JSON.stringify({
           display_name,
@@ -171,7 +179,11 @@ const Auth = (() => {
 
   async function handleLogout() {
     try {
-      await fetch('/api/auth/logout/', { method: 'POST' });
+      await fetch('/api/auth/logout/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCsrfToken() },
+        credentials: 'same-origin',
+      });
     } catch (_) {}
     currentUser = null;
     renderGuest();

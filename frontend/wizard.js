@@ -1,5 +1,12 @@
 /* Korea Travel Wizard — single-page 9-step flow */
 
+function getCsrfToken() {
+  return document.cookie.split(';')
+    .map(c => c.trim())
+    .find(c => c.startsWith('csrftoken='))
+    ?.split('=')[1] ?? '';
+}
+
 const TOTAL_STEPS = 8;
 let currentStep = 1;
 let currentUser = null;
@@ -380,7 +387,7 @@ function setupStep1() {
     try {
       const res = await fetch("/api/auth/login/", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrfToken() },
         credentials: "same-origin",
         body: JSON.stringify({ email, password }),
       });
@@ -434,7 +441,7 @@ function setupStep1() {
     try {
       const res = await fetch("/api/auth/register/", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrfToken() },
         credentials: "same-origin",
         body: JSON.stringify({
           display_name,
@@ -507,7 +514,11 @@ function setLoggedIn(user) {
 
 async function handleLogout() {
   try {
-    await fetch("/api/auth/logout/", { method: "POST", credentials: "same-origin" });
+    await fetch("/api/auth/logout/", {
+      method: "POST",
+      headers: { "X-CSRFToken": getCsrfToken() },
+      credentials: "same-origin",
+    });
   } catch (_) {}
   currentUser = null;
   delete wizardData.user;
@@ -1317,7 +1328,8 @@ async function generatePlan(isReroll = false) {
   try {
     const res  = await fetch("/api/chat/", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrfToken() },
+      credentials: "same-origin",
       body: JSON.stringify({
         message:         buildPrompt(isReroll),
         reply_language:  "日本語",
@@ -2640,7 +2652,8 @@ async function _displayPlanOutput(data) {
     try {
       const res = await fetch("/api/places/enrich/", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrfToken() },
+        credentials: "same-origin",
         body: JSON.stringify({ items: missing, language: "ja" }),
       });
       const body = await res.json();

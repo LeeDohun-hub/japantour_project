@@ -25,7 +25,27 @@ EMBED_DIM = 512
 BATCH_SIZE = 500
 CATEGORY_BUFFER = 8
 
+# ── 1. 저품질(운영 세부) 레코드 필터 ──────────────────────────────────────
+import re as _re
 
+_LOW_VALUE_PATTERNS: list[_re.Pattern] = [
+    _re.compile(r"この店の.{0,30}(営業時間|時まで|時から|休み|定休)"),
+    _re.compile(r"の営業時間は何時から何時"),
+    _re.compile(r"この店の.{0,30}(産地|生産|ブラジル|国内産|輸入)"),
+    _re.compile(r"この店の.{0,30}(主なメニュー|メニューは何|価格|ウォン|料金)"),
+    _re.compile(r"この店の.{0,30}(電話|予約|席数|座席|駐車|テイクアウト|配達)"),
+    _re.compile(r"카페의\s*영업시간"),
+    _re.compile(r"이\s*가게의\s*(영업시간|가격|메뉴|전화|예약|원산지)"),
+]
+
+
+def _is_low_value_record(record: dict) -> bool:
+    """여행 기획에 도움이 안 되는 운영 세부 정보 레코드 탐지."""
+    q = record.get("question_ja", "") or record.get("question_ko", "")
+    return any(p.search(q) for p in _LOW_VALUE_PATTERNS)
+
+
+# ── 2. 청크 텍스트 빌더 (한국어 + 메타데이터 포함) ────────────────────────
 def load_jsonl_records(path: Path = JSONL_PATH) -> list[dict]:
     records: list[dict] = []
     if not path.exists():
@@ -43,9 +63,20 @@ def load_jsonl_records(path: Path = JSONL_PATH) -> list[dict]:
 
 
 def build_chunk_text(record: dict) -> str:
-    return (
-        f"{record.get('question_ja', '')} {record.get('answer_ja', '')}"
-    ).strip() or " "
+    """임베딩 청크 텍스트 — 일본어 + 한국어 + 카테고리/에리어 메타 포함.
+
+    한국어 쿼리로 검색할 때도 cross-lingual 매칭이 가능하도록
+    question_ko / answer_ko 를 병렬로 추가한다.
+    """
+    parts = [
+        record.get("question_ja", ""),
+        record.get("answer_ja", ""),
+        record.get("question_ko", ""),
+        record.get("answer_ko", ""),
+        record.get("category", ""),
+        record.get("area", ""),
+    ]
+    return " ".join(p for p in parts if p).strip() or " "
 
 
 def embed_texts(texts: list[str]) -> list[list[float]]:
@@ -148,9 +179,11 @@ class FaissVectorStore(BaseVectorStore):
             sys.exit(1)
 
         INDEX_DIR.mkdir(parents=True, exist_ok=True)
-        records = load_jsonl_records()
+        raw_records = load_jsonl_records()
+        records = [r for r in raw_records if not _is_low_value_record(r)]
+        dropped = len(raw_records) - len(records)
         n = len(records)
-        print(f"[INFO] {n:,}건 로드 완료")
+        print(f"[INFO] {len(raw_records):,}건 로드 — 저품질 {dropped:,}건 제외 → {n:,}건 인덱싱")
 
         texts = [build_chunk_text(record) for record in records]
 
@@ -266,15 +299,150 @@ class PgVectorStore(BaseVectorStore):
             if area:
                 queryset = queryset.filter(area=area)
 
-            queryset = queryset.annotate(distance=CosineDistance("embedding", query_embedding)).order_by("distance")[:top_k]
+            queryset = queryset.annotate(distance=CosineDistance("embedding", query_embedding)).order_by("distance")[:top_k * 2]
 
             results: list[dict] = []
             for chunk in queryset:
+                if _is_low_value_record(chunk.to_search_result()):
+                    continue
+                if len(results) >= top_k:
+                    break
                 score = 1.0 - float(getattr(chunk, "distance", 0.0))
                 results.append(chunk.to_search_result(score=score))
             return results
         except Exception:
             return []
+
+
+# ── 3. BM25 인덱스 (한국어·일본어 CJK bigram 토크나이저) ──────────────────
+
+def _tokenize_cjk(text: str) -> list[str]:
+    """CJK 문자는 2-gram, 그 외는 소문자 공백 분할."""
+    tokens: list[str] = []
+    for word in text.split():
+        if any("ᄀ" <= c <= "鿿" or "぀" <= c <= "ヿ" for c in word):
+            for i in range(max(1, len(word) - 1)):
+                tokens.append(word[i : i + 2])
+        else:
+            t = word.lower().strip(".,!?\"'")
+            if t:
+                tokens.append(t)
+    return tokens
+
+
+class BM25Index:
+    """JSONL 레코드에서 BM25 인덱스를 빌드하고 검색한다."""
+
+    def __init__(self) -> None:
+        self._records: list[dict] = []
+        self._bm25 = None  # rank_bm25.BM25Okapi
+
+    def build(self, records: list[dict]) -> None:
+        try:
+            from rank_bm25 import BM25Okapi  # type: ignore
+        except ImportError:
+            return
+        self._records = [r for r in records if not _is_low_value_record(r)]
+        corpus = [_tokenize_cjk(build_chunk_text(r)) for r in self._records]
+        self._bm25 = BM25Okapi(corpus)
+
+    def is_ready(self) -> bool:
+        return self._bm25 is not None and bool(self._records)
+
+    def search(
+        self,
+        query: str,
+        category: str = "",
+        area: str = "",
+        top_k: int = 5,
+    ) -> list[dict]:
+        if not self.is_ready():
+            return []
+        tokens = _tokenize_cjk(query)
+        if not tokens:
+            return []
+        scores = self._bm25.get_scores(tokens)  # type: ignore[union-attr]
+        # 카테고리·에리어 필터 적용 후 top_k
+        ranked: list[tuple[float, dict]] = []
+        for score, record in zip(scores, self._records):
+            if category and record.get("category") != category:
+                continue
+            if area and record.get("area") != area:
+                continue
+            ranked.append((float(score), record))
+        ranked.sort(key=lambda x: x[0], reverse=True)
+        return [{**r, "_bm25_score": s} for s, r in ranked[:top_k]]
+
+
+# ── 4. RRF 병합 ────────────────────────────────────────────────────────────
+
+def _rrf_merge(
+    list_a: list[dict],
+    list_b: list[dict],
+    top_k: int,
+    k: int = 60,
+) -> list[dict]:
+    """Reciprocal Rank Fusion — 두 랭킹 리스트를 합산한다."""
+    scores: dict[str, float] = {}
+    by_id: dict[str, dict] = {}
+
+    for rank, rec in enumerate(list_a, 1):
+        rid = str(rec.get("id", id(rec)))
+        scores[rid] = scores.get(rid, 0.0) + 1.0 / (k + rank)
+        by_id.setdefault(rid, rec)
+
+    for rank, rec in enumerate(list_b, 1):
+        rid = str(rec.get("id", id(rec)))
+        scores[rid] = scores.get(rid, 0.0) + 1.0 / (k + rank)
+        by_id.setdefault(rid, rec)
+
+    sorted_ids = sorted(scores, key=lambda x: scores[x], reverse=True)
+    return [{**by_id[i], "_rrf_score": scores[i]} for i in sorted_ids[:top_k]]
+
+
+# ── 5. HybridVectorStore ────────────────────────────────────────────────────
+
+class HybridVectorStore(BaseVectorStore):
+    """벡터 검색 + BM25 RRF 앙상블."""
+
+    backend_name = "hybrid"
+
+    def __init__(self, base: BaseVectorStore) -> None:
+        self._base = base
+        self._bm25: BM25Index | None = None
+
+    def _get_bm25(self) -> BM25Index:
+        if self._bm25 is None:
+            self._bm25 = BM25Index()
+            self._bm25.build(load_jsonl_records())
+        return self._bm25
+
+    @property
+    def backend_name(self) -> str:  # type: ignore[override]
+        return f"hybrid+{self._base.backend_name}"
+
+    def is_ready(self) -> bool:
+        return self._base.is_ready()
+
+    def search(
+        self,
+        query: str,
+        category: str = "",
+        area: str = "",
+        top_k: int = 5,
+    ) -> list[dict]:
+        fetch = top_k * 3
+        vector_results = self._base.search(query, category=category, area=area, top_k=fetch)
+        bm25 = self._get_bm25()
+        if bm25.is_ready():
+            bm25_results = bm25.search(query, category=category, area=area, top_k=fetch)
+            return _rrf_merge(vector_results, bm25_results, top_k=top_k)
+        # BM25 미설치 시 벡터 결과만 반환
+        return vector_results[:top_k]
+
+    def build(self, force: bool = False) -> None:  # FAISS 빌드 위임
+        if isinstance(self._base, FaissVectorStore):
+            self._base.build(force=force)
 
 
 VectorStore = FaissVectorStore
@@ -283,13 +451,16 @@ _instances: dict[str, BaseVectorStore] = {}
 
 
 def get_vector_store(backend: str | None = None) -> BaseVectorStore:
+    """벡터 스토어 싱글턴 반환 — 항상 HybridVectorStore(벡터+BM25)로 감싼다."""
     selected = _normalize_backend(backend)
-    if selected not in _instances:
+    hybrid_key = f"hybrid_{selected}"
+    if hybrid_key not in _instances:
         if selected == "pgvector":
-            _instances[selected] = PgVectorStore()
+            base: BaseVectorStore = PgVectorStore()
         else:
-            _instances[selected] = FaissVectorStore()
-    return _instances[selected]
+            base = FaissVectorStore()
+        _instances[hybrid_key] = HybridVectorStore(base)
+    return _instances[hybrid_key]
 
 
 def _print_results(results: list[dict], query: str, category: str, area: str, backend: str) -> None:
@@ -321,7 +492,7 @@ if __name__ == "__main__":
         if backend != "faiss":
             print("[ERROR] --build 는 FAISS 백엔드에서만 지원합니다.")
             sys.exit(1)
-        assert isinstance(store, FaissVectorStore)
+        assert isinstance(store, HybridVectorStore)
         store.build(force=args.force)
 
     if args.test:

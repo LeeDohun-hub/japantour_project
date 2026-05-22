@@ -71,8 +71,12 @@ JSONL_PATH = PROJECT_ROOT / "data" / "processed" / "tour_knowledge.jsonl"
 # ─── LLM 설정 ───────────────────────────────────────────────────────────
 CLASSIFIER_MODEL = "gpt-4.1-mini"
 ANSWER_MODEL = "gpt-4.1-mini"
+# itinerary는 공간 추론(에리어 분리·이동 계산·날짜 배정)이 복잡하므로 full 모델 사용
+# 환경변수로 오버라이드 가능: ITINERARY_MODEL=gpt-4.1-mini
+import os as _os
+ITINERARY_MODEL = _os.environ.get("ITINERARY_MODEL", "gpt-4.1")
 ANSWER_TEMPERATURE = 0.3   # 0.7 → 0.3: 사실성 향상
-RAG_TOP_K = 5
+RAG_TOP_K = 8              # 5 → 8: 멀티 에리어 병합 시 area당 결과 수 확보
 HISTORY_WINDOW = 6         # 최근 N턴만 컨텍스트에 포함
 
 # ─── 장소명 생성 제한 카테고리 ──────────────────────────────────────────
@@ -3314,15 +3318,16 @@ def route_and_answer(
     )
     messages.append({"role": "user", "content": user_content})
 
+    _model = ITINERARY_MODEL if category == "itinerary" else ANSWER_MODEL
     try:
         completion = openai_client.chat.completions.create(
-            model=ANSWER_MODEL,
+            model=_model,
             messages=messages,
             temperature=answer_temperature,
         )
         reply = completion.choices[0].message.content or ""
     except Exception as _ans_exc:
-        logger.error("Answer generation failed (model=%s): %s", ANSWER_MODEL, _ans_exc)
+        logger.error("Answer generation failed (model=%s): %s", _model, _ans_exc)
         raise
 
     sources_used = []
