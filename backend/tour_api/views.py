@@ -117,9 +117,14 @@ def api_places_search(request):
     if str(_root / "src") not in sys.path:
         sys.path.insert(0, str(_root / "src"))
 
-    from src.api.google_places_client import GooglePlacesClient
+    from src.api.google_places_client import GooglePlacesClient, KR_LOCATION_RESTRICTION
+    from src.api.hotel_area_filter import build_hotel_search_query, filter_hotel_places
 
+    sido = request.GET.get("sido", "").strip()
+    sigungu = request.GET.get("sigungu", "").strip()
     query = request.GET.get("q", "").strip()
+    if not query and (sido or sigungu):
+        query = build_hotel_search_query(sido, sigungu)
     if not query:
         return JsonResponse({"places": []})
     fetch_all = request.GET.get("all", "").lower() in ("1", "true", "yes")
@@ -131,13 +136,28 @@ def api_places_search(request):
         pclient = GooglePlacesClient()
         if not pclient.is_configured:
             return JsonResponse({"places": [], "error": "Places API not configured"})
+        search_kwargs: dict = {
+            "text_query": query,
+            "language_code": "ja",
+            "included_type": "hotel",
+            "location_restriction": KR_LOCATION_RESTRICTION,
+        }
         if fetch_all:
-            results = pclient.search_by_text_all(text_query=query, max_total=60, language_code="ja")
+            results = pclient.search_by_text_all(max_total=60, **search_kwargs)
             next_token = None
         else:
             results, next_token = pclient.search_by_text(
-                text_query=query, max_results=limit, language_code="ja"
+                max_results=limit, **search_kwargs
             )
+        if not results and search_kwargs.get("included_type"):
+            search_kwargs.pop("included_type", None)
+            if fetch_all:
+                results = pclient.search_by_text_all(max_total=60, **search_kwargs)
+                next_token = None
+            else:
+                results, next_token = pclient.search_by_text(
+                    max_results=limit, **search_kwargs
+                )
         places = [
             {
                 "name": p.name,
@@ -152,7 +172,19 @@ def api_places_search(request):
             }
             for p in results
         ]
-        payload: dict = {"places": places, "total": len(places)}
+        raw_count = len(places)
+        if sido or sigungu:
+            places, filtered_out = filter_hotel_places(
+                places, sido=sido, sigungu=sigungu
+            )
+        else:
+            filtered_out = 0
+        payload: dict = {
+            "places": places,
+            "total": len(places),
+            "total_before_filter": raw_count,
+            "filtered_out": filtered_out,
+        }
         if next_token:
             payload["next_page_token"] = next_token
         return JsonResponse(payload)
@@ -186,12 +218,49 @@ def api_places_enrich(request):
     if lang not in ("ja", "ko"):
         lang = "ja"
 
+    # 목적지 리전 필터: 지역을 벗어난 장소(예: 강릉 일정에 서울 식당) 제거
+    dest_regions: list[str] = body.get("regions") or []
+    _REGION_ADDR_KW: dict[str, tuple[str, ...]] = {
+        "gangwon": ("강원", "gangwon", "강릉", "속초", "평창", "고성", "춘천", "원주", "정선", "태백", "동해"),
+        "busan": ("부산", "busan", "해운대", "기장", "사하", "사상", "동래"),
+        "jeju": ("제주", "jeju"),
+        "gyeonggi": ("경기", "gyeonggi", "고양", "수원", "성남", "용인", "안양", "과천", "의정부", "파주", "부천", "시흥", "안산", "화성"),
+        "seoul": ("서울", "seoul"),
+        "incheon": ("인천", "incheon"),
+        "chungcheong": ("충청", "chungcheong", "대전", "청주", "충주", "천안", "공주", "세종", "충북", "충남"),
+        "jeolla": ("전라", "jeolla", "전주", "광주", "여수", "목포", "순천", "나주"),
+        "gyeongsang": ("경상", "gyeongsang", "대구", "경주", "창원", "포항", "울산", "진주", "거제", "경북", "경남"),
+    }
+
+    def _addr_matches_dest(addr: str) -> bool:
+        if not dest_regions:
+            return True
+        a = addr.lower()
+        return any(
+            any(kw in a for kw in _REGION_ADDR_KW.get(reg, ()))
+            for reg in dest_regions
+        )
+
     try:
         pclient = GooglePlacesClient()
         if not pclient.is_configured:
             return JsonResponse({"places": {}, "error": "Places API not configured"})
     except Exception as exc:
         return JsonResponse({"places": {}, "error": str(exc)})
+
+    _NON_KR = (
+        "japan", "日本", "일본",
+        "tokyo", "東京", "도쿄", "도쿄도",
+        "osaka", "大阪", "오사카",
+        "kyoto", "京都", "교토",
+        "china", "中国", "中國", "beijing", "北京", "shanghai", "上海",
+        "taiwan", "台湾", "台灣",
+        "〒", "신주쿠구", "시부야구",
+    )
+
+    def _is_korea(addr: str) -> bool:
+        a = addr.lower()
+        return not any(m.lower() in a for m in _NON_KR)
 
     enriched: dict[str, dict] = {}
     for raw in items:
@@ -204,6 +273,13 @@ def api_places_enrich(request):
         try:
             place = pclient.find_for_plan_item(url, query, language_code=lang)
             if place:
+                addr = place.address or ""
+                if not _is_korea(addr):
+                    logger.debug("enrich: dropped non-KR place %r addr=%r", place.name, addr)
+                    continue
+                if not _addr_matches_dest(addr):
+                    logger.debug("enrich: dropped out-of-region place %r addr=%r dest=%r", place.name, addr, dest_regions)
+                    continue
                 enriched[url] = dataclasses.asdict(place)
         except Exception as exc:
             logger.warning("places enrich failed for %r: %s", url[:80], exc)

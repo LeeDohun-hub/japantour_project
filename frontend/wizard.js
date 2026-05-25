@@ -1561,7 +1561,7 @@ function buildPrompt(isReroll = false) {
   lines.push(
     "\n地図アプリへの検索依頼は禁止。",
     "【表示形式】時刻レンジ（例:[10:00〜11:00]）は書かない。各日は「①②③」または「午前」「昼食」「午後」「夕食」の順序で、ゆったりした旅行プランに見える構成にする。",
-    "【食事】韓国料理店（한식）で【食事の好み】に合う店を選ぶ。ウェディングホール・配達専門は禁止。店名＋GoogleマップURLを昼食・夕食に記載。",
+    "【食事】韓国料理店（한식）で【食事の好み】に合う店を選ぶ。ウェディングホール・配達専門は禁止。店名＋GoogleマップURLを昼食・夕食に記載。同じ店名・同じチェーン店（例: 국수나무の複数支店）をプラン全体で2回以上使用禁止。昼食・夕食・翌日の食事はすべて別の店（別チェーン）にすること。",
     "【スポーツ】Sports Schedule Resultsの試合またはオフシーズン案内をそのまま記載。ジム・ストリートへの置き換え禁止。",
     "営業時間・料金・チケットは文末で一言のみ。"
   );
@@ -1712,9 +1712,28 @@ function setupUndecidedAddrDropdown() {
 }
 
 function _buildUndecidedArea() {
-  const sido    = $("addrSidoUnd")?.value    || "";
-  const sigungu = $("addrSigunguUnd")?.value || "";
-  return sigungu || sido;
+  const { label } = _buildHotelSearchContext();
+  return label;
+}
+
+/** @returns {{ sido: string, sigungu: string, label: string, query: string }} */
+function _buildHotelSearchContext() {
+  const sido    = ($("addrSidoUnd")?.value    || "").trim();
+  const sigungu = ($("addrSigunguUnd")?.value || "").trim();
+  const label   = [sido, sigungu].filter(Boolean).join(" ");
+  let query = "";
+  if (sigungu && sido) query = `${sido} ${sigungu} 호텔`;
+  else if (sigungu) query = `${sigungu} 호텔`;
+  else if (sido) query = `${sido} 호텔`;
+  return { sido, sigungu, label, query };
+}
+
+function _hotelSearchParams(ctx) {
+  const params = new URLSearchParams({ all: "1" });
+  if (ctx.query) params.set("q", ctx.query);
+  if (ctx.sido) params.set("sido", ctx.sido);
+  if (ctx.sigungu) params.set("sigungu", ctx.sigungu);
+  return params;
 }
 
 function _showHotelManualBlock(show, emphasizeEmpty) {
@@ -1742,15 +1761,18 @@ function setupHotelManualSearch() {
 }
 
 async function _fetchHotelManualSearch() {
-  const area = _buildUndecidedArea();
+  const ctx  = _buildHotelSearchContext();
   const q    = ($("hotelManualInput")?.value || "").trim();
-  if (!q && !area) {
+  if (!q && !ctx.query) {
     const input = $("hotelManualInput");
     if (input) input.focus();
     return;
   }
 
-  const query = area && q ? `${area} ${q}` : (q || `${area} 호텔`);
+  const query = q
+    ? (ctx.label ? `${ctx.label} ${q}` : q)
+    : ctx.query;
+  const area = ctx.label || q;
 
   const statusEl  = $("hotelSearchStatus");
   const statusTxt = $("hotelStatusText");
@@ -1765,16 +1787,15 @@ async function _fetchHotelManualSearch() {
   _hotelPage = 0;
 
   try {
-    const res = await fetch(
-      `/api/places/search/?q=${encodeURIComponent(query)}&all=1`
-    );
+    const manualCtx = { ...ctx, query };
+    const res = await fetch(`/api/places/search/?${_hotelSearchParams(manualCtx)}`);
     const data = await res.json();
     _allHotels = data.places || [];
-    _hotelArea = area || q;
+    _hotelArea = area;
     _renderHotelPage(0);
   } catch {
     _allHotels = [];
-    _hotelArea = area || q;
+    _hotelArea = area;
     _renderHotelPage(0);
   } finally {
     if (statusEl) statusEl.style.display = "none";
@@ -1783,17 +1804,15 @@ async function _fetchHotelManualSearch() {
 }
 
 async function _fetchHotelRecommend() {
-  const sido    = $("addrSidoUnd")?.value    || "";
-  const sigungu = $("addrSigunguUnd")?.value || "";
-  const area    = sigungu || sido;
-  if (!area) return;
+  const ctx = _buildHotelSearchContext();
+  if (!ctx.query) return;
 
   const statusEl  = $("hotelSearchStatus");
   const statusTxt = $("hotelStatusText");
   const resultsEl = $("hotelResults");
 
   if (statusEl) { statusEl.style.display = "flex"; }
-  if (statusTxt) { statusTxt.textContent = `${area}のホテルを検索中…`; }
+  if (statusTxt) { statusTxt.textContent = `${ctx.label}のホテルを検索中…`; }
   if (resultsEl) { resultsEl.style.display = "none"; resultsEl.innerHTML = ""; }
 
   if ($("hotelListPager")) $("hotelListPager").style.display = "none";
@@ -1802,16 +1821,14 @@ async function _fetchHotelRecommend() {
   _hotelSearchMode = "recommend";
 
   try {
-    const res = await fetch(
-      `/api/places/search/?q=${encodeURIComponent(area + " 호텔")}&all=1`
-    );
+    const res = await fetch(`/api/places/search/?${_hotelSearchParams(ctx)}`);
     const data = await res.json();
     _allHotels = data.places || [];
-    _hotelArea = area;
+    _hotelArea = ctx.label;
     _renderHotelPage(0);
   } catch {
     _allHotels = [];
-    _hotelArea = area;
+    _hotelArea = ctx.label;
     _renderHotelPage(0);
   } finally {
     if (statusEl) statusEl.style.display = "none";
@@ -1860,9 +1877,10 @@ function _renderHotelPage(page) {
   const total = _allHotels.length;
 
   if (!total) {
+    const strictHint = "選択した地域に合うホテルのみ表示しています。";
     const emptyMsg = _hotelSearchMode === "manual"
-      ? `「${escHtml(area)}」の検索結果はありませんでした。キーワードを変えて再検索するか、<a href="/chat/" class="link-inline">AIチャット</a>でご相談ください。`
-      : `「${escHtml(area)}」のおすすめホテルが見つかりませんでした。下の検索欄でホテル名を入力してください。`;
+      ? `「${escHtml(area)}」の検索結果はありませんでした。${strictHint}キーワードを変えて再検索するか、<a href="/chat/" class="link-inline">AIチャット</a>でご相談ください。`
+      : `「${escHtml(area)}」のおすすめホテルが見つかりませんでした。${strictHint}下の検索欄でホテル名を入力してください。`;
     el.innerHTML = `<p class="accom-no-result">${emptyMsg}</p>`;
     el.style.display = "block";
     if (pagerEl) pagerEl.style.display = "none";
@@ -2226,9 +2244,9 @@ function _renderPlacesResults(places, { resultsEl, mode }) {
 }
 
 // ── PLAN HTML RENDERER ────────────────────────────────────────────────────
-const _PLAN_MAPS_URL_RE = /^https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps)\/\S+/i;
+const _PLAN_MAPS_URL_RE = /^https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps|goo\.gl\/maps|maps\.app\.goo\.gl)\/\S+/i;
 const _PLAN_MAPS_URL_EXTRACT =
-  /https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps)\/[^\s\]<")]+/gi;
+  /https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps|goo\.gl\/maps|maps\.app\.goo\.gl)\/[^\s\]<")]+/gi;
 const _PLAN_TICKET_URL_RE = /^https?:\/\/(?:tickets\.)?interpark\.com\/\S+/i;
 
 function _escapeHtml(s) {
@@ -2247,6 +2265,17 @@ function _normalizePlaceName(s) {
     .replace(/[『』「」'"`\u2018\u2019\u201C\u201D]/g, "")
     .replace(/\s+/g, "")
     .toLowerCase();
+}
+
+const _JP_ADDR_MARKERS = [
+  "〒", "일본", "日本", "japan",
+  "도쿄도", "도쿄", "東京",
+  "오사카", "大阪", "교토", "京都",
+  "신주쿠구", "시부야구", "아키하바라",
+];
+function _isJpAddress(place) {
+  const addr = (place?.address || "").toLowerCase();
+  return _JP_ADDR_MARKERS.some((m) => addr.includes(m.toLowerCase()));
 }
 
 function _buildPlaceIndexes(apiPlaces) {
@@ -2620,12 +2649,10 @@ function _placeMatchesUserFoodPref(place) {
   const prefs = wizardData.additional?.foodPreferences || [];
   if (!prefs.length) return true;
   const blob = `${place.name || ""} ${place.address || ""}`.toLowerCase();
-  if (!prefs.some((p) => (_FOOD_PREF_KW[p] || []).some((kw) => blob.includes(kw)))) return false;
+  // 식당명에 메뉴 키워드가 없는 경우가 많으므로 positive 매칭은 요구하지 않음.
+  // 선택하지 않은 카테고리 키워드가 명시적으로 있을 때만 제외.
   const unselected = Object.keys(_FOOD_PREF_KW).filter((k) => !prefs.includes(k));
-  for (const k of unselected) {
-    if ((_FOOD_PREF_KW[k] || []).some((kw) => blob.includes(kw))) return false;
-  }
-  return true;
+  return !unselected.some((k) => (_FOOD_PREF_KW[k] || []).some((kw) => blob.includes(kw)));
 }
 
 function _renderPlanPlacesRefSection(places, reply) {
@@ -2654,11 +2681,12 @@ async function _displayPlanOutput(data) {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrfToken() },
         credentials: "same-origin",
-        body: JSON.stringify({ items: missing, language: "ja" }),
+        body: JSON.stringify({ items: missing, language: "ja", regions: wizardData.regions || [] }),
       });
       const body = await res.json();
       if (res.ok && body.places) {
         for (const [url, p] of Object.entries(body.places)) {
+          if (_isJpAddress(p)) continue;
           placeIndexes.byUrl[_mapsUrlKey(url)] = p;
           const nk = _normalizePlaceName(p.name);
           if (nk) placeIndexes.byName[nk] = p;
@@ -2687,11 +2715,13 @@ async function _displayPlanOutput(data) {
       nights && days
         ? `${stay}、${nights}泊${days}日のおすすめルート`
         : `${stay}の旅行ルート`;
+    const arrivalIata = wizardData.flight?.arrival_airport || getArrivalAirportIata();
     await window.PlanMapView.render(reply, placeIndexes.byUrl, {
       days: wizardData.days,
       nights: wizardData.nights,
       title,
       subtitle: "Dayタブで日程を切り替え。番号順にルートを表示します。",
+      arrivalAirport: arrivalIata,
     });
     setTimeout(() => window.PlanMapView?.refreshMapLayout?.(), 450);
     setTimeout(() => window.PlanMapView?.refreshMapLayout?.(), 1200);

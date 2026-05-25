@@ -18,6 +18,15 @@ PLACES_NEARBY_URL = "https://places.googleapis.com/v1/places:searchNearby"
 PLACES_TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 PHOTO_BASE_URL = "https://places.googleapis.com/v1/{name}/media"
 
+# 한국 영토 바운딩 박스 — Places API locationRestriction에 사용
+# regionCode:"KR"은 soft bias일 뿐이므로 rectangle로 일본 결과를 완전 차단
+KR_LOCATION_RESTRICTION: dict = {
+    "rectangle": {
+        "low": {"latitude": 33.0, "longitude": 124.0},
+        "high": {"latitude": 39.5, "longitude": 132.0},
+    }
+}
+
 DEFAULT_FIELD_MASK = ",".join(
     [
         "places.id",
@@ -210,8 +219,13 @@ class GooglePlacesClient:
         region_code: str = "KR",
         included_type: str | None = None,
         page_token: str | None = None,
+        location_restriction: dict | None = None,
     ) -> tuple[list[NearbyPlace], str | None]:
         """텍스트 쿼리로 장소 검색 (예: '성수동 맛집', '명동 호텔').
+
+        location_restriction: Places API locationRestriction dict (rectangle or circle).
+          None → API default (regionCode bias only).
+          KR_LOCATION_RESTRICTION → 한국 바운딩 박스로 결과를 한국으로 제한.
 
         Returns:
             (places, next_page_token) — next_page_token is None when no more pages.
@@ -225,6 +239,8 @@ class GooglePlacesClient:
             "languageCode": language_code,
             "regionCode": region_code,
         }
+        if location_restriction:
+            body["locationRestriction"] = location_restriction
         if included_type:
             body["includedType"] = included_type
         if page_token:
@@ -262,6 +278,7 @@ class GooglePlacesClient:
         language_code: str = "ja",
         region_code: str = "KR",
         included_type: str | None = None,
+        location_restriction: dict | None = None,
     ) -> list[NearbyPlace]:
         """Text Search 전 페이지 수집 (API 상한 약 60건)."""
         cap = max(1, min(int(max_total), 60))
@@ -277,6 +294,7 @@ class GooglePlacesClient:
                 region_code=region_code,
                 included_type=included_type,
                 page_token=page_token,
+                location_restriction=location_restriction,
             )
             if not batch:
                 break
@@ -299,7 +317,11 @@ class GooglePlacesClient:
         query: str = "",
         language_code: str = "ja",
     ) -> NearbyPlace | None:
-        """プラン内 Maps URL + 店名ラベルから Places 詳細を取得."""
+        """プラン内 Maps URL + 店名ラベルから Places 詳細を取得.
+
+        한국 바운딩 박스(KR_LOCATION_RESTRICTION)를 항상 적용해
+        일본 동일명 지점(예: 도쿄 신오쿠보 한국식당)이 반환되지 않도록 한다.
+        """
         if not self.is_configured:
             return None
         target_cid = extract_maps_cid(maps_url)
@@ -312,6 +334,7 @@ class GooglePlacesClient:
                     text_query=q,
                     max_results=8,
                     language_code=language_code,
+                    location_restriction=KR_LOCATION_RESTRICTION,
                 )
             except Exception as exc:
                 logger.warning("find_for_plan_item search failed: %s", exc)

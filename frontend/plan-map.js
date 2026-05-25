@@ -4,10 +4,32 @@
 (function (global) {
   "use strict";
 
-  const MAPS_URL_RE = /^https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps)\/\S+/i;
+  const MAPS_URL_RE = /^https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps|goo\.gl\/maps|maps\.app\.goo\.gl)\/\S+/i;
   const DAY_HEADER_RE =
-    /^(?:#{1,3}\s*)?(?:【\s*)?(?:Day\s*)?(\d+)\s*日目|^(?:#{1,3}\s*)?第\s*(\d+)\s*日|^(?:#{1,3}\s*)?Day\s*(\d+)\b|最終日|帰国日|最終\s*日/i;
+    /^(?:#{1,3}\s*)?(?:【\s*)?(?:Day\s*)?(\d+)\s*日目|^(?:#{1,3}\s*)?第\s*(\d+)\s*日|^(?:#{1,3}\s*)?Day\s*(\d+)\b|最終日|帰国日|最終\s*日|^첫날|^(\d+)\s*일째|^최종일|^마지막\s*날/i;
   const GMAPS_CALLBACK = "__planMapGmapsReady";
+
+  // 한국 영토 바운딩 박스 (geocoding 결과 검증용)
+  const KR_LAT_MIN = 33.0, KR_LAT_MAX = 39.5;
+  const KR_LNG_MIN = 124.0, KR_LNG_MAX = 132.0;
+
+  // 일본 지명 패턴 — LLM 환각(신오쿠보, 신주쿠 등)으로 생성된 stop 제거
+  const JP_LOCATION_RE = /신주쿠|신오쿠보|하라주쿠|아키하바라|시부야|긴자|이케부쿠로|우에노|아사쿠사|롯폰기|히가시|나고야|오사카|교토|후쿠오카|삿포로|요코하마|도쿄|일본|東京|大阪|日本|Japan/i;
+
+  const AIRPORT_GEO = {
+    ICN: { lat: 37.4602, lng: 126.4407, name: "仁川国際空港" },
+    CJU: { lat: 33.5113, lng: 126.4930, name: "済州国際空港" },
+    PUS: { lat: 35.1796, lng: 128.9382, name: "金海国際空港" },
+    GMP: { lat: 37.5583, lng: 126.7906, name: "金浦国際空港" },
+  };
+
+  function _isKoreanCoords(lat, lng) {
+    return lat >= KR_LAT_MIN && lat <= KR_LAT_MAX && lng >= KR_LNG_MIN && lng <= KR_LNG_MAX;
+  }
+
+  function _isJpLocation(label) {
+    return JP_LOCATION_RE.test(label || "");
+  }
 
   let _mapsApiKey = null;
   let _mapsLoadPromise = null;
@@ -69,9 +91,10 @@
 
   function parseDayNumber(line) {
     const t = line.trim();
-    if (/最終日|帰国日|最終\s*日/.test(t)) return -1;
-    const m = t.match(/(\d+)\s*日目|第\s*(\d+)\s*日|Day\s*(\d+)/i);
-    if (m) return parseInt(m[1] || m[2] || m[3], 10);
+    if (/最終日|帰国日|最終\s*日|최종일|마지막\s*날/.test(t)) return -1;
+    if (/^첫날/.test(t)) return 1;
+    const m = t.match(/(\d+)\s*日目|第\s*(\d+)\s*日|Day\s*(\d+)|(\d+)\s*일째/i);
+    if (m) return parseInt(m[1] || m[2] || m[3] || m[4], 10);
     return null;
   }
 
@@ -104,7 +127,7 @@
       const dayNum = parseDayNumber(t);
       if (
         dayNum !== null &&
-        (/日目|Day\s*\d|第\s*\d+\s*日|最終日|帰国日/i.test(t) || /^【\s*\d+/.test(t))
+        (/日目|Day\s*\d|第\s*\d+\s*日|最終日|帰国日|일째|첫날|최종일|마지막/i.test(t) || /^【\s*\d+/.test(t))
       ) {
         const num = dayNum === -1 ? (fallbackDayCount || days.length + 1 || 99) : dayNum;
         current = { day: num, title: t.replace(/^#+\s*/, ""), stops: [] };
@@ -312,25 +335,45 @@
     const el = document.getElementById("planDayStops");
     if (!el) return;
     const colors = markerColors();
-    el.innerHTML = day.stops
-      .map((stop, idx) => {
+    let mapNum = 0; // 지도 마커 번호 (좌표 있는 stop만 카운트)
+    el.innerHTML = (day.stops || [])
+      .map((stop) => {
+        const hasCoords = stop.lat != null && stop.lng != null;
         const p = stop.place || {};
         const name = esc(p.name || stop.label);
-        const cat = esc(p.primary_type || p.types?.[0] || "観光スポット");
-        const thumb = p.photo_name
+        const cat = stop.isAirport
+          ? "空港"
+          : esc(p.primary_type || p.types?.[0] || "観光スポット");
+        const thumb = stop.isAirport
+          ? `<span class="plan-day-stop__fallback">✈️</span>`
+          : p.photo_name
           ? `<img src="/api/photo/?name=${encodeURIComponent(p.photo_name)}" alt="" loading="lazy" />`
           : `<span class="plan-day-stop__fallback">📍</span>`;
         const mapsUri = esc(p.google_maps_uri || p.maps_url || stop.url || "#");
         const tip = stop.line && !MAPS_URL_RE.test(stop.line) ? esc(stop.line) : "";
-        return `<article class="plan-day-stop">
-          <span class="plan-day-stop__num" style="background:${colors[idx % colors.length]}">${idx + 1}</span>
-          <a class="plan-day-stop__thumb" href="${mapsUri}" target="_blank" rel="noopener">${thumb}</a>
-          <div class="plan-day-stop__body">
-            <h4 class="plan-day-stop__name">${name}</h4>
-            <p class="plan-day-stop__meta">${cat}</p>
-            ${tip ? `<p class="plan-day-stop__tip"><span class="plan-day-stop__rec">おすすめ</span> ${tip}</p>` : ""}
-          </div>
-        </article>`;
+        if (hasCoords) {
+          mapNum++;
+          const color = colors[(mapNum - 1) % colors.length];
+          return `<article class="plan-day-stop">
+            <span class="plan-day-stop__num" style="background:${color}">${mapNum}</span>
+            <a class="plan-day-stop__thumb" href="${mapsUri}" target="_blank" rel="noopener">${thumb}</a>
+            <div class="plan-day-stop__body">
+              <h4 class="plan-day-stop__name">${name}</h4>
+              <p class="plan-day-stop__meta">${cat}</p>
+              ${tip ? `<p class="plan-day-stop__tip"><span class="plan-day-stop__rec">おすすめ</span> ${tip}</p>` : ""}
+            </div>
+          </article>`;
+        } else {
+          // 좌표 없는 stop — 지도에 표시 안 됨을 시각적으로 구분
+          return `<article class="plan-day-stop plan-day-stop--no-map">
+            <span class="plan-day-stop__num" style="background:#bbb;font-size:.7rem">—</span>
+            <span class="plan-day-stop__thumb">${thumb}</span>
+            <div class="plan-day-stop__body">
+              <h4 class="plan-day-stop__name">${name}</h4>
+              <p class="plan-day-stop__meta" style="color:#e57373">地図未登録</p>
+            </div>
+          </article>`;
+        }
       })
       .join("");
   }
@@ -348,9 +391,13 @@
           const body = await res.json();
           const p = body.places?.[0];
           if (p?.latitude != null) {
-            stop.lat = Number(p.latitude);
-            stop.lng = Number(p.longitude);
-            stop.place = { ...stop.place, ...p, google_maps_uri: p.maps_url || stop.url };
+            const lat = Number(p.latitude), lng = Number(p.longitude);
+            if (_isKoreanCoords(lat, lng)) {
+              stop.lat = lat;
+              stop.lng = lng;
+              stop.place = { ...stop.place, ...p, google_maps_uri: p.maps_url || stop.url };
+            }
+            // 한국 영역 밖 좌표(일본 등)는 null 유지
           }
         } catch (_) {
           /* skip */
@@ -403,6 +450,34 @@
     if (!shell) return;
 
     _planDays = parsePlanDays(reply, placeIndex, meta?.days || meta?.nights + 1);
+
+    // 일본 지명이 포함된 LLM 환각 stop 제거 (신오쿠보, 신주쿠 등)
+    _planDays.forEach((d) => {
+      d.stops = d.stops.filter((s) => !_isJpLocation(s.label));
+    });
+    _planDays = _planDays.filter((d) => d.stops.length > 0);
+
+    if (meta?.arrivalAirport) {
+      const geo = AIRPORT_GEO[String(meta.arrivalAirport).toUpperCase()];
+      if (geo) {
+        const airportStop = {
+          url: "",
+          place: null,
+          label: geo.name,
+          line: geo.name,
+          lat: geo.lat,
+          lng: geo.lng,
+          isAirport: true,
+        };
+        if (_planDays.length > 0 && _planDays[0].day === 1) {
+          // 파싱된 Day 1이 있으면 맨 앞에 추가
+          _planDays[0].stops.unshift(airportStop);
+        } else {
+          // 플랜이 Day 2부터 시작하는 경우(도착일 이동만인 경우) → 합성 Day 1 생성
+          _planDays.unshift({ day: 1, title: "1日目（到着日）", stops: [airportStop] });
+        }
+      }
+    }
 
     if (!_planDays.length) {
       shell.style.display = "none";
