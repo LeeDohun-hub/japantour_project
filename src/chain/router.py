@@ -33,6 +33,7 @@ from src.api.google_places_client import (
     KR_LOCATION_RESTRICTION,
     NearbyPlace,
     filter_meal_places,
+    meets_min_meal_rating,
 )
 from src.api.aviation_client import IncheonAirportClient, FlightInfo, AirportInfo, resolve_iata
 from src.api.sports_schedule_client import (
@@ -704,6 +705,7 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
         places_guidance = """
 [ITINERARY — MEAL PLACES IN PLAN TEXT]
 - Lunch and dinner: Korean restaurants (한식) where the user's preferred menu types can be eaten in-house — never wedding halls, delivery-only, or takeaway-only venues.
+- [Google Places Results] lists only venues with Google rating >= 4.0 (no rating = excluded). Never recommend lower-rated places even if named elsewhere.
 - At most ONE verified restaurant each from [Google Places Results].
 - Put the exact google_maps_uri on its own line immediately after the restaurant name (or "Name: URL" on one line).
 - Do NOT paste rating, review count, address, open hours, or button labels (地図/経路) — the app renders cards automatically.
@@ -2207,6 +2209,8 @@ def _place_conflicts_unselected_prefs(place: NearbyPlace, prefs: list[str]) -> b
 
 
 def _is_meal_candidate_place(place: NearbyPlace) -> bool:
+    if not meets_min_meal_rating(place):
+        return False
     cat = (place.category or "").lower()
     if cat in ("tourist_attraction", "park", "museum", "shopping_mall"):
         return False

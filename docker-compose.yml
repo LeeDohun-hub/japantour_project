@@ -1,0 +1,27 @@
+# 로컬 개발용 PostgreSQL + pgvector (회사 .env의 POSTGRES_* 와 동일 포트로 연결)
+# 사용: docker compose up -d  또는  scripts\dev-up.ps1
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: japantour-pg
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-japantour}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - japantour_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 3s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+
+volumes:
+  japantour_pgdata:

@@ -117,6 +117,22 @@ _MEAL_TYPE_ALLOW = frozenset({
 })
 
 
+def _min_meal_place_rating() -> float:
+    raw = os.getenv("MIN_MEAL_PLACE_RATING", "4").strip()
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return 4.0
+
+
+def meets_min_meal_rating(place: NearbyPlace) -> bool:
+    """Google 評価が閾値未満、または評価なしの飲食店は推薦対象外。"""
+    minimum = _min_meal_place_rating()
+    if place.rating is None:
+        return False
+    return float(place.rating) >= minimum
+
+
 def is_suitable_meal_place(place: NearbyPlace) -> bool:
     """昼食・夕食に使える店か（ウェディングホール等を除外）。"""
     name = (place.name or "").strip()
@@ -145,7 +161,10 @@ def is_suitable_meal_place(place: NearbyPlace) -> bool:
 
 
 def filter_meal_places(places: list[NearbyPlace]) -> list[NearbyPlace]:
-    return [p for p in places if is_suitable_meal_place(p)]
+    return [
+        p for p in places
+        if is_suitable_meal_place(p) and meets_min_meal_rating(p)
+    ]
 
 
 def _resolve_api_key(explicit: str | None = None) -> str | None:

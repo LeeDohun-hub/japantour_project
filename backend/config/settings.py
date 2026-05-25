@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 _REPO_ROOT = BASE_DIR.parent
-load_dotenv(_REPO_ROOT / ".env")
+load_dotenv(_REPO_ROOT / ".env", encoding="utf-8")
 
 # src/ package는 프로젝트 루트에 있으므로 sys.path에 추가
 _REPO_ROOT_STR = str(_REPO_ROOT)

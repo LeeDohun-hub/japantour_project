@@ -60,13 +60,28 @@ streamlit run app_japan_tour.py
 
 ### 프론트엔드 + 백엔드 분리 (HTML/CSS/JS + **Django**)
 
-저장소 루트에서 (최초 1회 DB 파일 생성):
+**pull 직후 / 집 PC** — Windows 기본 Postgres에는 `pgvector`가 없어 `migrate`가 실패할 수 있습니다.  
+회사와 **같은 `.env`** 를 쓰려면 **Docker로 pgvector DB** 를 띄운 뒤 migrate 하세요.
 
 ```powershell
-cd c:\WorkSpace\japantour_project
-python backend\manage.py migrate --noinput
+cd C:\Workspaces\japantour_project
+conda activate japantour_env
+pip install -r requirements.txt
+
+# 회사에서 복사한 .env 가 루트에 있어야 함 (POSTGRES_* 포함)
+
+# 1) DB + migrate (Docker Desktop 실행 필요)
+.\scripts\dev-up.ps1
+
+# 2) 서버
 python backend\manage.py runserver 127.0.0.1:8000
 ```
+
+- `.env`의 `POSTGRES_PORT`(예: `5433`)와 `docker-compose.yml` 포트가 같아야 합니다.
+- `VECTOR_BACKEND=pgvector` 이면 (회사와 동일) 적재:  
+  `python backend\manage.py import_tour_knowledge --batch-size 200`  
+  (`data/processed/tour_knowledge.jsonl` 필요)
+- DB만 수동: `docker compose up -d` → `python scripts\check_pgvector.py` → `migrate`
 
 브라우저: **http://127.0.0.1:8000/** 는 홈, **http://127.0.0.1:8000/chat/** 는 AI 채팅입니다. API는 `/api/health/`, `/api/chat/` 입니다. `OPENAI_API_KEY`가 없으면 채팅은 안내 문구만 반환합니다.
 
