@@ -6,7 +6,7 @@ import logging
 import math
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Iterable
 
 import requests
@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 PLACES_NEARBY_URL = "https://places.googleapis.com/v1/places:searchNearby"
 PLACES_TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
+PLACES_GET_URL = "https://places.googleapis.com/v1/places/{place_id}"
 PHOTO_BASE_URL = "https://places.googleapis.com/v1/{name}/media"
 
 # 한국 영토 바운딩 박스 — Places API locationRestriction에 사용
@@ -69,6 +70,7 @@ class NearbyPlace:
     google_maps_uri: str | None
     is_open_now: bool | None
     distance_meters: int | None
+    place_id: str | None = None          # ChIJ… (Places API id)
     price_level: str | None = None       # e.g. "¥¥" (변환 후 표시용)
     photo_name: str | None = None        # places/.../photos/... (proxy용)
     serves_breakfast: bool | None = None
@@ -89,6 +91,11 @@ _DELIVERY_ONLY_RE = re.compile(
     r"배달\s*전용|배달전용|배달\s*만|デリバリー専門|delivery\s*only|"
     r"テイクアウト専門|포장\s*전문|出前専門|テイクアウトのみ|"
     r"takeaway\s*only|ghost\s*kitchen",
+    re.IGNORECASE,
+)
+_CIVIC_OFFICE_RE = re.compile(
+    r"구청|시청|군청|도청|읍사무소|면사무소|동사무소|주민센터|행정복지센터|"
+    r"city\s*hall|district\s*office|community\s*service\s*center",
     re.IGNORECASE,
 )
 _MEAL_TYPE_EXCLUDE = frozenset({
@@ -138,6 +145,8 @@ def is_suitable_meal_place(place: NearbyPlace) -> bool:
     name = (place.name or "").strip()
     addr = (place.address or "").strip()
     blob = f"{name} {addr}"
+    if _CIVIC_OFFICE_RE.search(blob):
+        return False
     if _MEAL_NAME_EXCLUDE_RE.search(blob) or _DELIVERY_ONLY_RE.search(blob):
         return False
 
@@ -330,11 +339,49 @@ class GooglePlacesClient:
 
         return collected
 
+    def get_place_by_id(
+        self,
+        place_id: str,
+        language_code: str = "ja",
+    ) -> NearbyPlace | None:
+        """Places API (New) Place Details — ChIJ… place id."""
+        if not self.is_configured or not place_id:
+            return None
+        pid = place_id.strip()
+        if pid.startswith("places/"):
+            pid = pid.split("/", 1)[1]
+        url = PLACES_GET_URL.format(place_id=pid)
+        headers = {
+            "X-Goog-Api-Key": self.api_key,
+            "X-Goog-FieldMask": DEFAULT_FIELD_MASK,
+        }
+        try:
+            response = requests.get(
+                url,
+                headers=headers,
+                params={"languageCode": language_code},
+                timeout=self.timeout,
+            )
+            if not response.ok:
+                logger.warning(
+                    "get_place_by_id HTTP %s place_id=%r body=%s",
+                    response.status_code,
+                    pid[:24],
+                    response.text[:200],
+                )
+                return None
+            data = response.json()
+            return self._normalize_place(data)
+        except Exception as exc:
+            logger.warning("get_place_by_id failed %r: %s", pid[:24], exc)
+            return None
+
     def find_for_plan_item(
         self,
         maps_url: str,
         query: str = "",
         language_code: str = "ja",
+        region_hint: str = "",
     ) -> NearbyPlace | None:
         """プラン内 Maps URL + 店名ラベルから Places 詳細を取得.
 
@@ -344,26 +391,65 @@ class GooglePlacesClient:
         if not self.is_configured:
             return None
         target_cid = extract_maps_cid(maps_url)
-        q = (query or "").strip()
+        q = normalize_plan_query_label(query)
+        place_id = extract_place_id_from_maps_url(maps_url)
+
+        if place_id:
+            found = self.get_place_by_id(place_id, language_code=language_code)
+            if found:
+                return _attach_request_maps_uri(found, maps_url)
+
         if not q and not target_cid:
             return None
-        if q:
+
+        # CID is known but no text label — attempt CID-based lookup
+        if not q and target_cid:
+            return self._find_by_cid(target_cid, language_code=language_code, maps_url=maps_url)
+
+        search_queries = _plan_item_search_queries(q, region_hint=region_hint)
+        for tq in search_queries:
             try:
                 results, _ = self.search_by_text(
-                    text_query=q,
-                    max_results=8,
+                    text_query=tq,
+                    max_results=10,
                     language_code=language_code,
                     location_restriction=KR_LOCATION_RESTRICTION,
                 )
             except Exception as exc:
-                logger.warning("find_for_plan_item search failed: %s", exc)
-                return None
+                logger.warning("find_for_plan_item search %r: %s", tq, exc)
+                continue
+            if not results:
+                continue
+
             if target_cid:
                 for place in results:
                     if maps_urls_same_cid(place.google_maps_uri, maps_url):
-                        return place
+                        return _attach_request_maps_uri(place, maps_url)
+
+            for place in results:
+                if _place_matches_query_label(place, q):
+                    return _attach_request_maps_uri(place, maps_url)
+
+        return None
+
+    def _find_by_cid(
+        self,
+        cid: str,
+        language_code: str = "ja",
+        maps_url: str = "",
+    ) -> NearbyPlace | None:
+        """CID のみで장소を検索 (クエリラベルがない場合のフォールバック)."""
+        try:
+            results, _ = self.search_by_text(
+                text_query=f"cid:{cid}",
+                max_results=3,
+                language_code=language_code,
+                location_restriction=KR_LOCATION_RESTRICTION,
+            )
             if results:
-                return results[0]
+                return _attach_request_maps_uri(results[0], maps_url)
+        except Exception as exc:
+            logger.warning("_find_by_cid cid=%s: %s", cid, exc)
         return None
 
     def _normalize_place(
@@ -396,6 +482,9 @@ class GooglePlacesClient:
         photos = place.get("photos") or []
         photo_name = photos[0].get("name") if photos else None
 
+        raw_id = str(place.get("id") or "")
+        place_id = raw_id.split("/", 1)[-1] if raw_id else None
+
         return NearbyPlace(
             name=(place.get("displayName") or {}).get("text", "이름 없음"),
             category=place.get("primaryType", "place"),
@@ -405,6 +494,7 @@ class GooglePlacesClient:
             rating=place.get("rating"),
             user_rating_count=place.get("userRatingCount"),
             google_maps_uri=place.get("googleMapsUri"),
+            place_id=place_id,
             is_open_now=opening_hours.get("openNow"),
             distance_meters=distance,
             price_level=_PRICE_DISPLAY.get(raw_price) if raw_price else None,
@@ -414,12 +504,122 @@ class GooglePlacesClient:
         )
 
 
-def extract_maps_cid(maps_url: str) -> str | None:
-    """Google Maps URL の cid パラメータを抽出."""
+def normalize_plan_query_label(query: str) -> str:
+    """플랜 enrich용 — 昼食：성심당(…) → 성심당."""
+    t = " ".join((query or "").split()).strip()
+    t = re.sub(r"^[-・*①②③④⑤⑥⑦⑧⑨⑩]\s*", "", t)
+    t = re.sub(
+        r"^(?:"
+        r"昼食|午後|午前|夕食|朝食|夜|ランチ|ディナー|朝|昼|食事|"
+        r"점심|저녁|아침|오전|오후|식사"
+        r")[：:\s]+",
+        "",
+        t,
+        flags=re.UNICODE,
+    )
+    t = re.sub(r"^【[^】]*】\s*", "", t)
+    sports_venue_patterns = (
+        "잠실야구장", "고척스카이돔", "사직야구장", "대구 삼성라이온즈파크",
+        "삼성라이온즈파크", "NC파크", "엔씨파크", "광주기아챔피언스필드",
+        "기아챔피언스필드", "한화생명볼파크", "수원KT위즈파크", "KT위즈파크",
+        "SSG랜더스필드", "랜더스필드", "문학야구장",
+        "잠실실내체육관", "서울월드컵경기장", "상암월드컵경기장",
+    )
+    compact = t.replace(" ", "")
+    for venue in sports_venue_patterns:
+        if venue.replace(" ", "") in compact:
+            return venue
+    if re.fullmatch(r"(?:KBO|KBL|KOVO|K[-\s]?リーグ|프로야구|プロ野球|野球観戦|スポーツ観戦).{0,20}", t, re.I):
+        return ""
+    m = re.match(r"^(.+?)[（(]([^）)]+)[）)]", t)
+    if m:
+        a, b = m.group(1).strip(), m.group(2).strip()
+        if len(a) >= 2:
+            t = a
+        elif len(b) >= 2:
+            t = b
+    t = re.sub(r"[（(][^）)]*[）)]", "", t).strip()
+    t = re.sub(r"\s*본점.*$", "", t).strip()
+    t = re.sub(r"\s*本店.*$", "", t).strip()
+    return t
+
+
+def _normalize_label_key(s: str) -> str:
+    return re.sub(r"[^\w\u3131-\uD79D぀-ヿ가-힣]", "", (s or ""), flags=re.UNICODE).lower()
+
+
+def _place_matches_query_label(place: NearbyPlace, query: str) -> bool:
+    ql = _normalize_label_key(normalize_plan_query_label(query))
+    if len(ql) < 2:
+        return False
+    blob = _normalize_label_key(place.name)
+    if not blob:
+        return False
+    return ql in blob or blob in ql or blob.startswith(ql[: max(4, len(ql) // 2)])
+
+
+def _plan_item_search_queries(query: str, region_hint: str = "") -> list[str]:
+    q = normalize_plan_query_label(query)
+    if not q:
+        return []
+    variants: list[str] = [q]
+    hint = normalize_plan_query_label(region_hint) or (region_hint or "").strip()
+    if hint:
+        for token in re.split(r"[,、·/\s]+", hint):
+            token = token.strip()
+            if len(token) >= 2:
+                variants.append(f"{q} {token}")
+    if "성심당" in q or "성심" in q:
+        variants.extend(["성심당 대전", "성심당 본점"])
+    seen: set[str] = set()
+    out: list[str] = []
+    for v in variants:
+        v = v.strip()
+        if v and v not in seen:
+            seen.add(v)
+            out.append(v)
+    return out[:6]
+
+
+def _attach_request_maps_uri(place: NearbyPlace, maps_url: str) -> NearbyPlace:
+    """프론트가 본문 cid URL로 lookup — 요청 URL을 google_maps_uri에 유지."""
+    uri = (maps_url or "").strip() or place.google_maps_uri
+    return replace(place, google_maps_uri=uri)
+
+
+def extract_place_id_from_maps_url(maps_url: str) -> str | None:
+    """Google Maps URL에서 ChIJ place id 추출."""
     if not maps_url:
         return None
+    m = re.search(r"[?&]place_id=([A-Za-z0-9_-]+)", maps_url, re.I)
+    if m:
+        return m.group(1)
+    m = re.search(r"place_id[=:]([A-Za-z0-9_-]+)", maps_url, re.I)
+    if m:
+        return m.group(1)
+    m = re.search(r"(ChIJ[A-Za-z0-9_-]{10,})", maps_url)
+    if m:
+        return m.group(1)
+    return None
+
+
+def extract_maps_cid(maps_url: str) -> str | None:
+    """Google Maps URL の cid パラメータを抽出 (十進数・十六進数両対応)."""
+    if not maps_url:
+        return None
+    # Standard ?cid=DECIMAL
     match = re.search(r"[?&]cid=(\d+)", maps_url)
-    return match.group(1) if match else None
+    if match:
+        return match.group(1)
+    # Modern data= URL: !1s0xLOC:0xCID! — second hex part is the decimal CID
+    # Also handles /ftid=0xLOC:0xCID query param
+    match = re.search(r"(?:!1s|ftid=)0x[0-9a-f]+:0x([0-9a-f]+)", maps_url, re.I)
+    if match:
+        try:
+            return str(int(match.group(1), 16))
+        except ValueError:
+            pass
+    return None
 
 
 def maps_urls_same_cid(a: str | None, b: str | None) -> bool:

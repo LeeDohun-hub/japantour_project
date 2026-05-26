@@ -1,4 +1,4 @@
-"""Fetch Open Graph metadata for allowed ticket URLs (Interpark NOL)."""
+"""Fetch Open Graph metadata for allowed ticket URLs."""
 
 from __future__ import annotations
 
@@ -13,8 +13,24 @@ _ALLOWED_HOSTS = frozenset(
         "tickets.interpark.com",
         "ticket.interpark.com",
         "www.ticket.interpark.com",
+        "www.ticketlink.co.kr",
+        "ticketlink.co.kr",
+        "www.ssglanders.com",
+        "www.giantsclub.com",
+        "ticket.ncdinos.com",
     }
 )
+
+_SITE_NAME_MAP: dict[str, str] = {
+    "tickets.interpark.com": "INTERPARK TICKET",
+    "ticket.interpark.com": "INTERPARK TICKET",
+    "www.ticket.interpark.com": "INTERPARK TICKET",
+    "www.ticketlink.co.kr": "チケットリンク",
+    "ticketlink.co.kr": "チケットリンク",
+    "www.ssglanders.com": "SSG LANDERS TICKET",
+    "www.giantsclub.com": "LOTTE GIANTS TICKET",
+    "ticket.ncdinos.com": "NC DINOS TICKET",
+}
 
 _OG_TAG_RE = re.compile(
     r'<meta\s+(?:[^>]*?\s)?(?:property|name)=["\'](og:[^"\']+)["\']\s+'
@@ -85,7 +101,8 @@ def fetch_link_preview(url: str, *, timeout: int = 12) -> dict[str, str | None]:
 
     description = og.get("og:description") or og.get("description") or ""
     image = og.get("og:image") or ""
-    site_name = og.get("og:site_name") or "INTERPARK TICKET"
+    host = (urlparse(url).hostname or "").lower()
+    site_name = og.get("og:site_name") or _SITE_NAME_MAP.get(host, "チケット")
 
     return {
         "url": url,

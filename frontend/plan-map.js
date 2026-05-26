@@ -39,11 +39,29 @@
   let _infoWindow = null;
   let _planDays = [];
   let _activeDay = 1;
+  let _mapMeta = {};
 
   function esc(s) {
     return String(s || "").replace(/[&<>"']/g, (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
     );
+  }
+
+  function mapsOpenUrl(stop) {
+    const p = stop?.place || {};
+    const opts = {
+      url: stop?.url,
+      label: stop?.label,
+      regions: _mapMeta.regions || [],
+      regionCities: _mapMeta.regionCities || _mapMeta.region_cities || "",
+    };
+    if (global.MapsOpenUrl?.build) {
+      return MapsOpenUrl.build(
+        { ...p, name: p.name || stop?.label },
+        opts
+      );
+    }
+    return p.google_maps_uri || p.maps_url || stop?.url || "#";
   }
 
   function showMapStatus(msg, isError) {
@@ -270,7 +288,7 @@
       marker.addListener("click", () => {
         const name = esc(stop.place?.name || stop.label);
         const addr = stop.place?.address ? `<br><small>${esc(stop.place.address)}</small>` : "";
-        const link = stop.place?.google_maps_uri || stop.url;
+        const link = mapsOpenUrl(stop);
         _infoWindow.setContent(
           `<div class="plan-map-infowin"><strong>${name}</strong>${addr}<br><a href="${esc(link)}" target="_blank" rel="noopener">Google Maps</a></div>`
         );
@@ -349,7 +367,7 @@
           : p.photo_name
           ? `<img src="/api/photo/?name=${encodeURIComponent(p.photo_name)}" alt="" loading="lazy" />`
           : `<span class="plan-day-stop__fallback">📍</span>`;
-        const mapsUri = esc(p.google_maps_uri || p.maps_url || stop.url || "#");
+        const mapsUri = esc(mapsOpenUrl(stop));
         const tip = stop.line && !MAPS_URL_RE.test(stop.line) ? esc(stop.line) : "";
         if (hasCoords) {
           mapNum++;
@@ -449,6 +467,7 @@
     const shell = document.getElementById("planMapShell");
     if (!shell) return;
 
+    _mapMeta = meta || {};
     _planDays = parsePlanDays(reply, placeIndex, meta?.days || meta?.nights + 1);
 
     // 일본 지명이 포함된 LLM 환각 stop 제거 (신오쿠보, 신주쿠 등)

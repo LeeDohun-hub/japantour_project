@@ -13,6 +13,7 @@ urlpatterns = [
     path("photo/", views.api_photo, name="api_photo"),
     path("places-debug/", views.api_places_debug, name="api_places_debug"),
     path("chat/", views.api_chat, name="api_chat"),
+    path("chat/stream/", views.api_chat_stream, name="api_chat_stream"),
     path("auth/register/", views.api_register, name="api_register"),
     path("auth/login/", views.api_login, name="api_login"),
     path("auth/logout/", views.api_logout, name="api_logout"),

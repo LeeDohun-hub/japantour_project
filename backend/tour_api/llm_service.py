@@ -159,19 +159,6 @@ def run_chat(
                 i.to_dict() if hasattr(i, "to_dict") else dataclasses.asdict(i)
                 for i in route_result.visitkorea_attractions
             ]
-        has_venue_cards = bool(
-            places
-            or visitkorea_stays
-            or visitkorea_festivals
-            or visitkorea_attractions
-        )
-        if has_venue_cards and route_result.category in card_categories:
-            reply = ""
-        elif (
-            (visitkorea_festivals or visitkorea_attractions)
-            and route_result.category in ("culture", "leisure")
-        ):
-            reply = ""
         if route_result.sports_events:
             sports_events = [
                 m.to_dict() if hasattr(m, "to_dict") else dataclasses.asdict(m)
@@ -244,3 +231,116 @@ def _fallback_chat(
         temperature=0.3,
     )
     return completion.choices[0].message.content or ""
+
+
+from typing import Generator
+
+
+def run_chat_stream(
+    *,
+    message: str,
+    reply_language: str,
+    history: list[dict[str, Any]],
+    latitude: float | None = None,
+    longitude: float | None = None,
+    radius_meters: int = 1000,
+    traveler_profile: dict | None = None,
+) -> Generator[tuple[str, Any], None, None]:
+    """SSE 스트리밍용 generator. (type, data) 튜플을 순차 yield.
+    types: "meta" → dict, "token" → str 청크, "done" → dict, "error" → str
+    """
+    client = get_client()
+    if client is None:
+        err = (
+            "OpenAI APIキーが設定されていません。"
+            if reply_language == "日本語"
+            else "OpenAI API 키가 설정되지 않았습니다."
+        )
+        yield ("error", err)
+        return
+
+    try:
+        from src.chain.router import route_and_answer
+        route_result = route_and_answer(
+            user_message=message,
+            reply_language=reply_language,
+            history=history,
+            openai_client=client,
+            latitude=latitude,
+            longitude=longitude,
+            radius_meters=radius_meters,
+            traveler_profile=traveler_profile,
+            _stream=True,
+        )
+    except Exception as exc:
+        logger.exception("route_and_answer (stream) failed: %s", exc)
+        yield ("error", str(exc))
+        return
+
+    # 메타 데이터 (카드·분류 결과) 먼저 전송
+    meta: dict[str, Any] = {
+        "category": route_result.category,
+        "keyword": route_result.keyword,
+        "sources_used": route_result.sources_used,
+        "places_count": route_result.places_count,
+    }
+    if route_result.places:
+        meta["places"] = [dataclasses.asdict(p) for p in route_result.places]
+    if route_result.visitkorea_stays:
+        meta["visitkorea_stays"] = [
+            i.to_dict() if hasattr(i, "to_dict") else dataclasses.asdict(i)
+            for i in route_result.visitkorea_stays
+        ]
+    if route_result.visitkorea_festivals:
+        meta["visitkorea_festivals"] = [
+            i.to_dict() if hasattr(i, "to_dict") else dataclasses.asdict(i)
+            for i in route_result.visitkorea_festivals
+        ]
+    if route_result.visitkorea_attractions:
+        meta["visitkorea_attractions"] = [
+            i.to_dict() if hasattr(i, "to_dict") else dataclasses.asdict(i)
+            for i in route_result.visitkorea_attractions
+        ]
+    if route_result.sports_events:
+        meta["sports_events"] = [
+            m.to_dict() if hasattr(m, "to_dict") else dataclasses.asdict(m)
+            for m in route_result.sports_events
+        ]
+    if getattr(route_result, "gyeonggi_events", None):
+        meta["gyeonggi_events"] = [
+            e.to_dict() if hasattr(e, "to_dict") else dataclasses.asdict(e)
+            for e in route_result.gyeonggi_events
+        ]
+    if getattr(route_result, "ticket_platform_events", None):
+        meta["ticket_platform_events"] = [
+            e.to_dict() if hasattr(e, "to_dict") else dataclasses.asdict(e)
+            for e in route_result.ticket_platform_events
+        ]
+    if route_result.flights:
+        meta["flights"] = [dataclasses.asdict(f) for f in route_result.flights]
+        meta["flight_subtype"] = route_result.flight_subtype
+    if route_result.airport is not None:
+        meta["airport"] = dataclasses.asdict(route_result.airport)
+        meta["flight_subtype"] = route_result.flight_subtype
+    if route_result.places_error:
+        meta["places_error"] = route_result.places_error
+
+    yield ("meta", meta)
+
+    # LLM 토큰 스트리밍
+    full_reply = ""
+    if route_result.token_stream:
+        for chunk in route_result.token_stream:
+            if chunk:
+                full_reply += chunk
+                yield ("token", chunk)
+
+    # 번역 (한국어 모드 + 일본어 혼용 시)
+    translated_ko: str | None = None
+    if reply_language == "한국어" and _reply_has_japanese_kana(full_reply):
+        try:
+            translated_ko = translate_to_korean(full_reply)
+        except Exception:
+            pass
+
+    yield ("done", {"translated_ko": translated_ko, "reply": full_reply})

@@ -74,9 +74,24 @@ _KBO_TICKET_MAP: dict[str, str] = {
     "KIA":  "https://www.ticketlink.co.kr/sports/baseball",
     "두산":  "https://tickets.interpark.com/contents/sports/baseball",
     "키움":  "https://tickets.interpark.com/contents/sports/baseball",
-    "SSG":  "https://www.ssglanders.com/ticket/home",
+    "SSG":  "https://www.ssglanders.com/main",
     "롯데":  "https://www.giantsclub.com/contents/ticket",
     "NC":   "https://ticket.ncdinos.com/",
+}
+
+_KBO_VENUE_DISPLAY: dict[str, str] = {
+    "잠실": "잠실야구장",
+    "고척": "고척스카이돔",
+    "대구": "대구 삼성라이온즈파크",
+    "창원": "창원 NC파크",
+    "대전": "대전 한화생명볼파크",
+    "사직": "부산 사직야구장",
+    "문학": "인천 SSG랜더스필드",
+    "수원": "수원 KT위즈파크",
+    "광주": "광주-KIA챔피언스필드",
+    "울산": "울산 문수야구장",
+    "청주": "청주야구장",
+    "포항": "포항야구장",
 }
 
 _SPORT_TO_LEAGUES: dict[str, list[str]] = {
@@ -148,6 +163,30 @@ _REGION_CHIP_CENTROIDS: dict[str, tuple[float, float]] = {
     "gyeongsang": (35.1796, 129.0756),
     "busan": (35.1796, 129.0756),
     "jeju": (33.4996, 126.5312),
+}
+
+_REGION_CHIP_EXTRA_CENTERS: dict[str, list[tuple[float, float]]] = {
+    # 광역 권역 선택 시 한 도시 중심만 보지 않도록 보강
+    "gyeongsang": [
+        (35.8419, 128.6814),  # 대구 삼성라이온즈파크
+        (35.1689, 128.5850),  # 창원 NC파크
+        (35.1940, 129.0615),  # 부산 사직
+        (35.5384, 129.3114),  # 울산
+    ],
+    "jeolla": [
+        (35.1684, 126.8895),  # 광주 KIA챔피언스필드
+        (35.8683, 127.1286),  # 전주월드컵
+    ],
+    "chungcheong": [
+        (36.3174, 127.4294),  # 대전월드컵/한화
+        (36.8151, 127.1139),  # 천안
+    ],
+    "gyeonggi": [
+        (37.2998, 127.0096),  # 수원
+        (37.3943, 126.9467),  # 안양
+        (37.4860, 126.6900),  # 인천삼산(수도권 인접)
+        (37.6153, 126.7155),  # 김포
+    ],
 }
 
 # (키워드…), lat, lng — 경기장·구단 홈 기준
@@ -582,6 +621,7 @@ class SportsScheduleClient:
             # Venue: second-to-last among Class=None cells
             none_cells = [c for c in cells if c.get("Class") is None]
             venue = _strip(none_cells[-2].get("Text", "")) if len(none_cells) >= 2 else ""
+            venue = _KBO_VENUE_DISPLAY.get(venue, venue)
 
             out.append(SportsMatch(
                 league="kbo",
@@ -1091,6 +1131,36 @@ def accommodation_center(profile: dict | None) -> tuple[float, float] | None:
     return None
 
 
+def trip_sports_centers(profile: dict | None) -> list[tuple[tuple[float, float], float]]:
+    """숙소 + 목적 지역 중심. 광역권은 더 넓은 반경으로 경기 추천."""
+    if not profile:
+        return []
+    out: list[tuple[tuple[float, float], float]] = []
+    seen: set[tuple[float, float]] = set()
+
+    def add(coords: tuple[float, float] | None, radius: float) -> None:
+        if not coords:
+            return
+        key = (round(coords[0], 4), round(coords[1], 4))
+        if key in seen:
+            return
+        seen.add(key)
+        out.append((coords, radius))
+
+    add(accommodation_center(profile), NEARBY_SPORTS_MAX_KM)
+    blob = accommodation_location_blob(profile)
+    for city in sorted(_CITY_CENTROIDS, key=len, reverse=True):
+        if city in blob:
+            add(_CITY_CENTROIDS[city], 35.0)
+
+    for reg in profile.get("regions") or []:
+        key = str(reg).lower()
+        add(_REGION_CHIP_CENTROIDS.get(key), 55.0)
+        for coords in _REGION_CHIP_EXTRA_CENTERS.get(key, []):
+            add(coords, 55.0)
+    return out
+
+
 def venue_center(match: SportsMatch) -> tuple[float, float] | None:
     """경기장명·홈팀 기준만 사용 (원정팀명의 도시 오인 방지)."""
     venue = (match.venue or "").strip()
@@ -1146,16 +1216,19 @@ def filter_matches_near_accommodation(
     if not scheduled:
         return []
 
-    center = accommodation_center(profile)
+    centers = trip_sports_centers(profile)
     blob = accommodation_location_blob(profile)
-    if center is None and not blob.strip():
+    if not centers and not blob.strip():
         return []
 
     out: list[SportsMatch] = []
     for m in scheduled:
         vc = venue_center(m)
-        if center and vc:
-            if _haversine_km(center[0], center[1], vc[0], vc[1]) <= max_km:
+        if centers and vc:
+            if any(
+                _haversine_km(c[0], c[1], vc[0], vc[1]) <= max(max_km, radius)
+                for c, radius in centers
+            ):
                 out.append(m)
             continue
         if _venue_near_accommodation_text(m, blob):
@@ -1180,14 +1253,358 @@ def travel_dates_from_profile(profile: dict | None) -> tuple[date | None, date |
     return start, end
 
 
+_VENUE_PLACEHOLDER = frozenset(
+    {"", "会場未確認", "球場（要確認）", "会場要確認", "会場未確認"}
+)
+
+
+# KBO·主要競技場の場内フード（定番・シーズンで変動 — 当日確認）
+_STADIUM_FOOD_TIPS: dict[str, list[str]] = {
+    "잠실": [
+        "OB맥주·치킨(치맥) — 잠실 대표",
+        "회오리감자",
+        "소떡소떡",
+        "빙수·아이스크림(여름)",
+        "층별 매점(두산·LG 홈) 메뉴 상이",
+    ],
+    "잠실야구장": [
+        "OB맥주·치킨(치맥)",
+        "회오리감자·소떡소떡",
+    ],
+    "고척": [
+        "피자·도시락(실내 좌석)",
+        "치킨·맥주",
+        "핫도그·감자튀김",
+    ],
+    "고척스카이돔": ["피자·도시락", "치킨·맥주", "회오리감자"],
+    "사직": [
+        "롯데리아(구장 내)",
+        "어묵·핫도그",
+        "돼지국밥 코너",
+        "부산식 국밥·핫바",
+    ],
+    "사직야구장": ["롯데리아", "어묵·핫도그", "돼지국밥"],
+    "광주": ["닭강정", "치킨·맥주", "기아 챔피언스 필드 매점"],
+    "기아챔피언스필드": ["닭강정", "치킨·맥주", "감자류"],
+    "대전": [
+        "한화생명볼파크 — 치킨·맥주",
+        "불맛 갈비(시즌 메뉴)",
+        "회오리감자·핫도그",
+    ],
+    "한화생명볼파크": ["치킨·맥주", "불맛 갈비", "회오리감자"],
+    "수원": [
+        "삼겹살 버거(KT 위즈 파크 대표)",
+        "치킨·맥주",
+        "소떡소떡",
+    ],
+    "kt위즈파크": ["삼겹살 버거", "치킨·맥주"],
+    "문학": [
+        "크림새우 — 1루 2층 응원석(으쓱이존) 방면 / 외야 바비큐존 뒤편 스테이션 매장",
+        "버거 원더스 치즈 푸틴 — 1루 1층 응원석(으쓱이존) 근처",
+        "커빙 빙수 — 1루 2층 파울 폴대 근처, 스타벅스 옆",
+        "스타벅스 랜더스필드점 — 1루 2층 복도 쪽 등 구장 내 매장",
+        "스트릿 츄러스 — 1루 외야 바비큐존 뒤",
+        "요기요/SSG 공식앱 픽업 주문 — 일부 매장 제한 가능",
+    ],
+    "문학야구장": [
+        "크림새우 — 1루 2층 응원석 / 외야 바비큐존 뒤편",
+        "버거 원더스 치즈 푸틴 — 1루 1층",
+        "스트릿 츄러스 — 1루 외야 바비큐존 뒤",
+    ],
+    "인천": ["크림새우", "버거 원더스 치즈 푸틴", "스트릿 츄러스"],
+    "창원": [
+        "NC파크 — 마산식 찹쌀순대",
+        "회·핫도그",
+        "치킨·맥주",
+    ],
+    "nc파크": ["찹쌀순대", "회·핫도그"],
+    "대구": [
+        "삼성 라이온즈 파크 — 치킨·맥주",
+        "떡볶이·소떡",
+        "라이온즈 맥주 홀",
+    ],
+    "라이온즈파크": ["치킨·맥주", "떡볶이·소떡"],
+    "울산": ["치킨·맥주", "핫도그", "울산 문수 야구장 매점"],
+    "문수": ["치킨·맥주", "핫도그"],
+    "청주": [
+        "OB맥주",
+        "치킨·소떡",
+        "한화 육장어구이(대표 이벤트 메뉴)",
+    ],
+    "청주야구장": ["OB맥주", "치킨", "육장어구이"],
+    # Kリーグ・サッカー場（代表例）
+    "서울월드컵": [
+        "푸드트럭·간편식 — 북측광장/주요 게이트 주변 운영 변동",
+        "떡볶이·핫도그·닭강정",
+        "편의점·카페 — 월드컵경기장몰/메가박스 방면",
+    ],
+    "상암": ["푸드트럭·간편식", "월드컵경기장몰 편의점·카페"],
+    "월드컵경기장": ["푸드트럭·간편식", "떡볶이·핫도그", "편의점·카페"],
+    "전주월드컵": [
+        "푸드트럭존 — 경기일 운영 변동",
+        "치킨·핫도그·분식류",
+        "경기장 외부 매점·편의점 이용",
+    ],
+    "대전월드컵": ["푸드트럭·분식", "치킨·핫도그", "월드컵경기장역 주변 편의점"],
+    "수원월드컵": ["푸드트럭·분식", "치킨·핫도그", "빅버드 주변 편의점"],
+    "탄천종합": ["푸드트럭·간편식", "분식·핫도그", "야탑역 방면 식당가 이용"],
+    "용인미르": ["푸드트럭·간편식", "핫도그·분식", "경기일 매점 운영 확인"],
+    "천안종합": ["푸드트럭·간편식", "핫도그·분식", "천안종합운동장 주변 편의점"],
+    "이순신종합": ["푸드트럭·간편식", "분식·음료", "경기일 매점 운영 확인"],
+    "아산": ["푸드트럭·간편식", "분식·음료"],
+    "김포솔터": ["푸드트럭·간편식", "핫도그·분식", "솔터체육공원 주변 편의점"],
+    "파주": ["푸드트럭·간편식", "분식·음료", "경기일 매점 운영 확인"],
+    "김해": ["푸드트럭·간편식", "분식·음료", "경기장 주변 편의점"],
+    "제주월드컵": ["푸드트럭·간편식", "감귤 음료·분식류", "월드컵경기장 주변 카페"],
+    "문학경기장": ["어묵·핫도그", "치킨", "경기일 푸드트럭 운영 확인"],
+    # KBL・バスケ会場
+    "잠실실내체육관": [
+        "잠실종합운동장 매점 — 음료·스낵·핫도그",
+        "치킨·버거류는 경기일 입점/운영 확인",
+        "종합운동장역 주변 편의점·카페",
+    ],
+    "사직실내체육관": ["실내체육관 매점 — 음료·스낵", "사직야구장/종합운동장 주변 분식", "사직역 주변 식당가"],
+    "대구실내체육관": ["실내체육관 매점 — 음료·스낵", "북구 산격동 주변 분식·치킨", "경기일 매점 운영 확인"],
+    "삼산체육관": ["삼산월드체육관 매점 — 음료·스낵", "삼산체육관역 주변 카페·분식", "경기일 푸드부스 확인"],
+    "인천삼산": ["삼산월드체육관 매점", "삼산체육관역 주변 카페·분식"],
+    "안양실내체육관": ["실내체육관 매점 — 음료·스낵", "범계역·평촌 주변 식당가", "경기일 푸드부스 확인"],
+    "동천체육관": ["체육관 매점 — 음료·스낵", "울산 동천체육관 주변 분식·치킨", "경기일 운영 확인"],
+    "창원실내체육관": ["체육관 매점 — 음료·스낵", "창원스포츠파크 주변 분식·치킨", "경기일 푸드부스 확인"],
+    "수원kt소닉붐": ["수원 KT 소닉붐 아레나 매점", "분식·핫도그·음료", "수원종합운동장 주변 식당가"],
+    "원주종합체육관": ["종합체육관 매점 — 음료·스낵", "원주종합운동장 주변 분식", "경기일 운영 확인"],
+    # KOVO・バレー会場
+    "장충체육관": ["장충체육관 매점 — 음료·스낵", "동대입구역·장충동 족발거리 주변 식사", "경기일 푸드부스 확인"],
+    "의정부실내체육관": ["체육관 매점 — 음료·스낵", "의정부종합운동장 주변 분식", "경기일 운영 확인"],
+    "천안유관순": ["유관순체육관 매점 — 음료·스낵", "천안종합운동장 주변 분식", "경기일 푸드부스 확인"],
+    "인천삼산월드체육관": ["삼산월드체육관 매점 — 음료·스낵", "삼산체육관역 주변 카페·분식"],
+    "광주페퍼": ["페퍼스타디움 매점 — 음료·스낵", "염주종합체육관 주변 분식·카페", "경기일 운영 확인"],
+    "염주": ["체육관 매점 — 음료·스낵", "염주체육관 주변 분식·카페"],
+    "충무체육관": ["충무체육관 매점 — 음료·스낵", "대전 한밭종합운동장 주변 분식", "경기일 운영 확인"],
+    "수원실내": ["수원실내체육관 매점 — 음료·스낵", "수원종합운동장 주변 분식·치킨"],
+    "안산상록수": ["상록수체육관 매점 — 음료·스낵", "상록수역 주변 분식·카페", "경기일 운영 확인"],
+}
+
+_HOME_TEAM_STADIUM_FOOD: dict[str, list[str]] = {
+    "LG": _STADIUM_FOOD_TIPS["잠실"],
+    "두산": _STADIUM_FOOD_TIPS["잠실"],
+    "키움": _STADIUM_FOOD_TIPS["고척"],
+    "롯데": _STADIUM_FOOD_TIPS["사직"],
+    "기아": _STADIUM_FOOD_TIPS["광주"],
+    "한화": _STADIUM_FOOD_TIPS["대전"],
+    "KT": _STADIUM_FOOD_TIPS["수원"],
+    "SSG": _STADIUM_FOOD_TIPS["문학"],
+    "랜더스": _STADIUM_FOOD_TIPS["문학"],
+    "NC": _STADIUM_FOOD_TIPS["창원"],
+    "삼성": _STADIUM_FOOD_TIPS["대구"],
+    "KIA": _STADIUM_FOOD_TIPS["광주"],
+    # Kリーグ
+    "FC서울": _STADIUM_FOOD_TIPS["서울월드컵"],
+    "서울": _STADIUM_FOOD_TIPS["서울월드컵"],
+    "전북": _STADIUM_FOOD_TIPS["전주월드컵"],
+    "대전": _STADIUM_FOOD_TIPS["대전월드컵"],
+    "수원FC": _STADIUM_FOOD_TIPS["수원월드컵"],
+    "수원": _STADIUM_FOOD_TIPS["수원월드컵"],
+    "성남": _STADIUM_FOOD_TIPS["탄천종합"],
+    "용인": _STADIUM_FOOD_TIPS["용인미르"],
+    "천안": _STADIUM_FOOD_TIPS["천안종합"],
+    "아산": _STADIUM_FOOD_TIPS["아산"],
+    "김포": _STADIUM_FOOD_TIPS["김포솔터"],
+    "파주": _STADIUM_FOOD_TIPS["파주"],
+    "김해": _STADIUM_FOOD_TIPS["김해"],
+    "제주": _STADIUM_FOOD_TIPS["제주월드컵"],
+    # KBL
+    "서울 SK": _STADIUM_FOOD_TIPS["잠실실내체육관"],
+    "SK나이츠": _STADIUM_FOOD_TIPS["잠실실내체육관"],
+    "서울 삼성": _STADIUM_FOOD_TIPS["잠실실내체육관"],
+    "삼성썬더스": _STADIUM_FOOD_TIPS["잠실실내체육관"],
+    "부산 KCC": _STADIUM_FOOD_TIPS["사직실내체육관"],
+    "KCC": _STADIUM_FOOD_TIPS["사직실내체육관"],
+    "한국가스공사": _STADIUM_FOOD_TIPS["대구실내체육관"],
+    "페가수스": _STADIUM_FOOD_TIPS["대구실내체육관"],
+    "전자랜드": _STADIUM_FOOD_TIPS["삼산체육관"],
+    "정관장": _STADIUM_FOOD_TIPS["안양실내체육관"],
+    "현대모비스": _STADIUM_FOOD_TIPS["동천체육관"],
+    "창원 LG": _STADIUM_FOOD_TIPS["창원실내체육관"],
+    "LG세이커스": _STADIUM_FOOD_TIPS["창원실내체육관"],
+    "수원 KT": _STADIUM_FOOD_TIPS["수원kt소닉붐"],
+    "KT소닉붐": _STADIUM_FOOD_TIPS["수원kt소닉붐"],
+    "원주 DB": _STADIUM_FOOD_TIPS["원주종합체육관"],
+    "DB프로미": _STADIUM_FOOD_TIPS["원주종합체육관"],
+    # KOVO
+    "GS칼텍스": _STADIUM_FOOD_TIPS["장충체육관"],
+    "우리카드": _STADIUM_FOOD_TIPS["장충체육관"],
+    "IBK기업은행": _STADIUM_FOOD_TIPS["의정부실내체육관"],
+    "현대캐피탈": _STADIUM_FOOD_TIPS["천안유관순"],
+    "대한항공": _STADIUM_FOOD_TIPS["인천삼산월드체육관"],
+    "흥국생명": _STADIUM_FOOD_TIPS["인천삼산월드체육관"],
+    "페퍼저축은행": _STADIUM_FOOD_TIPS["광주페퍼"],
+    "AI페퍼스": _STADIUM_FOOD_TIPS["광주페퍼"],
+    "삼성화재": _STADIUM_FOOD_TIPS["충무체육관"],
+    "KGC인삼공사": _STADIUM_FOOD_TIPS["충무체육관"],
+    "정관장 레드스파크스": _STADIUM_FOOD_TIPS["충무체육관"],
+    "한국전력": _STADIUM_FOOD_TIPS["수원실내"],
+    "현대건설": _STADIUM_FOOD_TIPS["수원실내"],
+    "OK금융그룹": _STADIUM_FOOD_TIPS["안산상록수"],
+}
+
+
+_STADIUM_FOOD_BAD_WORDS = (
+    "구내식당", "사내식당", "직원식당", "급식", "단체급식",
+    "社員食堂", "職員食堂", "給食", "canteen", "cafeteria",
+)
+
+
+def _is_bad_stadium_food_text(text: str) -> bool:
+    t = (text or "").lower()
+    return any(word.lower() in t for word in _STADIUM_FOOD_BAD_WORDS)
+
+
+def lookup_stadium_food_tips(venue: str, home_team: str = "") -> list[str]:
+    """경기장명·홈팀으로 정적 매점 메뉴 힌트."""
+    v = (venue or "").strip().lower().replace(" ", "")
+    if v:
+        for key, tips in _STADIUM_FOOD_TIPS.items():
+            if key.replace(" ", "") in v or v in key.replace(" ", ""):
+                return list(tips)
+    ht = (home_team or "").strip()
+    if ht:
+        for key, tips in sorted(
+            _HOME_TEAM_STADIUM_FOOD.items(),
+            key=lambda item: len(item[0]),
+            reverse=True,
+        ):
+            if ht.startswith(key) or key in ht:
+                return list(tips)
+    return []
+
+
+def iter_scheduled_match_venues(
+    matches: list[SportsMatch],
+    *,
+    max_venues: int = 4,
+) -> list[tuple[str, str, str]]:
+    """실제 일정 경기의 (venue, league, home_team) — 경기장 내부 먹거리용."""
+    seen: set[str] = set()
+    out: list[tuple[str, str, str]] = []
+    for m in matches:
+        if m.status in ("off_season_notice", "fetch_failed"):
+            continue
+        venue = (m.venue or "").strip()
+        if venue in _VENUE_PLACEHOLDER:
+            venue = f"{m.home_team} 홈구장".strip() if m.home_team else ""
+        if not venue:
+            continue
+        key = venue.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append((venue, m.league, m.home_team or ""))
+        if len(out) >= max_venues:
+            break
+    return out
+
+
+def build_stadium_food_search_queries(
+    venue: str,
+    league: str = "",
+    lang: str = "ja",
+) -> list[str]:
+    """경기장당 복수 검색 쿼리（웹検索ヒット率向上）."""
+    venue = venue.strip()
+    league = (league or "").lower()
+    qs: list[str] = [build_stadium_food_search_query(venue, league, lang)]
+    if league == "kbo":
+        qs.append(f"{venue} 야구장 먹거리 매점 추천")
+        qs.append(f"{venue} 매점 위치 구역 층 먹거리")
+        qs.append(f"{venue} KBO 球場 グルメ")
+    elif league.startswith("kleague"):
+        qs.append(f"{venue} 축구장 먹거리")
+        qs.append(f"{venue} 매점 위치 구역")
+        qs.append(f"{venue} サッカー スタジアム グルメ")
+    else:
+        qs.append(f"{venue} 경기장 먹거리 매점")
+        qs.append(f"{venue} 매점 위치")
+    seen: set[str] = set()
+    out: list[str] = []
+    for q in qs:
+        q = q.strip()
+        if q and q not in seen:
+            seen.add(q)
+            out.append(q)
+    return out[:4]
+
+
+def build_stadium_food_search_query(
+    venue: str,
+    league: str = "",
+    lang: str = "ja",
+) -> str:
+    """경기장 내 매점·먹거리 — DuckDuckGo 검색 쿼리."""
+    venue = venue.strip()
+    league = (league or "").lower()
+    if lang == "ja":
+        if league.startswith("kleague"):
+            sport = "サッカー"
+        elif league == "kbo":
+            sport = "野球"
+        elif league == "kbl":
+            sport = "バスケ"
+        elif "kovo" in league:
+            sport = "バレー"
+        else:
+            sport = "スポーツ"
+        return f"{venue} {sport} 球場 グルメ フード 売店 おすすめ"
+    return f"{venue} 경기장 먹거리 매점 음식 추천"
+
+
+def fmt_stadium_food_context(
+    venues: list[tuple[str, str, str]],
+    web_by_venue: dict[str, list],
+    *,
+    lang: str = "ja",
+) -> str:
+    """정적 매점 힌트 + 웹검색 스니펫 — LLM Reference Data."""
+    if not venues:
+        return ""
+    lines: list[str] = [
+        "※ 以下の【代表メニュー】と【ウェブ検索】のみ観戦ブロックに使うこと。",
+        "※ 「チキン・ホットドッグ・トッポッキ」の一般羅列だけは禁止（下記の具体名を列挙）。",
+        "※ 구내식당・社員食堂・給食・canteen/cafeteria は観光客向けではないため絶対に書かない。",
+        "※ 位置・ゲート・階・内野/外野などがウェブ検索に出た場合のみ、売店位置メモとして併記。無ければ位置を創作しない。",
+        "※ 価格・品切れ・メニュー変更は当日・公式で要確認。",
+    ]
+    for venue, league, home_team in venues:
+        tips = lookup_stadium_food_tips(venue, home_team)
+        web_results = web_by_venue.get(venue) or []
+        lines.append(f"\n■ {venue}")
+        if tips:
+            label = "代表メニュー（スタジアム定番）" if lang == "ja" else "대표 메뉴"
+            lines.append(f"【{label}】")
+            for t in tips:
+                lines.append(f"  - {t}")
+        if web_results:
+            lines.append("【ウェブ検索メモ（売店位置・メニュー候補）】")
+            for i, r in enumerate(web_results, 1):
+                title = getattr(r, "title", "") or ""
+                snippet = getattr(r, "snippet", "") or ""
+                url = getattr(r, "url", "") or ""
+                if _is_bad_stadium_food_text(f"{title} {snippet} {url}"):
+                    continue
+                if title:
+                    lines.append(f"  [{i}] {title}")
+                if snippet:
+                    lines.append(f"      {snippet[:280]}")
+                if url:
+                    lines.append(f"      {url}")
+        if not tips and not web_results:
+            lines.append("  （場内メニュー情報なし — 創作せず「当日売店で確認」のみ）")
+    return "\n".join(lines)
+
+
 def fmt_sports_matches(matches: list[SportsMatch], lang: str = "ja") -> str:
     if not matches:
         return (
-            "(該当期間の試合データなし — 各リーグ公式日程ページでご確認ください)\n"
-            f"- KBO: {_LEAGUE_META['kbo']['schedule_url']}\n"
-            f"- KBL: {_LEAGUE_META['kbl']['schedule_url']}\n"
-            f"- KOVO: {_LEAGUE_META['kovo']['schedule_url']}\n"
-            f"- Kリーグ: {_LEAGUE_META['kleague']['schedule_url']}"
+            "(該当期間の試合データなし — 試合観戦ブロックは作らない)"
         )
     lines: list[str] = []
     for i, m in enumerate(matches, 1):
@@ -1198,13 +1615,13 @@ def fmt_sports_matches(matches: list[SportsMatch], lang: str = "ja") -> str:
                 lines.append(
                     f"[{i}] {label} | ⚠ {m.home_team}\n"
                     f"    {m.away_team}\n"
-                    f"    公式日程: {m.official_url}"
+                    "    試合日程: 取得不可"
                 )
             else:
                 lines.append(
                     f"[{i}] {label} | {m.home_team}\n"
                     f"    → {m.away_team}\n"
-                    f"    公式日程: {m.official_url}"
+                    "    試合日程: シーズン外"
                 )
             continue
         meta = _LEAGUE_META.get(m.league, _LEAGUE_META.get(_league_bucket(m.league), {}))
@@ -1214,9 +1631,8 @@ def fmt_sports_matches(matches: list[SportsMatch], lang: str = "ja") -> str:
         time_str = f" {m.time}" if m.time else ""
         teams = f"{m.home_team} vs {m.away_team}".strip(" vs ")
         venue = m.venue or "会場要確認"
-        ticket_line = f"\n    チケット購入: {m.ticket_url}" if m.ticket_url else ""
         lines.append(
             f"[{i}] {label} | {m.date}{time_str} | {teams} | {venue}\n"
-            f"    公式: {m.official_url}{ticket_line}"
+            f"    チケット・観戦情報: {m.ticket_url or '会場・球団公式で確認'}"
         )
     return "\n".join(lines)

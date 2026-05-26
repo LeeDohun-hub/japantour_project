@@ -39,6 +39,17 @@ async function init() {
   setupChipGroup("mobilityChips",        true);
   setupChipGroup("foodPreferenceChips", false);
   setupChipGroup("foodAvoidChips",        false);
+  // no_pork ↔ bossam 충돌: 한쪽 선택 시 반대쪽 자동 해제
+  $("foodAvoidChips")?.addEventListener("click", () => {
+    if (document.querySelector('#foodAvoidChips .chip[data-val="no_pork"].selected')) {
+      document.querySelector('#foodPreferenceChips .chip[data-val="bossam"]')?.classList.remove("selected");
+    }
+  });
+  $("foodPreferenceChips")?.addEventListener("click", () => {
+    if (document.querySelector('#foodPreferenceChips .chip[data-val="bossam"].selected')) {
+      document.querySelector('#foodAvoidChips .chip[data-val="no_pork"]')?.classList.remove("selected");
+    }
+  });
   setupChipGroup("paceChips",            true);
   setupChipGroup("languageChips",        true);
   setupChipGroup("vacationChips",        false);
@@ -183,6 +194,16 @@ function validate(step) {
       return false;
     }
     if (errRet) errRet.style.display = "none";
+  }
+  if (step === 3) {
+    const sel = document.querySelector("#accomOptions .option-card.selected");
+    const err = $("accomTypeError");
+    if (!sel) {
+      if (err) err.style.display = "block";
+      $("accomOptions")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return false;
+    }
+    if (err) err.style.display = "none";
   }
   if (step === 6) {
     const total = $("budgetTotal").value;
@@ -1286,6 +1307,49 @@ function _collectPlanPlaceNames(reply, places) {
   return [...names].slice(0, 30);
 }
 
+function _buildPlanAutoDefaults(d) {
+  const days = Math.max(1, Number(d.days || 3));
+  const seedText = [
+    ...(d.regions || []),
+    d.regionCities || "",
+    d.regionCitiesOther || "",
+    String(days),
+  ].join("|");
+  let seed = 0;
+  for (const ch of seedText) seed = (seed + ch.charCodeAt(0)) % 997;
+
+  const foodSets = [
+    ["grilled_meat", "soup", "cafe"],
+    ["bossam", "noodles", "cafe"],
+    ["chicken", "snack", "soup"],
+    ["seafood", "grilled_meat", "cafe"],
+  ];
+  const styleSets = [
+    ["must_see", "food_first", "local_vibe"],
+    ["sns_hot", "culture", "food_first"],
+    ["healing", "nature", "cafe"],
+    ["experience", "local_vibe", "food_first"],
+  ];
+  const idx = seed % foodSets.length;
+  const dailyJpy = days >= 5 ? 12000 : 10000;
+  return {
+    budget: {
+      currency: "JPY",
+      daily: dailyJpy,
+      total: dailyJpy * days,
+      style: "normal",
+      auto: true,
+    },
+    additional: {
+      companion: "friends",
+      pace: days >= 4 ? "relaxed" : "packed",
+      foodPreferences: foodSets[idx],
+      travelStyles: styleSets[idx],
+      auto: true,
+    },
+  };
+}
+
 async function generatePlan(isReroll = false) {
   const barEl    = $("planBar");
   const pctEl    = $("planPct");
@@ -1319,34 +1383,87 @@ async function generatePlan(isReroll = false) {
     delete wizardData.avoid_place_names;
   }
 
+  const autoDefaults = _buildPlanAutoDefaults(wizardData);
+  const userAdditional = wizardData.additional || {};
+  const mergedAdditional = {
+    ...autoDefaults.additional,
+    ...userAdditional,
+    foodPreferences: userAdditional.foodPreferences?.length
+      ? userAdditional.foodPreferences
+      : autoDefaults.additional.foodPreferences,
+    travelStyles: userAdditional.travelStyles?.length
+      ? userAdditional.travelStyles
+      : autoDefaults.additional.travelStyles,
+  };
   const profilePayload = {
     ...wizardData,
+    budget: wizardData.budget?.total ? wizardData.budget : autoDefaults.budget,
+    additional: mergedAdditional,
+    plan_auto_defaults: {
+      budget: !wizardData.budget?.total,
+      foodPreferences: !userAdditional.foodPreferences?.length,
+      details: !userAdditional.companion || !userAdditional.pace || !userAdditional.travelStyles?.length,
+    },
+    plan_mode: true,
     arrival_airport: wizardData.flight?.arrival_airport || getArrivalAirportIata(),
     departure_airport: wizardData.flight?.departure_airport || getDepartureAirportIata(),
   };
 
   try {
-    const res  = await fetch("/api/chat/", {
+    const res = await fetch("/api/chat/stream/", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrfToken() },
       credentials: "same-origin",
       body: JSON.stringify({
-        message:         buildPrompt(isReroll),
-        reply_language:  "日本語",
-        session_id:      null,
-        history:         [],
+        message:          buildPrompt(isReroll),
+        reply_language:   "日本語",
+        session_id:       null,
+        history:          [],
         traveler_profile: profilePayload,
       }),
     });
-    const data = await res.json();
-    clearInterval(timer);
-    barEl.style.width = "100%"; pctEl.textContent = "100%";
-    if (!res.ok) throw new Error(data.detail || "error");
+    if (!res.ok) {
+      const eb = await res.json().catch(() => ({}));
+      throw new Error(eb.detail || `HTTP ${res.status}`);
+    }
+
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    let sseBuf = "", metaData = {}, fullReply = "", charCount = 0;
+
+    outer: while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      sseBuf += decoder.decode(value, { stream: true });
+      const lines = sseBuf.split("\n");
+      sseBuf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        let msg;
+        try { msg = JSON.parse(line.slice(6)); } catch { continue; }
+        if (msg.type === "meta") {
+          metaData = msg;
+          clearInterval(timer);
+          progress = 88; barEl.style.width = "88%"; pctEl.textContent = "88%";
+          statusEl.textContent = "プランを書いています... (0 文字)";
+        } else if (msg.type === "token") {
+          fullReply += msg.delta || "";
+          charCount += (msg.delta || "").length;
+          statusEl.textContent = `プランを書いています... (${charCount} 文字)`;
+        } else if (msg.type === "done") {
+          clearInterval(timer);
+          barEl.style.width = "100%"; pctEl.textContent = "100%";
+          break outer;
+        } else if (msg.type === "error") {
+          throw new Error(msg.message || "stream error");
+        }
+      }
+    }
 
     setTimeout(async () => {
       $("planLoadingArea").style.display = "none";
       $("planTitle").textContent = _planResultTitle(currentUser || {});
-      await _displayPlanOutput(data);
+      await _displayPlanOutput({ ...metaData, reply: fullReply });
       $("planOutputArea").style.display = "block";
     }, 400);
 
@@ -1360,6 +1477,19 @@ async function generatePlan(isReroll = false) {
 
 function buildPrompt(isReroll = false) {
   const d = wizardData;
+  const autoDefaults = _buildPlanAutoDefaults(d);
+  const userAdditional = d.additional || {};
+  const promptAdditional = {
+    ...autoDefaults.additional,
+    ...userAdditional,
+    foodPreferences: userAdditional.foodPreferences?.length
+      ? userAdditional.foodPreferences
+      : autoDefaults.additional.foodPreferences,
+    travelStyles: userAdditional.travelStyles?.length
+      ? userAdditional.travelStyles
+      : autoDefaults.additional.travelStyles,
+  };
+  const promptBudget = d.budget?.total ? d.budget : autoDefaults.budget;
   const sym = d.budget?.currency === "KRW" ? "₩" : "¥";
   const rMap = { seoul:"ソウル", gyeonggi:"京畿道", incheon:"仁川", gangwon:"江原道",
                  chungcheong:"忠清道", jeolla:"全羅道", gyeongsang:"慶尚道", jeju:"済州島" };
@@ -1496,24 +1626,25 @@ function buildPrompt(isReroll = false) {
     );
   }
 
-  if (d.budget?.total) {
-    let bs = `総予算:${sym}${d.budget.total}`;
-    if (d.budget.daily) bs += `、1日:${sym}${d.budget.daily}`;
-    if (d.budget.style) bs += `、予算の考え方:${sMap[d.budget.style]||d.budget.style}`;
+  if (promptBudget?.total) {
+    const bsSym = promptBudget.currency === "KRW" ? "₩" : "¥";
+    let bs = `総予算:${bsSym}${promptBudget.total}`;
+    if (promptBudget.daily) bs += `、1日:${bsSym}${promptBudget.daily}`;
+    if (promptBudget.style) bs += `、予算の考え方:${sMap[promptBudget.style]||promptBudget.style}`;
+    if (promptBudget.auto) bs += "（未入力のためシステムが標準値を設定）";
     lines.push(`【予算】${bs}`);
   }
 
-  const add = d.additional;
+  const add = promptAdditional;
   if (add) {
     const parts = [];
     if (add.companion)              parts.push(cMap[add.companion]||add.companion);
     if (add.pace)                   parts.push(pMap[add.pace]||add.pace);
     const prefMap = {
-      grilled_meat: "焼肉・サムギョプサル", stew: "チゲ・鍋・チョンタン", noodles: "麺類",
-      seafood: "海鮮・生魚", chicken: "韓国チキン", gukbap: "クッパ（コムタン・ソルロンタンなど）",
-      rice_meal: "ビビンバ・石焼・定食",
-      soup: "クッパ・寄せ鍋", jeon: "チヨン", street: "屋台・スンデ",
-      cafe_sweet: "カフェ・韓国スイーツ", healthy: "野菜・ヘルシー韓食",
+      grilled_meat: "焼肉・サムギョプサル", bossam: "보쌈・족발・돼지국밥",
+      soup: "スープ・チゲ・クッパ", noodles: "麺類",
+      seafood: "海鮮・生魚", chicken: "韓国チキン",
+      snack: "分食・軽食", cafe: "カフェ・スイーツ",
     };
     const avoidMap = {
       no_spicy: "辛いものは苦手", allergy: "アレルギーあり", vegan: "ベジタリアン",
@@ -1529,7 +1660,7 @@ function buildPrompt(isReroll = false) {
     ];
     if (prefs.length) {
       lines.push(
-        `【食事の好み】${prefs.map((p) => prefMap[p] || p).join("・")} — 韓国料理店で上記メニューが食べられる店を昼食・夕食に優先（配達専門・持ち帰り専門店は不可）`
+        `【食事の好み】${prefs.map((p) => prefMap[p] || p).join("・")} — ${add.auto ? "未入力のためシステムが標準設定。" : ""}韓国料理店で上記メニューが食べられる店を昼食・夕食に優先（配達専門・持ち帰り専門店は不可）`
       );
     }
     if (avoid.length) {
@@ -1560,8 +1691,10 @@ function buildPrompt(isReroll = false) {
   }
   lines.push(
     "\n地図アプリへの検索依頼は禁止。",
-    "【表示形式】時刻レンジ（例:[10:00〜11:00]）は書かない。各日は「①②③」または「午前」「昼食」「午後」「夕食」の順序で、ゆったりした旅行プランに見える構成にする。",
-    "【食事】韓国料理店（한식）で【食事の好み】に合う店を選ぶ。ウェディングホール・配達専門は禁止。店名＋GoogleマップURLを昼食・夕食に記載。同じ店名・同じチェーン店（例: 국수나무の複数支店）をプラン全体で2回以上使用禁止。昼食・夕食・翌日の食事はすべて別の店（別チェーン）にすること。",
+    "【言語】本文は必ず日本語。韓国語の説明文（■1일째、한식점で 等）は禁止。店名の韓国語表記のみ可。",
+    "【表示形式】時刻レンジ（例:[10:00〜11:00]）は書かない。各日は「1日目」「2日目」見出し＋「①②③」または「午前」「昼食」「午後」「夕食」。",
+    "【食事 — 厳守】Reference Dataの「食事候補」リストの実在店のみ。店名の次の行に google_maps_uri をコピー。リストが空なら店名禁止（「近郊で食事」の1行のみ）。「한식店」「現地のレストラン」「別の韓国料理店」は絶対禁止。",
+    "【観光】「観光スポット候補」リストの施設名＋URLのみ。リスト外の創作禁止。",
     "【スポーツ】Sports Schedule Resultsの試合またはオフシーズン案内をそのまま記載。ジム・ストリートへの置き換え禁止。",
     "営業時間・料金・チケットは文末で一言のみ。"
   );
@@ -1583,14 +1716,29 @@ const TRANSPORT_BUS_BY_AIRPORT = {
 <a href="https://www.airportlimousine.co.kr/" target="_blank" rel="noopener">▶ 空港リムジン 公式</a></div>`,
 };
 
+const LOCAL_RAIL_OFFICIAL_LINKS = `
+<div class="ti-links-note">地方移動・都市鉄道の公式リンク</div>
+<a href="https://info.korail.com/info/contents.do?key=857" target="_blank" rel="noopener">KORAIL 路線図・時刻表</a> ·
+<a href="https://www.humetro.busan.kr/" target="_blank" rel="noopener">釜山交通公社</a> ·
+<a href="https://www.grtc.co.kr/" target="_blank" rel="noopener">光州交通公社</a> ·
+<a href="https://www.dtro.or.kr/cmsh/dtro.or.kr/html/nosundo.html" target="_blank" rel="noopener">大邱都市鉄道 路線図</a>`;
+
 const TRANSPORT_RAIL_BY_AIRPORT = {
   ICN: `<div class="ti-card"><strong>🚆 鉄道・地下鉄（AREX・広域鉄道）</strong>
 仁川空港↔ソウル駅 AREX直通約43分 / 一般約51分。乗換で広域鉄道・地下鉄（1・9号線等）<br>
 <a href="https://www.arex.or.kr/jp/" target="_blank" rel="noopener">▶ AREX 公式</a> ·
-<a href="https://www.seoulmetro.co.kr/jp/" target="_blank" rel="noopener">ソウル交通公社</a></div>`,
+<a href="https://www.seoulmetro.co.kr/jp/" target="_blank" rel="noopener">ソウル交通公社</a> ·
+${LOCAL_RAIL_OFFICIAL_LINKS}</div>`,
   GMP: `<div class="ti-card"><strong>🚆 鉄道・地下鉄（広域鉄道）</strong>
 金浦空港↔ソウル市内 空港鉄道・9号線等（AREXは利用しません）<br>
-<a href="https://www.seoulmetro.co.kr/jp/" target="_blank" rel="noopener">▶ ソウル交通公社</a></div>`,
+<a href="https://www.seoulmetro.co.kr/jp/" target="_blank" rel="noopener">▶ ソウル交通公社</a> ·
+${LOCAL_RAIL_OFFICIAL_LINKS}</div>`,
+  PUS: `<div class="ti-card"><strong>🚆 釜山・地方鉄道</strong>
+金海空港↔釜山市内は釜山-金海軽電鉄・釜山都市鉄道連携。KTX・ITXなど地方移動はKORAILを確認<br>
+${LOCAL_RAIL_OFFICIAL_LINKS}</div>`,
+  CJU: `<div class="ti-card"><strong>🚆 地方鉄道・都市鉄道</strong>
+済州島内に地下鉄はありません。韓国内の都市間移動はKORAIL、釜山・光州・大邱などの都市鉄道は各公式路線図を確認<br>
+${LOCAL_RAIL_OFFICIAL_LINKS}</div>`,
 };
 
 const TRANSPORT_INFO = {
@@ -2247,7 +2395,7 @@ function _renderPlacesResults(places, { resultsEl, mode }) {
 const _PLAN_MAPS_URL_RE = /^https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps|goo\.gl\/maps|maps\.app\.goo\.gl)\/\S+/i;
 const _PLAN_MAPS_URL_EXTRACT =
   /https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps|goo\.gl\/maps|maps\.app\.goo\.gl)\/[^\s\]<")]+/gi;
-const _PLAN_TICKET_URL_RE = /^https?:\/\/(?:tickets\.)?interpark\.com\/\S+/i;
+const _PLAN_TICKET_URL_RE = /^https?:\/\/(?:tickets?\.interpark\.com|www\.ticketlink\.co\.kr|www\.ssglanders\.com|www\.giantsclub\.com|ticket\.ncdinos\.com)\/\S+/i;
 
 function _escapeHtml(s) {
   return String(s || "").replace(/[&<>"']/g, (c) =>
@@ -2287,7 +2435,7 @@ function _buildPlaceIndexes(apiPlaces) {
     const nk = _normalizePlaceName(p.name);
     if (nk && !byName[nk]) byName[nk] = p;
   }
-  return { byUrl, byName };
+  return { byUrl, byName, unresolved: {} };
 }
 
 /** @deprecated use _buildPlaceIndexes — PlanMapView 호환 */
@@ -2333,6 +2481,35 @@ function _nameKeysFromLine(line) {
   return keys.filter(Boolean);
 }
 
+const _PLAN_SLOT_PREFIX_RE =
+  /^(?:昼食|午後|午前|夕食|朝食|夜|ランチ|ディナー|朝|昼|食事|점심|저녁|아침|오전|오후|식사)[：:\s]+/u;
+
+function _normalizeQueryLabelForEnrich(label) {
+  let t = String(label || "").replace(/\s+/g, " ").trim();
+  t = t.replace(/^[-・*①②③④⑤⑥⑦⑧⑨⑩]\s*/, "");
+  t = t.replace(_PLAN_SLOT_PREFIX_RE, "");
+  t = t.replace(/^【[^】]*】\s*/, "");
+  const paren = t.match(/^(.+?)[（(]([^）)]+)[）)]/);
+  if (paren) {
+    const a = paren[1].trim();
+    const b = paren[2].trim();
+    t = a.length >= 2 ? a : b;
+  }
+  t = t.replace(/[（(][^）)]*[）)]/g, "").trim();
+  t = t.replace(/\s*본점.*$/g, "").replace(/\s*本店.*$/g, "").trim();
+  return t;
+}
+
+function _findPlaceByName(indexes, query) {
+  const nk = _normalizePlaceName(query);
+  if (!nk) return null;
+  if (indexes.byName[nk]) return indexes.byName[nk];
+  for (const [k, p] of Object.entries(indexes.byName)) {
+    if (k.includes(nk) || nk.includes(k)) return p;
+  }
+  return null;
+}
+
 function _queryLabelForUrl(lines, url, lineIdx) {
   const i =
     lineIdx != null
@@ -2341,8 +2518,12 @@ function _queryLabelForUrl(lines, url, lineIdx) {
   if (i < 0) return "";
   const same = lines[i].trim();
   const prefix = same.split(url)[0].replace(/[:：]\s*$/, "").trim();
-  if (prefix && prefix.length >= 2 && prefix.length < 80) {
+  if (prefix && prefix.length >= 2 && prefix.length < 80 && !_isEchoCardLine(prefix)) {
     return prefix.replace(/^[-・*]\s*/, "").trim();
+  }
+  const suffix = same.split(url)[1]?.replace(/^[:：\s]+/, "").trim() || "";
+  if (suffix && suffix.length >= 2 && suffix.length < 80 && !_isEchoCardLine(suffix)) {
+    return suffix.replace(/^[-・*]\s*/, "").trim();
   }
   for (let j = i - 1; j >= 0; j--) {
     const t = lines[j].trim();
@@ -2351,9 +2532,28 @@ function _queryLabelForUrl(lines, url, lineIdx) {
     return t
       .replace(/^\[[\d:〜~\-]+\]\s*/, "")
       .replace(/^[-・*]\s*/, "")
-      .replace(/（[^）]*）$/g, "")
       .trim();
   }
+  return "";
+}
+
+function _mapsOpenOpts() {
+  return {
+    regions: wizardData.regions || [],
+    regionCities: wizardData.regionCities || wizardData.regionCitiesOther || "",
+  };
+}
+
+function _mapOpenUrl(p) {
+  if (window.MapsOpenUrl?.build) {
+    return MapsOpenUrl.build(p || {}, _mapsOpenOpts());
+  }
+  return p?.google_maps_uri || p?.maps_url || "#";
+}
+
+function _renderMapsUnresolvedFallback(url, queryLabel) {
+  const q = _normalizeQueryLabelForEnrich(queryLabel);
+  console.debug?.("Plan place link omitted: unresolved Google Places detail", { url, query: q });
   return "";
 }
 
@@ -2391,7 +2591,7 @@ function _renderInlinePlaceCard(p) {
   const addr = p.address
     ? `<p class="plan-place-card__addr">${_escapeHtml(p.address)}</p>`
     : "";
-  const mapsUri = p.google_maps_uri || "";
+  const mapsUri = _mapOpenUrl(p);
   const dirUri = _directionsUrl(p);
   const meta = [rating && `<span class="plan-place-card__rating">${rating}${reviews}</span>`, openBadge, priceLabel]
     .filter(Boolean).join("");
@@ -2487,6 +2687,29 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
     });
   };
 
+  const isUnresolvedMapsUrl = (url) => {
+    const key = _mapsUrlKey(url);
+    return Boolean(placeIndexes.unresolved?.[key] && !_lookupPlace(placeIndexes, url));
+  };
+
+  const lineLooksLikeUnresolvedPlaceLabel = (rawLine, nextRawLine) => {
+    const current = _normalizePlaceName(
+      _normalizeQueryLabelForEnrich(
+        String(rawLine || "")
+          .replace(/^\[[\d:〜~\-]+\]\s*/, "")
+          .replace(/^[-・*]\s*/, "")
+          .trim()
+      )
+    );
+    if (!current || current.length < 2) return false;
+    for (const url of _extractUrlsFromLine(String(nextRawLine || ""))) {
+      if (!isUnresolvedMapsUrl(url)) continue;
+      const q = _normalizePlaceName(placeIndexes.unresolved?.[_mapsUrlKey(url)] || "");
+      if (q && (current === q || current.includes(q) || q.includes(current))) return true;
+    }
+    return false;
+  };
+
   const processContentLine = (rawLine) => {
     const line = _stripPlanClocks(rawLine);
     const trimmed = line.trim();
@@ -2521,10 +2744,13 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
         } else if (!rendered.has(_mapsUrlKey(url))) {
           rendered.add(_mapsUrlKey(url));
           cardParts.push(
-            `<a href="${_escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="plan-maps-fallback">${_escapeHtml(url)}</a>`
+            _renderMapsUnresolvedFallback(url, placeIndexes.unresolved?.[_mapsUrlKey(url)])
           );
         }
         prose = prose.replace(url, "");
+      }
+      if (!cardParts.join("").trim() && urls.every(isUnresolvedMapsUrl)) {
+        return;
       }
       prose = prose.replace(/^\s*[^:：\n]{1,40}[:：]\s*$/u, "").trim();
       if (prose && !_isEchoCardLine(prose)) {
@@ -2537,13 +2763,17 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
 
     if (_PLAN_MAPS_URL_RE.test(trimmed)) {
       const url = trimmed.split(/\s/)[0];
+      if (isUnresolvedMapsUrl(url)) {
+        rendered.add(_mapsUrlKey(url));
+        return;
+      }
       const place = _lookupPlace(placeIndexes, url);
       if (place && _tryRenderPlaceCard(placeIndexes, rendered, url)) {
         pushStep(emitCard(place));
       } else if (!rendered.has(_mapsUrlKey(url))) {
         rendered.add(_mapsUrlKey(url));
         pushStep(
-          `<a href="${_escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="plan-maps-fallback">${_escapeHtml(url)}</a>`
+          _renderMapsUnresolvedFallback(url, placeIndexes.unresolved?.[_mapsUrlKey(url)])
         );
       }
       return;
@@ -2584,6 +2814,9 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim();
     if (!trimmed) continue;
+    if (lineLooksLikeUnresolvedPlaceLabel(lines[i], lines[i + 1] || "")) {
+      continue;
+    }
 
     if (_isPlanDayHeader(trimmed)) {
       openTimeline(`<h3 class="plan-day-heading">${_formatPlanTextLine(trimmed)}</h3>`);
@@ -2637,12 +2870,14 @@ function _placesLinkedInPlan(reply, places) {
 }
 
 const _FOOD_PREF_KW = {
+  grilled_meat: ["삼겹", "갈비", "한우", "고기", "bbq"],
+  bossam: ["보쌈", "족발", "돼지국밥", "수육"],
+  soup: ["찌개", "국밥", "곰탕", "설렁탕", "감자탕", "삼계탕", "추어탕", "전골"],
+  noodles: ["냉면", "국수", "칼국수", "짜장"],
+  seafood: ["회", "해물", "생선", "조개", "낙지"],
   chicken: ["치킨", "닭", "chicken", "フライド"],
-  gukbap: ["국밥", "곰탕", "설렁탕", "감자탕", "해장국", "순대국"],
-  cafe_sweet: ["카페", "커피", "coffee", "베이커리"],
-  grilled_meat: ["삼겹", "갈비", "한우", "고기", "고기마을", "정육"],
-  seafood: ["생선", "회", "해물", "구이", "어류"],
-  noodles: ["국수", "guksu", "국수집", "냉면", "칼국수"],
+  snack: ["분식", "떡볶이", "순대", "파전", "빈대떡", "김밥"],
+  cafe: ["카페", "커피", "coffee", "베이커리"],
 };
 
 function _placeMatchesUserFoodPref(place) {
@@ -2656,13 +2891,85 @@ function _placeMatchesUserFoodPref(place) {
 }
 
 function _renderPlanPlacesRefSection(places, reply) {
-  let linked = _placesLinkedInPlan(reply, places);
-  linked = linked.filter((p) => _placeMatchesUserFoodPref(p));
-  if (!linked.length) return "";
-  const cards = linked.slice(0, 4).map((p) => _renderInlinePlaceCard(p)).join("");
-  return `<div class="plan-refs-section"><h3 class="plan-refs-title">📍 プラン内のスポット（Google Places）</h3>
+  const foodPlaces = (places || []).filter((p) => _placeMatchesUserFoodPref(p));
+  if (!foodPlaces.length) return "";
+  const linked = _placesLinkedInPlan(reply, foodPlaces);
+  const toShow = (linked.length ? linked : foodPlaces).slice(0, 6);
+  const cards = toShow.map((p) => _renderInlinePlaceCard(p)).join("");
+  const note = linked.length
+    ? "※ 本文で引用された店舗。評価・写真は Google データです。"
+    : "※ エリア周辺の検索候補。評価・写真は Google データです。";
+  return `<div class="plan-refs-section"><h3 class="plan-refs-title">📍 エリア周辺のスポット（Google Places）</h3>
     <div class="plan-place-grid">${cards}</div>
-    <p class="plan-refs-note">※ 本文にURLが付いた店舗のみ表示。評価・写真は Google データです。</p></div>`;
+    <p class="plan-refs-note">${note}</p></div>`;
+}
+
+// 플랜 텍스트에서 URL 없는 관광지 이름 추출 (괄호형 또는 **bold** 형식)
+// 식당/카페 키워드가 포함된 이름은 제외 (food 카드에서 이미 처리)
+const _ATTR_PAREN_RE = /([가-힣A-Za-z][가-힣A-Za-z0-9\s]{1,25})\(([가-힣A-Za-z][가-힣A-Za-z0-9\s]{1,25})\)/gu;
+const _ATTR_BOLD_RE = /\*{1,2}([가-힣][가-힣A-Za-z0-9\s·]{2,24})\*{1,2}/gu;
+const _ATTR_FOOD_SKIP_RE = /식당|레스토랑|맛집|카페|커피|치킨|갈비|국밥|냉면|삼겹|restaurant|cafe/i;
+const _MAPS_URL_LINE_RE = /https?:\/\/(?:maps\.google\.com|goo\.gl)/;
+// 단어 1~2개짜리 에리어 이름(홍대, 강남 등)은 건너뜀 — 너무 범용적
+const _ATTR_AREA_SKIP_RE = /^(홍대|명동|강남|인사동|동대문|이태원|한강|성수|압구정|광장시장|여의도|해운대|부산|제주|대전|전주|경주|속초|강릉)$/;
+
+function _extractUnlinkedAttrNames(text, placeIndexes) {
+  const results = new Map(); // name → normalizedKey
+  const urlLines = new Set();
+  const lines = text.split(/\r?\n/);
+
+  // 먼저 URL이 있는 라인 바로 윗줄(장소 이름 줄)을 마킹 — 해당 줄은 건너뜀
+  for (let i = 0; i < lines.length; i++) {
+    if (_MAPS_URL_LINE_RE.test(lines[i])) {
+      urlLines.add(i);
+      if (i > 0) urlLines.add(i - 1); // 직전 이름 줄도 skip
+    }
+  }
+
+  const tryAdd = (name) => {
+    name = name.trim();
+    if (name.length < 3 || _ATTR_FOOD_SKIP_RE.test(name) || _ATTR_AREA_SKIP_RE.test(name)) return;
+    const nk = _normalizePlaceName(name);
+    if (!nk || placeIndexes.byName[nk]) return;
+    results.set(name, nk);
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    if (urlLines.has(i)) continue;
+    const line = lines[i];
+    // 괄호형: 더현대서울(더현대서울)
+    _ATTR_PAREN_RE.lastIndex = 0;
+    let m;
+    while ((m = _ATTR_PAREN_RE.exec(line)) !== null) {
+      tryAdd(m[2] || m[1]);
+    }
+    // 볼드형: **더현대서울**, *명동대성당*
+    _ATTR_BOLD_RE.lastIndex = 0;
+    while ((m = _ATTR_BOLD_RE.exec(line)) !== null) {
+      tryAdd(m[1]);
+    }
+  }
+  return [...results.keys()].slice(0, 8);
+}
+
+async function _enrichUnlinkedAttractions(names, placeIndexes) {
+  if (!names.length) return;
+  const regionHint = (wizardData.regions || []).join(" ") + " " +
+    (wizardData.regionCities || wizardData.regionCitiesOther || "");
+  await Promise.allSettled(names.map(async (name) => {
+    try {
+      const q = encodeURIComponent(`${name} ${regionHint}`.trim());
+      const res = await fetch(`/api/places/search/?q=${q}&limit=1`, {
+        credentials: "same-origin",
+      });
+      if (!res.ok) return;
+      const body = await res.json();
+      const p = (body.places || [])[0];
+      if (!p || !p.maps_url || _isJpAddress(p)) return;
+      const nk = _normalizePlaceName(p.name || name);
+      if (nk) placeIndexes.byName[nk] = { ...p, google_maps_uri: p.maps_url };
+    } catch (_) { /* 무시 */ }
+  }));
 }
 
 async function _displayPlanOutput(data) {
@@ -2673,7 +2980,19 @@ async function _displayPlanOutput(data) {
   for (const url of _extractMapsUrlsFromPlan(reply)) {
     if (_lookupPlace(placeIndexes, url)) continue;
     const idx = lines.findIndex((ln) => ln.includes(url));
-    missing.push({ url, query: _queryLabelForUrl(lines, url, idx >= 0 ? idx : undefined) });
+    const rawQ = _queryLabelForUrl(lines, url, idx >= 0 ? idx : undefined);
+    const query = _normalizeQueryLabelForEnrich(rawQ);
+    placeIndexes.unresolved[_mapsUrlKey(url)] = query || rawQ;
+    const matched = _findPlaceByName(placeIndexes, query);
+    if (matched) {
+      placeIndexes.byUrl[_mapsUrlKey(url)] = {
+        ...matched,
+        google_maps_uri: url,
+        maps_url: url,
+      };
+      continue;
+    }
+    missing.push({ url, query });
   }
   if (missing.length) {
     try {
@@ -2681,7 +3000,12 @@ async function _displayPlanOutput(data) {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrfToken() },
         credentials: "same-origin",
-        body: JSON.stringify({ items: missing, language: "ja", regions: wizardData.regions || [] }),
+        body: JSON.stringify({
+          items: missing,
+          language: "ja",
+          regions: wizardData.regions || [],
+          region_cities: wizardData.regionCities || wizardData.regionCitiesOther || "",
+        }),
       });
       const body = await res.json();
       if (res.ok && body.places) {
@@ -2694,6 +3018,10 @@ async function _displayPlanOutput(data) {
       }
     } catch (_) { /* プラン本文のみ */ }
   }
+  // URL 없는 관광지 이름(괄호형) 2차 Places 검색
+  const unlinkedAttrNames = _extractUnlinkedAttrNames(reply, placeIndexes);
+  await _enrichUnlinkedAttractions(unlinkedAttrNames, placeIndexes);
+
   const ticketIdx = window.LinkPreview
     ? LinkPreview.buildEventIndex(data.ticket_platform_events || [])
     : {};
@@ -2722,6 +3050,8 @@ async function _displayPlanOutput(data) {
       title,
       subtitle: "Dayタブで日程を切り替え。番号順にルートを表示します。",
       arrivalAirport: arrivalIata,
+      regions: wizardData.regions || [],
+      regionCities: wizardData.regionCities || wizardData.regionCitiesOther || "",
     });
     setTimeout(() => window.PlanMapView?.refreshMapLayout?.(), 450);
     setTimeout(() => window.PlanMapView?.refreshMapLayout?.(), 1200);

@@ -1,9 +1,19 @@
 /**
- * Interpark ticket link previews — shared by wizard plan & chat.
+ * KBO ticket platform link previews — shared by wizard plan & chat.
+ * 対応: Interpark / チケットリンク / SSG / ロッテ / NC
  */
 (function (global) {
   const TICKET_URL_RE =
-    /https?:\/\/(?:tickets\.)?interpark\.com\/[^\s\]<")\]\u3001\u3002.,]+/gi;
+    /https?:\/\/(?:tickets?\.interpark\.com|www\.ticketlink\.co\.kr|www\.ssglanders\.com|www\.giantsclub\.com|ticket\.ncdinos\.com)\/[^\s\]<")\]、。.,]*/gi;
+
+  function siteNameFromUrl(url) {
+    if (/interpark/i.test(url)) return "INTERPARK TICKET";
+    if (/ticketlink/i.test(url)) return "チケットリンク";
+    if (/ssglanders/i.test(url)) return "SSG LANDERS TICKET";
+    if (/giantsclub/i.test(url)) return "LOTTE GIANTS TICKET";
+    if (/ncdinos/i.test(url)) return "NC DINOS TICKET";
+    return "チケット";
+  }
 
   function escapeHtml(s) {
     return String(s || "").replace(/[&<>"']/g, (c) =>
@@ -73,7 +83,7 @@
     const desc = preview.description
       ? `<p class="ticket-preview-desc">${escapeHtml(preview.description)}</p>`
       : "";
-    const site = escapeHtml(preview.site_name || "INTERPARK TICKET");
+    const site = escapeHtml(preview.site_name || siteNameFromUrl(preview.url || ""));
     const img = _thumbHtml(preview.image);
     const noThumb = img ? "" : " ticket-preview-card--no-thumb";
     return `<a class="ticket-preview-card${noThumb}" href="${url}" target="_blank" rel="noopener noreferrer">${img}<div class="ticket-preview-body"><span class="ticket-preview-site">${site}</span><strong class="ticket-preview-title">${title}</strong>${desc}<span class="ticket-preview-cta">チケットを見る →</span></div></a>`;
@@ -81,7 +91,9 @@
 
   function renderSkeleton(url) {
     const u = escapeHtml(normalizeUrl(url));
-    return `<div class="ticket-preview-card ticket-preview-card--loading ticket-preview-card--no-thumb" data-preview-url="${u}"><div class="ticket-preview-body"><span class="ticket-preview-site">INTERPARK TICKET</span><strong class="ticket-preview-title">プレビューを読み込み中…</strong></div></div>`;
+    const site = escapeHtml(siteNameFromUrl(url));
+    // プレビュー取得前でも、チケット公式ページへのリンクとして必ず機能させる。
+    return `<a class="ticket-preview-card ticket-preview-card--no-thumb" href="${u}" target="_blank" rel="noopener noreferrer" data-preview-url="${u}"><div class="ticket-preview-body"><span class="ticket-preview-site">${site}</span><strong class="ticket-preview-title">チケットページを開く</strong><span class="ticket-preview-cta">リンクを開く →</span></div></a>`;
   }
 
   async function fetchPreview(url) {
@@ -120,7 +132,11 @@
           const anchor = card.firstElementChild;
           if (anchor) el.replaceWith(anchor);
         } catch (_) {
-          el.innerHTML = `<a class="ticket-preview-card ticket-preview-card--no-thumb" href="${escapeHtml(url)}" target="_blank" rel="noopener"><div class="ticket-preview-body"><span class="ticket-preview-site">INTERPARK TICKET</span><strong class="ticket-preview-title">チケットページを開く</strong><span class="ticket-preview-cta">リンクを開く →</span></div></a>`;
+          const site = escapeHtml(siteNameFromUrl(url));
+          const fallback = document.createElement("div");
+          fallback.innerHTML = `<a class="ticket-preview-card ticket-preview-card--no-thumb" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer"><div class="ticket-preview-body"><span class="ticket-preview-site">${site}</span><strong class="ticket-preview-title">チケットページを開く</strong><span class="ticket-preview-cta">リンクを開く →</span></div></a>`;
+          const anchor = fallback.firstElementChild;
+          if (anchor) el.replaceWith(anchor);
         }
       })
     );
@@ -138,5 +154,6 @@
     hydrate,
     normalizeUrl,
     escapeHtml,
+    siteNameFromUrl,
   };
 })(window);

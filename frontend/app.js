@@ -519,11 +519,58 @@ function retryLastMessage() {
   chatForm.requestSubmit();
 }
 
+// ── suggestion chip 초기화 ───────────────────────────────────────────────
+const suggestionsEl = document.getElementById("suggestions");
+
+function hideSuggestions() {
+  if (suggestionsEl) suggestionsEl.classList.add("hidden");
+}
+
+if (suggestionsEl) {
+  suggestionsEl.querySelectorAll(".suggestion-chip").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const msg = btn.dataset.msg;
+      if (!msg) return;
+      messageInput.value = msg;
+      chatForm.requestSubmit();
+    });
+  });
+}
+
+// ── SSE 파싱 헬퍼 ────────────────────────────────────────────────────────
+function* parseSseLines(lines) {
+  for (const line of lines) {
+    if (!line.startsWith("data: ")) continue;
+    try { yield JSON.parse(line.slice(6)); } catch { /* skip malformed */ }
+  }
+}
+
+// ── 버블 collapse 적용 (스트리밍 완료 후 호출) ───────────────────────────
+function applyCollapse(bubble, bodyEl, isJa) {
+  if (!bodyEl || bodyEl.scrollHeight <= COLLAPSE_HEIGHT) return;
+  bodyEl.classList.add("collapsed");
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "expand-btn";
+  const txtMore = isJa ? "もっと見る ▼" : "더 보기 ▼";
+  const txtLess = isJa ? "折りたたむ ▲" : "접기 ▲";
+  btn.textContent = txtMore;
+  btn.addEventListener("click", () => {
+    const collapsed = bodyEl.classList.toggle("collapsed");
+    btn.textContent = collapsed ? txtMore : txtLess;
+  });
+  const translation = bubble.querySelector(".translation");
+  if (translation) bubble.insertBefore(btn, translation);
+  else bubble.appendChild(btn);
+}
+
+// ── 메인 submit 핸들러 (streaming) ──────────────────────────────────────
 chatForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = messageInput.value.trim();
   if (!text) return;
 
+  hideSuggestions();
   appendBubble("user", text);
   messageInput.value = "";
   btnSend.disabled = true;
@@ -532,9 +579,16 @@ chatForm.addEventListener("submit", async (e) => {
   const loading = appendLoadingBubble();
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 90000);
+  const isJa = replyLanguage.value === "日本語";
+
+  // streaming 버블용 상태
+  let assistantBubble = null;
+  let replyBodyEl = null;
+  let replyText = "";
+  let metaData = null;
 
   try {
-    const res = await fetch("/api/chat/", {
+    const res = await fetch("/api/chat/stream/", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrfToken() },
       credentials: "same-origin",
@@ -547,78 +601,113 @@ chatForm.addEventListener("submit", async (e) => {
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
-    const data = await res.json().catch(() => ({}));
-    loading.remove();
-    console.log("[chat] category:", data.category, "| keyword:", data.keyword,
-                "| places_count:", data.places_count, "| places_error:", data.places_error || "(none)");
+
     if (!res.ok) {
-      appendBubble("assistant", data.detail || `HTTP ${res.status}`);
+      const errData = await res.json().catch(() => ({}));
+      loading.remove();
+      appendBubble("assistant", errData.detail || `HTTP ${res.status}`);
       return;
     }
-    if (data.session_id) {
-      sessionId = data.session_id;
-    }
 
-    let extra = "";
-    const hasPlaceCards   = data.places && data.places.length > 0;
-    const hasVkCards      =
-      (data.visitkorea_stays && data.visitkorea_stays.length > 0) ||
-      (data.visitkorea_festivals && data.visitkorea_festivals.length > 0) ||
-      (data.visitkorea_attractions && data.visitkorea_attractions.length > 0);
-    const hasFlightCards  = (data.flights && data.flights.length > 0) || data.airport;
-    const hasEventCards   = data.gyeonggi_events && data.gyeonggi_events.length > 0;
-    const hasTicketCards  =
-      data.ticket_platform_events && data.ticket_platform_events.length > 0;
-    if (hasPlaceCards) {
-      extra += renderPlaceCards(data.places, data.category || "", data.keyword || "", replyLanguage.value);
-    }
-    if (hasVkCards) {
-      extra += renderVisitKoreaCards(
-        data.visitkorea_stays || [],
-        data.visitkorea_festivals || [],
-        data.visitkorea_attractions || [],
-        replyLanguage.value,
-      );
-    }
-    if (hasEventCards) {
-      extra += renderGyeonggiEventCards(data.gyeonggi_events, replyLanguage.value);
-    }
-    if (hasTicketCards) {
-      extra += renderTicketPlatformCards(data.ticket_platform_events, replyLanguage.value);
-    }
-    if (hasFlightCards) {
-      extra += renderFlightCards(
-        data.flights || [],
-        data.airport || null,
-        data.flight_subtype || "",
-        data.keyword || "",
-        replyLanguage.value,
-      );
-    }
-    if (data.translated_ko) {
-      extra += `<div class="translation"><h4>한국어 번역</h4>${escapeHtml(data.translated_ko)}</div>`;
-    }
-    const replyText = (data.reply || "").trim();
-    const inlineTickets =
-      window.LinkPreview && LinkPreview.extractTicketUrls(replyText).length > 0;
-    const displayReply =
-      inlineTickets || !(hasPlaceCards || hasVkCards || hasFlightCards)
-        ? data.reply || ""
-        : "";
-    if (!displayReply && !extra) {
-      const isJa = replyLanguage.value === "日本語";
-      const fallback = isJa
-        ? "申し訳ありません、応答を生成できませんでした。もう一度お試しください。"
-        : "죄송합니다, 응답을 생성하지 못했습니다. 다시 시도해 주세요.";
-      appendBubble("assistant", fallback);
-    } else {
-      appendBubble("assistant", displayReply, extra);
-      if (window.LinkPreview && displayReply) {
-        const ticketIdx = LinkPreview.buildEventIndex(data.ticket_platform_events || []);
-        const bubble = chatLog.lastElementChild;
-        LinkPreview.hydrate(bubble, ticketIdx);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let sseBuffer = "";
+
+    loading.remove();
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      sseBuffer += decoder.decode(value, { stream: true });
+      const lines = sseBuffer.split("\n");
+      sseBuffer = lines.pop(); // 마지막 불완전 줄 보존
+
+      for (const payload of parseSseLines(lines)) {
+        if (payload.type === "meta") {
+          metaData = payload;
+          if (payload.session_id) sessionId = payload.session_id;
+          console.log("[stream] category:", payload.category,
+                      "| keyword:", payload.keyword,
+                      "| places:", payload.places_count);
+
+          // 카드 렌더링
+          let extra = "";
+          const hasPlaceCards = payload.places && payload.places.length > 0;
+          const hasVkCards = (payload.visitkorea_stays && payload.visitkorea_stays.length > 0) ||
+            (payload.visitkorea_festivals && payload.visitkorea_festivals.length > 0) ||
+            (payload.visitkorea_attractions && payload.visitkorea_attractions.length > 0);
+          const hasFlightCards = (payload.flights && payload.flights.length > 0) || payload.airport;
+          const hasEventCards = payload.gyeonggi_events && payload.gyeonggi_events.length > 0;
+          const hasTicketCards = payload.ticket_platform_events && payload.ticket_platform_events.length > 0;
+
+          if (hasPlaceCards)
+            extra += renderPlaceCards(payload.places, payload.category || "", payload.keyword || "", replyLanguage.value);
+          if (hasVkCards)
+            extra += renderVisitKoreaCards(payload.visitkorea_stays || [], payload.visitkorea_festivals || [], payload.visitkorea_attractions || [], replyLanguage.value);
+          if (hasEventCards)
+            extra += renderGyeonggiEventCards(payload.gyeonggi_events, replyLanguage.value);
+          if (hasTicketCards)
+            extra += renderTicketPlatformCards(payload.ticket_platform_events, replyLanguage.value);
+          if (hasFlightCards)
+            extra += renderFlightCards(payload.flights || [], payload.airport || null, payload.flight_subtype || "", payload.keyword || "", replyLanguage.value);
+
+          // 버블 생성 (본문은 스트리밍으로 채워짐)
+          assistantBubble = document.createElement("div");
+          assistantBubble.className = "bubble assistant";
+          assistantBubble.innerHTML =
+            `<div class="label">Guide</div><div class="bubble-body bubble-streaming"></div>${extra}`;
+          chatLog.appendChild(assistantBubble);
+          replyBodyEl = assistantBubble.querySelector(".bubble-body");
+          chatLog.scrollTop = chatLog.scrollHeight;
+
+        } else if (payload.type === "token") {
+          replyText += payload.delta;
+          if (replyBodyEl) {
+            replyBodyEl.textContent = replyText;
+            chatLog.scrollTop = chatLog.scrollHeight;
+          }
+
+        } else if (payload.type === "done") {
+          if (replyBodyEl) {
+            replyBodyEl.classList.remove("bubble-streaming");
+            // ticket link 렌더링
+            const inlineTickets = window.LinkPreview && LinkPreview.extractTicketUrls(replyText).length > 0;
+            if (inlineTickets) {
+              replyBodyEl.innerHTML = formatReplyWithTicketPreviews(replyText);
+              const ticketIdx = LinkPreview.buildEventIndex(
+                (metaData && metaData.ticket_platform_events) || []
+              );
+              LinkPreview.hydrate(assistantBubble, ticketIdx);
+            }
+            requestAnimationFrame(() => applyCollapse(assistantBubble, replyBodyEl, isJa));
+          }
+          if (payload.translated_ko && assistantBubble) {
+            const t = document.createElement("div");
+            t.className = "translation";
+            t.innerHTML = `<h4>한국어 번역</h4>${escapeHtml(payload.translated_ko)}`;
+            assistantBubble.appendChild(t);
+          }
+          chatLog.scrollTop = chatLog.scrollHeight;
+
+        } else if (payload.type === "error") {
+          if (assistantBubble && replyBodyEl) {
+            replyBodyEl.classList.remove("bubble-streaming");
+            replyBodyEl.textContent = payload.message || "Error";
+          } else {
+            appendBubble("assistant", payload.message || "Error");
+          }
+        }
       }
     }
+
+    // 이력 업데이트
+    const hasPlaceCards = metaData && metaData.places && metaData.places.length > 0;
+    const hasVkCards = metaData && (
+      (metaData.visitkorea_stays && metaData.visitkorea_stays.length > 0) ||
+      (metaData.visitkorea_festivals && metaData.visitkorea_festivals.length > 0) ||
+      (metaData.visitkorea_attractions && metaData.visitkorea_attractions.length > 0)
+    );
+    const hasFlightCards = metaData && ((metaData.flights && metaData.flights.length > 0) || metaData.airport);
 
     history.push({ role: "user", content: text });
     history.push({
@@ -627,16 +716,22 @@ chatForm.addEventListener("submit", async (e) => {
         ? "(venue cards shown)"
         : hasFlightCards
           ? "(flight cards shown)"
-          : (data.reply || ""),
+          : replyText,
     });
-    if (history.length > 40) {
-      history = history.slice(-40);
+    if (history.length > 40) history = history.slice(-40);
+
+    if (!assistantBubble && !replyText) {
+      const fallback = isJa
+        ? "申し訳ありません、応答を生成できませんでした。もう一度お試しください。"
+        : "죄송합니다, 응답을 생성하지 못했습니다. 다시 시도해 주세요.";
+      appendBubble("assistant", fallback);
     }
+
   } catch (err) {
     clearTimeout(timeoutId);
-    loading.remove();
+    if (replyBodyEl) replyBodyEl.classList.remove("bubble-streaming");
+    if (!assistantBubble) loading.remove();
     _lastFailedText = text;
-    const isJa = replyLanguage.value === "日本語";
     const errMsg = err.name === "AbortError"
       ? (isJa
           ? "応答がタイムアウトしました（90秒）。サーバーが混み合っています。"
@@ -645,9 +740,20 @@ chatForm.addEventListener("submit", async (e) => {
           ? "サーバーへの接続に失敗しました。サーバーが起動しているか確認してください。"
           : "서버 연결에 실패했습니다. 서버가 실행 중인지 확인해 주세요.");
     const retryLabel = isJa ? "↩ 再試行" : "↩ 다시 시도";
-    appendBubble("assistant", errMsg,
-      `<button class="retry-btn" onclick="retryLastMessage()">${retryLabel}</button>`);
-    console.error("[chat] fetch error:", err);
+    if (assistantBubble && replyBodyEl) {
+      replyBodyEl.textContent = errMsg;
+      assistantBubble.appendChild(
+        Object.assign(document.createElement("button"), {
+          className: "retry-btn",
+          textContent: retryLabel,
+          onclick: retryLastMessage,
+        })
+      );
+    } else {
+      appendBubble("assistant", errMsg,
+        `<button class="retry-btn" onclick="retryLastMessage()">${retryLabel}</button>`);
+    }
+    console.error("[chat] stream error:", err);
   } finally {
     btnSend.disabled = false;
     messageInput.focus();
@@ -658,6 +764,7 @@ btnReset.addEventListener("click", () => {
   history = [];
   sessionId = null;
   chatLog.innerHTML = "";
+  if (suggestionsEl) suggestionsEl.classList.remove("hidden");
 });
 
 fetchHealth();

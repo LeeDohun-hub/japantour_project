@@ -203,7 +203,7 @@ def api_places_enrich(request):
     if str(_root / "src") not in sys.path:
         sys.path.insert(0, str(_root / "src"))
 
-    from src.api.google_places_client import GooglePlacesClient
+    from src.api.google_places_client import GooglePlacesClient, normalize_plan_query_label
 
     try:
         body = json.loads(request.body.decode("utf-8"))
@@ -220,16 +220,32 @@ def api_places_enrich(request):
 
     # 목적지 리전 필터: 지역을 벗어난 장소(예: 강릉 일정에 서울 식당) 제거
     dest_regions: list[str] = body.get("regions") or []
+    region_cities: str = str(body.get("region_cities") or "").strip()
     _REGION_ADDR_KW: dict[str, tuple[str, ...]] = {
-        "gangwon": ("강원", "gangwon", "강릉", "속초", "평창", "고성", "춘천", "원주", "정선", "태백", "동해"),
-        "busan": ("부산", "busan", "해운대", "기장", "사하", "사상", "동래"),
-        "jeju": ("제주", "jeju"),
-        "gyeonggi": ("경기", "gyeonggi", "고양", "수원", "성남", "용인", "안양", "과천", "의정부", "파주", "부천", "시흥", "안산", "화성"),
-        "seoul": ("서울", "seoul"),
-        "incheon": ("인천", "incheon"),
-        "chungcheong": ("충청", "chungcheong", "대전", "청주", "충주", "천안", "공주", "세종", "충북", "충남"),
-        "jeolla": ("전라", "jeolla", "전주", "광주", "여수", "목포", "순천", "나주"),
-        "gyeongsang": ("경상", "gyeongsang", "대구", "경주", "창원", "포항", "울산", "진주", "거제", "경북", "경남"),
+        "gangwon": (
+            "강원", "gangwon", "강릉", "속초", "평창", "고성", "고성군", "춘천", "원주", "정선", "태백", "동해",
+            "gangneung", "sokcho", "chuncheon", "wonju", "pyeongchang", "goseong",
+        ),
+        "busan": ("부산", "busan", "해운대", "기장", "사하", "사상", "dongnae", "haeundae"),
+        "jeju": ("제주", "jeju", "seogwipo", "서귀포"),
+        "gyeonggi": (
+            "경기", "gyeonggi", "고양", "수원", "성남", "용인", "안양", "과천", "의정부", "파주", "부천", "시흥", "안산", "화성",
+            "goyang", "suwon", "seongnam", "yongin", "anyang", "bucheon", "paju", "ilsan", "namyangju", "hwaseong",
+        ),
+        "seoul": ("서울", "seoul", "mapo", "gangnam", "myeongdong", "jongno", "hongdae"),
+        "incheon": ("인천", "incheon", "영종", "영종도", "songdo", "yeongjong", "yeongjongdo"),
+        "chungcheong": (
+            "충청", "chungcheong", "대전", "청주", "충주", "천안", "공주", "세종", "충북", "충남",
+            "daejeon", "cheongju", "cheonan", "sejong", "chungju",
+        ),
+        "jeolla": (
+            "전라", "jeolla", "전주", "광주", "여수", "목포", "순천", "나주",
+            "jeonju", "gwangju", "yeosu", "mokpo", "suncheon",
+        ),
+        "gyeongsang": (
+            "경상", "gyeongsang", "대구", "경주", "창원", "포항", "울산", "진주", "거제", "경북", "경남",
+            "daegu", "gyeongju", "changwon", "pohang", "ulsan", "jinju", "geoje",
+        ),
     }
 
     def _addr_matches_dest(addr: str) -> bool:
@@ -267,11 +283,13 @@ def api_places_enrich(request):
         if not isinstance(raw, dict):
             continue
         url = str(raw.get("url") or "").strip()
-        query = str(raw.get("query") or "").strip()
+        query = normalize_plan_query_label(str(raw.get("query") or ""))
         if not url:
             continue
         try:
-            place = pclient.find_for_plan_item(url, query, language_code=lang)
+            place = pclient.find_for_plan_item(
+                url, query, language_code=lang, region_hint=region_cities,
+            )
             if place:
                 addr = place.address or ""
                 if not _is_korea(addr):
@@ -648,6 +666,117 @@ def api_chat(request):
         payload["airport"] = chat_result.airport
         payload["flight_subtype"] = chat_result.flight_subtype
     return JsonResponse(payload)
+
+
+@require_POST
+def api_chat_stream(request):
+    """SSE 스트리밍 채팅 — LLM 첫 토큰부터 즉시 전송."""
+    from django.http import StreamingHttpResponse
+
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"detail": "Invalid JSON body"}, status=400)
+
+    message = body.get("message")
+    reply_language = body.get("reply_language")
+    history = body.get("history") or []
+    session_id = body.get("session_id")
+    traveler_profile = body.get("traveler_profile")
+
+    rl_err = _check_chat_rate(request)
+    if rl_err:
+        return rl_err
+
+    if not isinstance(message, str) or not message.strip():
+        return JsonResponse({"detail": "message is required"}, status=400)
+    message = message.strip()
+    if len(message) > 8000:
+        return JsonResponse({"detail": "message too long"}, status=400)
+    if reply_language not in ("日本語", "한국어"):
+        return JsonResponse({"detail": "reply_language must be 「日本語」 or 「한국어」"}, status=400)
+    if not isinstance(history, list) or len(history) > 50:
+        return JsonResponse({"detail": "history must be a list with at most 50 items"}, status=400)
+
+    clean_history = []
+    for item in history:
+        if not isinstance(item, dict):
+            continue
+        role, content = item.get("role"), item.get("content")
+        if role not in ("user", "assistant") or not isinstance(content, str):
+            continue
+        if len(content) > 32000:
+            return JsonResponse({"detail": "history item content too long"}, status=400)
+        clean_history.append({"role": role, "content": content})
+
+    latitude: float | None = None
+    longitude: float | None = None
+    radius_meters: int = 1000
+    if isinstance(body.get("latitude"), (int, float)):
+        latitude = float(body["latitude"])
+    if isinstance(body.get("longitude"), (int, float)):
+        longitude = float(body["longitude"])
+    if isinstance(body.get("radius_meters"), int):
+        radius_meters = max(300, min(int(body["radius_meters"]), 10000))
+
+    chat_session, _ = get_or_create_chat_session(
+        session_id=session_id if isinstance(session_id, str) else None,
+        reply_language=reply_language,
+        latitude=latitude,
+        longitude=longitude,
+    )
+    profile_payload = traveler_profile if isinstance(traveler_profile, dict) else None
+    upsert_traveler_profile(chat_session, profile_payload)
+
+    from tour_api.llm_service import run_chat_stream
+
+    def _sse_gen():
+        full_reply = ""
+        try:
+            for event_type, data in run_chat_stream(
+                message=message,
+                reply_language=reply_language,
+                history=clean_history,
+                latitude=latitude,
+                longitude=longitude,
+                radius_meters=radius_meters,
+                traveler_profile=profile_payload,
+            ):
+                if event_type == "meta":
+                    payload = {"type": "meta", "session_id": str(chat_session.id)}
+                    payload.update(data)
+                    yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                elif event_type == "token":
+                    full_reply += data
+                    yield f"data: {json.dumps({'type': 'token', 'delta': data}, ensure_ascii=False)}\n\n"
+                elif event_type == "done":
+                    done_data = data or {}
+                    translated_ko = done_data.get("translated_ko")
+                    final_reply = done_data.get("reply", full_reply)
+                    try:
+                        save_chat_turn(
+                            session=chat_session,
+                            user_message=message,
+                            assistant_reply=final_reply,
+                            translated_ko=translated_ko,
+                            route_result=None,
+                        )
+                    except Exception as _save_exc:
+                        logger.warning("save_chat_turn (stream) failed: %s", _save_exc)
+                    yield f"data: {json.dumps({'type': 'done', 'translated_ko': translated_ko}, ensure_ascii=False)}\n\n"
+                elif event_type == "error":
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(data)}, ensure_ascii=False)}\n\n"
+        except Exception as exc:
+            logger.exception("api_chat_stream SSE gen failed: %s", exc)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
+
+    response = StreamingHttpResponse(
+        _sse_gen(),
+        content_type="text/event-stream; charset=utf-8",
+    )
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
 
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -1082,6 +1211,14 @@ def serve_link_preview_js(request):
 @require_GET
 def serve_region_areas_js(request):
     path = _FRONTEND / "region-areas.js"
+    if not path.is_file():
+        return JsonResponse({"detail": "not found"}, status=404)
+    return FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")
+
+
+@require_GET
+def serve_maps_open_url_js(request):
+    path = _FRONTEND / "maps-open-url.js"
     if not path.is_file():
         return JsonResponse({"detail": "not found"}, status=404)
     return FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")

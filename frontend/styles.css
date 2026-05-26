@@ -2627,6 +2627,59 @@ img.plan-place-card__img.plan-place-card__img--fallback {
   }
 }
 .plan-maps-fallback {
-  display: block; font-size: .78rem; word-break: break-all;
-  color: var(--muted); margin: .25rem 0;
+  display: inline-block; font-size: .85rem;
+  color: var(--accent, #2563eb); margin: .25rem 0;
+}
+.plan-maps-unresolved {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: .35rem .5rem;
+  margin: .35rem 0;
+}
+.plan-maps-unresolved__hint {
+  font-size: .78rem; color: var(--muted);
+}
+
+
+/* ── Suggestion Chips (chat 초기 예시 질문) ── */
+.suggestions {
+  padding: .75rem 1rem .5rem;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+}
+.suggestions-label {
+  font-size: .75rem;
+  color: var(--muted, #64748b);
+  margin: 0 0 .5rem;
+}
+.suggestions-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+}
+.suggestion-chip {
+  font-size: .78rem;
+  padding: .3rem .7rem;
+  border-radius: 999px;
+  border: 1px solid var(--accent, #2563eb);
+  background: transparent;
+  color: var(--accent, #2563eb);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  white-space: nowrap;
+}
+.suggestion-chip:hover {
+  background: var(--accent, #2563eb);
+  color: #fff;
+}
+.suggestions.hidden { display: none; }
+
+/* ── Streaming 버블 커서 ── */
+.bubble-streaming::after {
+  content: "▍";
+  display: inline-block;
+  animation: blink-cursor .6s step-end infinite;
+  color: var(--accent, #2563eb);
+  margin-left: 1px;
+}
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }

@@ -30,6 +30,17 @@ class WebSearchResult:
     snippet: str
 
 
+_STADIUM_FOOD_EXCLUDE_RE = (
+    "구내식당", "사내식당", "직원식당", "급식", "단체급식",
+    "社員食堂", "職員食堂", "給食", "canteen", "cafeteria",
+)
+
+
+def _is_bad_stadium_food_result(result: WebSearchResult) -> bool:
+    blob = f"{result.title} {result.snippet} {result.url}".lower()
+    return any(token.lower() in blob for token in _STADIUM_FOOD_EXCLUDE_RE)
+
+
 # 웹 검색을 트리거할 이벤트 관련 키워드
 _EVENT_TRIGGER_KEYWORDS: list[str] = [
     # 한국어
@@ -217,6 +228,62 @@ class WebSearchClient:
                 if len(merged) >= max_results:
                     return merged
         return merged[:max_results]
+
+
+def fetch_stadium_food_by_venue(
+    venues: list[tuple[str, str, str]] | list[tuple[str, str]],
+    *,
+    lang: str = "ja",
+    max_results_per: int = 4,
+    max_workers: int = 4,
+) -> dict[str, list[WebSearchResult]]:
+    """경기장별 내부 먹거리 — Places 미등록 매점을 웹 검색으로 보완."""
+    if not venues:
+        return {}
+    try:
+        from src.api.sports_schedule_client import build_stadium_food_search_queries
+    except Exception:
+        return {}
+
+    import concurrent.futures
+
+    normalized: list[tuple[str, str, str]] = []
+    for item in venues:
+        if len(item) >= 3:
+            normalized.append((item[0], item[1], item[2]))
+        else:
+            normalized.append((item[0], item[1], ""))
+
+    if not _DDGS_AVAILABLE:
+        return {}
+
+    client = WebSearchClient()
+
+    def _one(item: tuple[str, str, str]) -> tuple[str, list[WebSearchResult]]:
+        venue, league, _home = item
+        merged: list[WebSearchResult] = []
+        seen: set[str] = set()
+        for q in build_stadium_food_search_queries(venue, league, lang):
+            for r in client.search(q, max_results=max_results_per):
+                if _is_bad_stadium_food_result(r):
+                    continue
+                key = (r.url or "").strip() or (r.title or "").strip()
+                if key and key in seen:
+                    continue
+                if key:
+                    seen.add(key)
+                merged.append(r)
+                if len(merged) >= max_results_per:
+                    return venue, merged
+        return venue, merged
+
+    out: dict[str, list[WebSearchResult]] = {}
+    workers = min(max_workers, len(normalized))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        for venue, results in pool.map(_one, normalized):
+            if results:
+                out[venue] = results
+    return out
 
 
 def fmt_web_search_results(results: list[WebSearchResult]) -> str:
