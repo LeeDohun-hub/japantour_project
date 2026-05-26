@@ -32,15 +32,20 @@ _LOW_VALUE_PATTERNS: list[_re.Pattern] = [
     _re.compile(r"この店の.{0,30}(営業時間|時まで|時から|休み|定休)"),
     _re.compile(r"の営業時間は何時から何時"),
     _re.compile(r"この店の.{0,30}(産地|生産|ブラジル|国内産|輸入)"),
-    _re.compile(r"この店の.{0,30}(主なメニュー|メニューは何|価格|ウォン|料金)"),
+    _re.compile(r"この店の.{0,30}(価格|ウォン|料金)"),  # 메뉴명 질문(대표/인기)은 여행 계획에 유용하므로 제외
     _re.compile(r"この店の.{0,30}(電話|予約|席数|座席|駐車|テイクアウト|配達)"),
     _re.compile(r"카페의\s*영업시간"),
     _re.compile(r"이\s*가게의\s*(영업시간|가격|메뉴|전화|예약|원산지)"),
 ]
 
+# leisure/nature/culture 카테고리는 운영시간도 여행 계획에 필요
+_LOW_VALUE_EXEMPT_CATEGORIES = frozenset({"leisure", "nature", "culture"})
+
 
 def _is_low_value_record(record: dict) -> bool:
     """여행 기획에 도움이 안 되는 운영 세부 정보 레코드 탐지."""
+    if record.get("category", "") in _LOW_VALUE_EXEMPT_CATEGORIES:
+        return False
     q = record.get("question_ja", "") or record.get("question_ko", "")
     return any(p.search(q) for p in _LOW_VALUE_PATTERNS)
 
