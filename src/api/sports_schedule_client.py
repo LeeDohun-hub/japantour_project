@@ -65,15 +65,15 @@ _LEAGUE_META: dict[str, dict[str, str]] = {
 }
 
 # KBO 구단별 예매처 (홈팀 기준)
-# 티켓링크: LG·한화·삼성·KT·KIA  /  인터파크: 두산·키움  /  자체예매: SSG·롯데·NC
+# 티켓링크: LG·한화·삼성·KT·KIA  /  인터파크: 두산(PB004)·키움(PB003)  /  자체예매: SSG·롯데·NC
 _KBO_TICKET_MAP: dict[str, str] = {
     "LG":   "https://www.ticketlink.co.kr/sports/baseball",
     "한화":  "https://www.ticketlink.co.kr/sports/baseball",
     "삼성":  "https://www.ticketlink.co.kr/sports/baseball",
     "KT":   "https://www.ticketlink.co.kr/sports/baseball",
     "KIA":  "https://www.ticketlink.co.kr/sports/baseball",
-    "두산":  "https://tickets.interpark.com/contents/sports/baseball",
-    "키움":  "https://tickets.interpark.com/contents/sports/baseball",
+    "두산":  "https://ticket.interpark.com/Contents/Sports/GoodsInfo?SportsCode=07001&TeamCode=PB004",
+    "키움":  "https://ticket.interpark.com/Contents/Sports/GoodsInfo?SportsCode=07001&TeamCode=PB003",
     "SSG":  "https://www.ssglanders.com/main",
     "롯데":  "https://www.giantsclub.com/contents/ticket",
     "NC":   "https://ticket.ncdinos.com/",
@@ -919,7 +919,8 @@ class SportsScheduleClient:
                 away_note = (
                     "下記公式サイトで日程確認後、チケットを購入してください。"
                     " ティケットリンク(LG·한화·삼성·KT·KIA): https://www.ticketlink.co.kr/sports/baseball"
-                    " / インターパーク(두산·키움): https://tickets.interpark.com/contents/sports/baseball"
+                    " / インターパーク 두산: https://ticket.interpark.com/Contents/Sports/GoodsInfo?SportsCode=07001&TeamCode=PB004"
+                    " / インターパーク 키움: https://ticket.interpark.com/Contents/Sports/GoodsInfo?SportsCode=07001&TeamCode=PB003"
                     " / SSG: https://www.ssglanders.com/ticket/home"
                     " / 롯데: https://www.giantsclub.com/contents/ticket"
                     " / NC: https://ticket.ncdinos.com/"

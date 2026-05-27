@@ -158,13 +158,13 @@ _RE_KR_METRO_GU = re.compile(
 _RE_REGION_CITY_SPLIT = re.compile(r"[,、/・\n|]+")
 
 _MAX_ITINERARY_AREAS = 4
-_MAX_FOOD_PER_AREA = 2
+_MAX_FOOD_PER_AREA = 5   # 에리어당 식당 수 — 다일정 점심+저녁 양쪽 커버용
 _MAX_ATTR_PER_AREA = 3
 _NEARBY_FOOD_RADIUS_M = 5000
 _NEARBY_ATTRACTION_RADIUS_M = 8000
-_MAX_NEARBY_FOOD = 8
+_MAX_NEARBY_FOOD = 15   # 주변 식당 후보 확대 (기존 8 → 15)
 _MAX_NEARBY_ATTRACTIONS = 4
-_MAX_ITINERARY_PLACES_TOTAL = 16
+_MAX_ITINERARY_PLACES_TOTAL = 30   # 전체 후보 확대 (기존 16 → 30)
 
 # プラン再生成時: 候補プールを広げてシャッフル（毎回同じ店に偏らない）
 _FOOD_PREF_SEARCH: dict[str, list[str]] = {
@@ -299,11 +299,11 @@ def _itinerary_place_limits(traveler_profile: dict | None) -> dict[str, int]:
     if reroll > 0:
         return {
             "max_areas": 5,
-            "max_food_per_area": 4,
+            "max_food_per_area": 7,
             "max_attr_per_area": 4,
-            "max_nearby_food": 20,
+            "max_nearby_food": 24,
             "max_nearby_attr": 12,
-            "max_total": 40,
+            "max_total": 50,
         }
     return {
         "max_areas": _MAX_ITINERARY_AREAS,
@@ -392,9 +392,13 @@ Real-time place search data is not available. Give a helpful answer using genera
 [ITINERARY PLACE RULE]
 Restaurants / cafes:
   - Use ONLY venues listed under 「食事候補」or「観光スポット候補」or Google Places sections in [Reference Data].
+  - Lunch AND dinner are BOTH required every regular day (Day 2+): assign a DIFFERENT candidate to each.
   - Each lunch/dinner: ONE shop name from 「食事候補」+ google_maps_uri on the very next line (copy exactly).
-  - NEVER use generic meal lines (禁止: 「한식店」「現地のレストラン」「韓国料理店で」「別の韓国料理店」).
-  - If 「食事候補」is absent/empty: one line only per meal slot — 「その日の観光エリア近郊で食事（店名は記載しない）」.
+  - google_maps_uri must be copied verbatim from the candidate list — never omit or shorten it.
+  - NEVER use generic meal lines (禁止: 「한식店」「現地のレストラン」「韓국料理店で」「別の韓国料理店」).
+  - If 「食事候補」is absent/empty for that day → write one generic line per slot: 「その日の観光エリア近郊で食事（店名は記載しない）」.
+  - If lunch already used the only remaining candidate for that area → dinner is also 「その日の観光エリア近郊で食事（店名は記載しない）」(no duplication, no invention).
+  - No food preference selected → pick freely and diversely from the candidate list (any genre is fine).
 
 Major malls / department stores (Lotte World Mall, Times Square, Starfield, Shinsegae, Hyundai):
   - Listing known brand tenants (Dior, Hermès, LV, Chanel, Olive Young, Aland, etc.) from training knowledge is ALLOWED.
@@ -420,7 +424,9 @@ Reference Data has NO 「食事候補」/「観光スポット候補」with Goog
 - Reply in Japanese only. Headings: 「1日目」「2日目」…「最終日」.
 - Do NOT invent restaurant/cafe/attraction names or URLs.
 - Do NOT use generic meals (禁止: 한식점, 現地の店, 韓国料理店で, 別の店).
-- Per day at most one meal line: 「○○エリア近郊で食事（店名は現地で選択）」.
+- Day 2+ regular days: BOTH lunch AND dinner lines are required (not just one).
+  昼食: 「○○エリア近郊で昼食（店名は現地で選択）」
+  夕食: 「○○エリア近郊で夕食（店名は現地で選択）」
 - Describe areas and activities only; transport from flight constraints in Reference Data.
 """
     else:
@@ -569,6 +575,17 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "- 各日は必ず「1日目」「2日目」…「最終日」のような見出し行で区切る。\n"
             "- 店舗・観光地には [Google Places Results] または [観光スポット候補] の\n"
             "  google_maps_uri を1行で必ず付ける（地図マーカー連携）。\n"
+            "- **観光スポットも必ず具体名＋google_maps_uri**: 「益善洞の路地を散策」「ギャラリー巡り」\n"
+            "  「周辺カフェで休憩」のような抽象表現だけの予定は禁止。候補にある実在施設・店舗名を使う。\n"
+            "- **カフェ巡りも店名必須**: 「カフェ巡り」「美術館周辺のカフェで休憩（店名は記載しない）」は禁止。\n"
+            "  Reference Dataにカフェ候補が1件でもあれば必ず具体的なカフェ名＋google_maps_uriを書く。\n"
+            "- 各スポットはカードUIで「外観写真・評価・住所・地図・経路」を表示するため、\n"
+            "  本文では必ずカード化できる場所名とURLを出す。URLなしの観光/買い物/カフェ項目は禁止。\n"
+            "- 悪い例: 「明洞メインストリートでショッピング」「カフェタイム」「伝統雑貨ショッピング」。\n"
+            "  良い例: 「명동거리」改行 google_maps_uri、「쌈지길」改行 google_maps_uri、\n"
+            "  「경복궁」改行 google_maps_uri のように、必ず1つの実在地点へ落とし込む。\n"
+            "- 各スポット名の直前または直後に、短い1行ガイドを添えること: 何が有名か、何を見るか、\n"
+            "  何を食べるか、どんな写真が撮れるかを1文で説明する（評価・住所・地図ボタン文言は書かない）。\n"
             "- **URLは必ず maps.google.com または goo.gl 形式で、[Google Places Results]に\n"
             "  記載されているURLをそのままコピーすること。goo.gl/maps/XXXXXX のような\n"
             "  トレーニングデータ由来の短縮URLを自己生成することは絶対禁止。\n"
@@ -599,21 +616,34 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "- **【最重要】食事候補リストに1件でも店がある場合、必ずその実在店舗名・URLを使うこと。**\n"
             "  「面類料理を提供する韓国料理店」「○○地域・차분한 분위기」のようなジャンル説明形式は\n"
             "  **食事候補セクションが完全に空のときのみ許可**。候補が1件でもあれば絶対に使用禁止。\n"
-            "- **昼食・夕食は必須**: 2日目以降の通常観光日は、昼食と夕食を空欄にしない。\n"
-            "  食事候補がある日は必ず候補から各1店を入れる。候補が完全に無い場合のみ「近郊で食事（店名は記載しない）」と書く。\n"
-            "- **朝食**: 観光開始エリアの近くに「朝食対応」「朝食・カフェ候補」の候補がある日は朝食欄を入れる。\n"
-            "  ただし営業時間未確認なら無理に店名を作らず、宿泊先周辺で軽食とする。\n"
+            "- **【絶対必須】昼食・夕食は2日目以降の通常観光日に必ず両方書く**:\n"
+            "  昼食だけ・夕食だけは絶対に不可。両方ない日はプランとして不完全。\n"
+            "  書き方の優先順位:\n"
+            "  ① 候補リストに未使用の店が2件以上ある → 昼食と夕食にそれぞれ別の店を使う\n"
+            "    （例）昼食\n"
+            "         店名A\n"
+            "         https://maps.google.com/...\n"
+            "         夕食\n"
+            "         店名B\n"
+            "         https://maps.google.com/...\n"
+            "  ② 候補リストに未使用の店が1件のみ → 昼食に使い、夕食は「近郊で夕食（店名は記載しない）」\n"
+            "  ③ 候補が完全に空 → 昼食「近郊で昼食（店名は記載しない）」・夕食「近郊で夕食（店名は記載しない）」を両方書く\n"
+            "  ▶ 食事メニュー未選択の場合: 候補リストの中から多様なジャンルの店を自由に選んでよい。\n"
+            "- **朝食**: 「朝食対応」「朝食・カフェ候補」タグが付いた候補があり、かつ is_open_now が\n"
+            "  「営業中」か「営業時間未確認」の店のみ朝食欄に記載する。「時間外の可能性」の店は朝食に使わない。\n"
             "- 好みメニュー（チキン・국밥等）と一致する店を優先。候補リストに好みの店がない日は\n"
             "  リスト内の別の韓国料理店を使う（その場合は「好みのメニューは現地で探すのもおすすめ」を\n"
             "  一言添えてよい）。ジャンル説明文に逃げることは禁止。\n"
             "  **禁止**: ウェディングホール・コンベンション・配達専門（배달전용）・イベント会場。\n"
             "- 昼食・夕食それぞれ **最大1店舗**（候補から1件のみ）。\n"
             "  複数店羅列・「おすすめ店5選」形式は禁止。\n"
-            "- **同一店名・同一チェーン店の連続使用禁止**: プラン全体で同じ店名/チェーン名を\n"
-            "  2回以上使わない。必ず別の店（別チェーン）を選ぶこと。\n"
-            "- 選んだ店は「店名」の直後に **google_maps_uri を1行だけ** 記載。\n"
+            "- **同一店名・同一チェーン店の再利用禁止**: プラン全体で同じ店名/チェーン名は1回のみ使用。\n"
+            "  ただし候補リストに選択肢が1店しかない場合は「近郊で食事（店名は記載しない）」で代替する\n"
+            "  （同じ店を2回使うことと、リスト外を創作することは両方禁止）。\n"
+            "- 選んだ店は「店名」の直後に **google_maps_uri を1行だけ** 記載。google_maps_uriは必ず\n"
+            "  食事候補リストの値をそのままコピーすること（URL省略・改変禁止）。\n"
             "- 本文に ★評価・(○○件)・営業中・¥・住所・「地図」「経路」「지도」「통로」は **書かない**\n"
-            "  （システムがカードUIで自動表示する）。\n"
+            "  （ただし場所名＋google_maps_uriは必須。システムが外観写真・評価・住所・地図・経路カードを自動表示する）。\n"
             "- 【食事で避ける】・アレルギー・辛味苦手等と矛盾する店は禁止。\n"
             "\n"
             "【チケット・イベントURL】\n"
@@ -681,7 +711,11 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
 - [Google Places Results] lists only venues with Google rating >= 4.0 (no rating = excluded). Never recommend lower-rated places even if named elsewhere.
 - At most ONE verified restaurant each from [Google Places Results].
 - Put the exact google_maps_uri on its own line immediately after the restaurant name (or "Name: URL" on one line).
-- Do NOT paste rating, review count, address, open hours, or button labels (地図/経路) — the app renders cards automatically.
+- Sightseeing, shopping, cafe, and meal stops must be concrete venue names from [Google Places Results] or [観光スポット候補], with the exact google_maps_uri on the next line.
+- Do NOT write vague standalone activities such as "益善洞の路地を散策", "ギャラリー巡り", "周辺カフェで休憩", or "ショップ巡り" unless they are attached to a verified venue card URL.
+- Cafe hopping is not allowed as an unnamed generic activity. If any cafe candidate exists, name the specific cafe and copy its google_maps_uri.
+- Add one short guide sentence around each venue: what it is known for, what to see, what to eat, or what photo/experience to expect.
+- Do NOT paste rating, review count, address, open hours, or button labels (地図/経路) — the app renders exterior/photo, rating, address, map, and route cards automatically from the URL.
 - Do NOT list multiple restaurants per meal or dump the Places reference block into the itinerary text.
 - Use search_area and [日程×エリア割当] to match the correct day and region; no cross-region picks.
 - Follow traveler_profile.regions order for multi-day plans; do not default all meals to the lodging city.
@@ -2501,14 +2535,22 @@ def _build_itinerary_food_queries(
             queries.append(q)
 
     tourism_areas = _tourism_search_areas(traveler_profile)
+    prefs, _ = _food_preferences_from_profile(traveler_profile)
     for q in _food_queries_from_preferences(traveler_profile, areas):
         add(q)
 
     for area in tourism_areas or areas:
         add(f"{area} 한식 맛집")
-        add(f"{area} 아침식사")
+        add(f"{area} 점심 맛집")    # 점심 전용 쿼리
+        add(f"{area} 저녁 맛집")    # 저녁 전용 쿼리
         add(f"{area} 해장국 국밥")
+        add(f"{area} 아침식사")
         add(f"{area} 브런치 카페")
+        # 선호 미선택 시 다양한 장르 보강
+        if not prefs:
+            add(f"{area} 고기 맛집")
+            add(f"{area} 한정식")
+            add(f"{area} 분식")
 
     parts = [user_message, keyword]
     if traveler_profile:
@@ -2689,6 +2731,7 @@ def _search_places_for_itinerary(
     food_batches: list[list[NearbyPlace]] = []
     attr_batches: list[list[NearbyPlace]] = []
 
+    center: tuple[float, float, str] | None = None
     ap_iata = arrival_airport_iata(traveler_profile)
     if ap_iata in _AIRPORT_GEO and ap_iata != "ICN":
         lat, lng, label = _AIRPORT_GEO[ap_iata]
@@ -3831,16 +3874,20 @@ def route_and_answer(
                 "=== 食事候補（優先: ユーザーの好みメニュー → 次点: その他韓国料理）===\n"
                 + _fmt_itinerary_food_by_day_zones(food_places, traveler_profile)
                 + "\n※ 各日は見出しエリアのセクションの店のみ使用。リスト外の店名創作禁止。\n"
-                + "※ リストに候補が1件でもある限り必ずリスト内の実在店舗を使うこと。\n"
-                + "※ 昼食・夕食は各1店。店名の直後の行に google_maps_uri（コピー）必須。\n"
-                + "※ 2日目以降の通常観光日は昼食・夕食を空欄にしない。朝食対応/カフェ候補がある日は朝食も可。\n"
+                + "※ 昼食・夕食は各1店（異なる店）。店名の直後の行に google_maps_uri を必ずコピー。\n"
+                + "※ 2日目以降の通常観光日は昼食・夕食を必ず両方書く。\n"
+                + "※ 同日に昼食で使い切り夕食用の別店がない場合のみ夕食を「近郊で食事（店名は記載しない）」とする。\n"
+                + "※ 食事メニュー未選択の場合: リスト内の店を自由に選んでよい（ジャンル・順序は任意）。\n"
+                + "※ 朝食: 「朝食対応」「朝食・カフェ候補」タグ付きの店のうち「時間外の可能性」以外のみ使用可。\n"
             )
         else:
             ctx_parts.append(
                 "=== 食事候補 — 取得不可 ===\n"
                 "Places APIで検証済みの飲食店リストがありません。\n"
                 "【厳守】昼食・夕食に店名・「한식」「現地のレストラン」「別の韓国料理店」を書かない。\n"
-                "各食事枠は1行のみ: 「その日の観光エリア近郊で食事（店名は記載しない）」\n"
+                "2日目以降の通常観光日は昼食・夕食の両方を必ず書くこと（どちらか一方だけは不可）。\n"
+                "  昼食: 「その日の観光エリア近郊で食事（店名は記載しない）」\n"
+                "  夕食: 「その日の観光エリア近郊で夕食（店名は記載しない）」\n"
             )
         if attr_places:
             ctx_parts.append(

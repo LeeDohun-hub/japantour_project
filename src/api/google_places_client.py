@@ -125,7 +125,7 @@ _MEAL_TYPE_ALLOW = frozenset({
 
 
 def _min_meal_place_rating() -> float:
-    raw = os.getenv("MIN_MEAL_PLACE_RATING", "4").strip()
+    raw = os.getenv("MIN_MEAL_PLACE_RATING", "4.0").strip()
     try:
         return max(0.0, float(raw))
     except ValueError:

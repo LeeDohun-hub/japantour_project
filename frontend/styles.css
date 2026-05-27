@@ -1691,6 +1691,14 @@ a.btn {
   gap: 0.5rem;
 }
 .plan-ticket-grid .ticket-preview-card { max-width: 100%; }
+.plan-ticket-with-venue {
+  display: flex;
+  flex-direction: column;
+  gap: .55rem;
+}
+.plan-ticket-with-venue .plan-inline-spot {
+  margin: 0;
+}
 
 /* ── Plan output ── */
 .plan-loading { padding: 1.5rem 0; }
@@ -2410,6 +2418,7 @@ a.plan-place-card-wide:hover { border-color: var(--accent); }
   background: rgba(100,140,220,.15); margin-right: .35rem;
 }
 .sport-match { margin-top: .25rem; }
+.sport-venue-name { display: block; margin: .3rem 0 .1rem; font-size: .9rem; }
 
 /* ── Plan inline place preview (Maps URL行の直下) ───────────────── */
 .plan-line { margin: .35rem 0; line-height: 1.55; }
@@ -2496,6 +2505,7 @@ a.plan-place-card-wide:hover { border-color: var(--accent); }
 .plan-place-card__thumb-link {
   flex-shrink: 0;
   display: block;
+  position: relative;
   width: 92px;
   height: 92px;
   border-radius: 8px;
@@ -2504,6 +2514,18 @@ a.plan-place-card-wide:hover { border-color: var(--accent); }
   text-decoration: none;
 }
 .plan-place-card__thumb-link:hover { opacity: .92; }
+.plan-place-card__photo-label {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, .62);
+  color: #fff;
+  font-size: .62rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
 .plan-place-card__img {
   width: 100%;
   height: 100%;
@@ -2541,6 +2563,13 @@ img.plan-place-card__img.plan-place-card__img--fallback {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.plan-place-card__guide {
+  margin: 0;
+  font-size: .76rem;
+  line-height: 1.45;
+  color: var(--text);
+  opacity: .9;
 }
 .plan-place-card__meta {
   display: flex;

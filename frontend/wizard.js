@@ -1877,7 +1877,7 @@ function _buildHotelSearchContext() {
 }
 
 function _hotelSearchParams(ctx) {
-  const params = new URLSearchParams({ all: "1" });
+  const params = new URLSearchParams({ all: "1", type: "hotel" });
   if (ctx.query) params.set("q", ctx.query);
   if (ctx.sido) params.set("sido", ctx.sido);
   if (ctx.sigungu) params.set("sigungu", ctx.sigungu);
@@ -2470,12 +2470,58 @@ function _isEchoCardLine(t) {
   return false;
 }
 
+function _autoPlaceQueriesFromLine(line) {
+  const s = String(line || "").toLowerCase();
+  const out = [];
+  const add = (q) => {
+    if (q && !out.includes(q)) out.push(q);
+  };
+
+  if (/명동|myeongdong/.test(s)) {
+    add("명동거리");
+    add("명동성당");
+    if (/카페|cafe|coffee/.test(s)) add("명동 카페");
+  }
+  if (/경복궁|gyeongbok|景福/.test(s)) add("경복궁");
+  if (/북촌|bukchon|北村/.test(s)) add("북촌한옥마을");
+  if (/익선|익성|ikseon/.test(s)) add("익선동 한옥거리");
+  if (/인사동|insadong/.test(s)) {
+    add("쌈지길");
+    add("인사동길");
+  }
+  if (/삼청동|samcheong/.test(s)) add("삼청동 카페거리");
+  if (/광화문|gwanghwamun/.test(s)) add("광화문광장");
+  if (/청계천|cheonggye/.test(s)) add("청계천");
+  if (/전통.*(잡화|쇼핑|공예)|雑貨|工芸/.test(s)) {
+    add("쌈지길");
+    add("인사동 전통문화의 거리");
+  }
+  if (/카페\s*타임|카페에서|cafe time/.test(s)) {
+    if (/명동|myeongdong/.test(s)) add("명동 카페");
+    else if (/북촌|삼청|경복/.test(s)) add("북촌 한옥카페");
+    else if (/대구|daegu/.test(s)) add("대구 카페");
+    else if (/김광석/.test(s)) add("김광석거리 카페");
+    else if (/간송|미술관|museum|gallery/.test(s)) add("대구간송미술관 카페");
+    else add("인사동 한옥카페");
+  }
+  if (/카페\s*순회|カフェ巡り|cafe hopping/.test(s)) {
+    if (/대구|daegu/.test(s)) {
+      add("김광석거리 카페");
+      add("대구 동성로 카페");
+    } else {
+      add("한옥카페");
+    }
+  }
+  return out;
+}
+
 function _nameKeysFromLine(line) {
   const keys = [];
   const quoted = [...line.matchAll(/[『「']([^』」']+)[』」']|[「『]([^」』]+)[」』]/g)];
   for (const m of quoted) keys.push(_normalizePlaceName(m[1] || m[2]));
+  for (const q of _autoPlaceQueriesFromLine(line)) keys.push(_normalizePlaceName(q));
   const bare = line.match(
-    /([\u3131-\uD79D]{2,}(?:한우|마을|식당|카페|공원|역|몰|호텔|박물관|시장|맛집|레스토랑|restaurant|cafe|park|station))/i
+    /([\u3131-\uD79D]{2,}(?:한우|마을|궁|거리|길|식당|카페|공원|역|몰|호텔|박물관|시장|맛집|레스토랑|restaurant|cafe|park|station))/i
   );
   if (bare) keys.push(_normalizePlaceName(bare[1]));
   return keys.filter(Boolean);
@@ -2573,8 +2619,35 @@ function _directionsUrl(p) {
   return p.google_maps_uri || "#";
 }
 
+function _placeGuideLine(p) {
+  const blob = `${p?.name || ""} ${p?.address || ""} ${p?.category || ""} ${p?.primary_type || ""}`.toLowerCase();
+  const has = (...needles) => needles.some((n) => blob.includes(String(n).toLowerCase()));
+
+  if (has("insadong", "인사동")) {
+    if (has("ssamziegil", "쌈지길")) return "伝統雑貨・工芸品・小さなギャラリーをまとめて見やすいスポット。";
+    return "韓国らしい工芸品、茶屋、路地写真を楽しみやすい伝統散策エリア。";
+  }
+  if (has("myeongdong", "명동")) {
+    if (has("cathedral", "성당")) return "明洞散策の目印になる歴史的建築で、写真休憩にも使いやすい場所。";
+    return "コスメ、屋台、K-pop系ショップを歩いて回りやすいソウル定番の買い物エリア。";
+  }
+  if (has("gyeongbok", "경복궁")) return "王宮建築と守門将交代式が見どころの、ソウル歴史観光の中心スポット。";
+  if (has("bukchon", "북촌")) return "韓屋の路地景観が残るフォトスポット。歩きやすい靴がおすすめ。";
+  if (has("ikseon", "익선")) return "韓屋を改装したカフェや雑貨店が集まる、写真向きの路地エリア。";
+  if (has("cheonggye", "청계천")) return "都心の水辺散歩に向いた休憩スポット。夜の散策にも使いやすいです。";
+  if (has("gwanghwamun", "광화문")) return "広場、宮殿、博物館をつなげやすいソウル中心部のランドマーク。";
+  if (has("찜닭", "jjimdak", "チムタク")) return "甘辛い醤油だれの鶏煮込みが名物。辛さは注文時に調整すると安心。";
+  if (has("chicken", "치킨", "후라이드", "fried")) return "韓国式フライドチキン向き。ビールや軽い夜食にも合わせやすい店。";
+  if (has("cafe", "coffee", "커피", "카페")) return "散策の途中で休憩しやすいカフェ候補。写真と営業時間を見て選ぶと安心。";
+  if (has("restaurant", "식당", "맛집")) return "この日の動線上で食事を取りやすい候補。代表メニューは現地メニューで確認。";
+  if (has("museum", "gallery", "미술관", "박물관")) return "展示鑑賞向きのスポット。所要時間は展示内容に合わせて調整しやすいです。";
+  if (has("market", "시장", "mall", "store", "거리", "길")) return "買い物と写真を組み合わせやすい立ち寄りスポット。";
+  return "この日の移動ルートに組み込みやすい、Google評価付きの確認済みスポット。";
+}
+
 function _renderInlinePlaceCard(p) {
   const name = _escapeHtml(p.name || "");
+  const guide = _placeGuideLine(p);
   const rating = p.rating ? `★${Number(p.rating).toFixed(1)}` : "";
   const reviews = p.user_rating_count
     ? `<span class="plan-place-card__reviews">(${Number(p.user_rating_count).toLocaleString()}件)</span>`
@@ -2596,7 +2669,7 @@ function _renderInlinePlaceCard(p) {
   const meta = [rating && `<span class="plan-place-card__rating">${rating}${reviews}</span>`, openBadge, priceLabel]
     .filter(Boolean).join("");
   const thumbLink = mapsUri || dirUri;
-  return `<div class="plan-inline-spot"><article class="plan-place-card"><a class="plan-place-card__thumb-link" href="${_escapeHtml(thumbLink)}" target="_blank" rel="noopener">${thumb}</a><div class="plan-place-card__body"><h4 class="plan-place-card__name">${name}</h4>${meta ? `<div class="plan-place-card__meta">${meta}</div>` : ""}${addr}<div class="plan-place-card__actions">${mapsUri ? `<a href="${_escapeHtml(mapsUri)}" target="_blank" rel="noopener" class="plan-place-card__btn">地図</a>` : ""}<a href="${_escapeHtml(dirUri)}" target="_blank" rel="noopener" class="plan-place-card__btn plan-place-card__btn--route">経路</a></div></div></article></div>`;
+  return `<div class="plan-inline-spot"><article class="plan-place-card"><a class="plan-place-card__thumb-link" href="${_escapeHtml(thumbLink)}" target="_blank" rel="noopener">${thumb}<span class="plan-place-card__photo-label">外観写真</span></a><div class="plan-place-card__body"><h4 class="plan-place-card__name">${name}</h4><p class="plan-place-card__guide">${_escapeHtml(guide)}</p>${meta ? `<div class="plan-place-card__meta">${meta}</div>` : ""}${addr}<div class="plan-place-card__actions">${mapsUri ? `<a href="${_escapeHtml(mapsUri)}" target="_blank" rel="noopener" class="plan-place-card__btn">地図</a>` : ""}<a href="${_escapeHtml(dirUri)}" target="_blank" rel="noopener" class="plan-place-card__btn plan-place-card__btn--route">経路</a></div></div></article></div>`;
 }
 
 const _PLAN_CLOCK_RE = /\[[\d０-９]{1,2}\s*[:：]\s*[\d０-９]{2}[^\]]*\]/g;
@@ -2682,7 +2755,10 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
     return urls.map((rawUrl) => {
       const url = LP.normalizeUrl(rawUrl);
       const known = ticketIdx[url] || ticketIdx[url.split("?")[0]];
-      if (known) return LP.renderCard(LP.eventToPreview(known, url));
+      if (known) {
+        const venueCard = known.venue_place ? _renderInlinePlaceCard(known.venue_place) : "";
+        return LP.renderCard(LP.eventToPreview(known, url)) + venueCard;
+      }
       return LP.renderSkeleton(url);
     });
   };
@@ -2692,7 +2768,7 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
     return Boolean(placeIndexes.unresolved?.[key] && !_lookupPlace(placeIndexes, url));
   };
 
-  const lineLooksLikeUnresolvedPlaceLabel = (rawLine, nextRawLine) => {
+  const lineLooksLikePlaceLabelBeforeUrl = (rawLine, nextRawLine) => {
     const current = _normalizePlaceName(
       _normalizeQueryLabelForEnrich(
         String(rawLine || "")
@@ -2703,9 +2779,13 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
     );
     if (!current || current.length < 2) return false;
     for (const url of _extractUrlsFromLine(String(nextRawLine || ""))) {
-      if (!isUnresolvedMapsUrl(url)) continue;
-      const q = _normalizePlaceName(placeIndexes.unresolved?.[_mapsUrlKey(url)] || "");
-      if (q && (current === q || current.includes(q) || q.includes(current))) return true;
+      const place = _lookupPlace(placeIndexes, url);
+      const q = _normalizePlaceName(
+        place?.name || placeIndexes.unresolved?.[_mapsUrlKey(url)] || ""
+      );
+      if (q && (current === q || current.includes(q) || q.includes(current))) {
+        return true;
+      }
     }
     return false;
   };
@@ -2814,7 +2894,7 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim();
     if (!trimmed) continue;
-    if (lineLooksLikeUnresolvedPlaceLabel(lines[i], lines[i + 1] || "")) {
+    if (lineLooksLikePlaceLabelBeforeUrl(lines[i], lines[i + 1] || "")) {
       continue;
     }
 
@@ -2926,9 +3006,10 @@ function _extractUnlinkedAttrNames(text, placeIndexes) {
     }
   }
 
-  const tryAdd = (name) => {
+  const tryAdd = (name, force = false) => {
     name = name.trim();
-    if (name.length < 3 || _ATTR_FOOD_SKIP_RE.test(name) || _ATTR_AREA_SKIP_RE.test(name)) return;
+    if (name.length < 3) return;
+    if (!force && (_ATTR_FOOD_SKIP_RE.test(name) || _ATTR_AREA_SKIP_RE.test(name))) return;
     const nk = _normalizePlaceName(name);
     if (!nk || placeIndexes.byName[nk]) return;
     results.set(name, nk);
@@ -2937,6 +3018,9 @@ function _extractUnlinkedAttrNames(text, placeIndexes) {
   for (let i = 0; i < lines.length; i++) {
     if (urlLines.has(i)) continue;
     const line = lines[i];
+    for (const q of _autoPlaceQueriesFromLine(line)) {
+      tryAdd(q, true);
+    }
     // 괄호형: 더현대서울(더현대서울)
     _ATTR_PAREN_RE.lastIndex = 0;
     let m;
@@ -2959,16 +3043,44 @@ async function _enrichUnlinkedAttractions(names, placeIndexes) {
   await Promise.allSettled(names.map(async (name) => {
     try {
       const q = encodeURIComponent(`${name} ${regionHint}`.trim());
-      const res = await fetch(`/api/places/search/?q=${q}&limit=1`, {
+      const res = await fetch(`/api/places/search/?q=${q}&limit=1&type=general`, {
         credentials: "same-origin",
       });
       if (!res.ok) return;
       const body = await res.json();
       const p = (body.places || [])[0];
       if (!p || !p.maps_url || _isJpAddress(p)) return;
+      const enriched = { ...p, google_maps_uri: p.maps_url };
       const nk = _normalizePlaceName(p.name || name);
-      if (nk) placeIndexes.byName[nk] = { ...p, google_maps_uri: p.maps_url };
+      const queryKey = _normalizePlaceName(name);
+      if (nk) placeIndexes.byName[nk] = enriched;
+      if (queryKey) placeIndexes.byName[queryKey] = enriched;
+      if (p.maps_url) placeIndexes.byUrl[_mapsUrlKey(p.maps_url)] = enriched;
     } catch (_) { /* 무시 */ }
+  }));
+}
+
+async function _enrichTicketVenuePlaces(events, placeIndexes) {
+  const list = (events || []).filter((ev) => ev?.venue && !ev.venue_place);
+  if (!list.length) return;
+  await Promise.allSettled(list.slice(0, 8).map(async (ev) => {
+    try {
+      const q = encodeURIComponent(`${ev.venue} ${ev.place_region || ""} 韓国`.trim());
+      const res = await fetch(`/api/places/search/?q=${q}&limit=1&type=general`, {
+        credentials: "same-origin",
+      });
+      if (!res.ok) return;
+      const body = await res.json();
+      const p = (body.places || [])[0];
+      if (!p || !p.maps_url || _isJpAddress(p)) return;
+      const enriched = { ...p, google_maps_uri: p.maps_url };
+      ev.venue_place = enriched;
+      const nk = _normalizePlaceName(p.name || ev.venue);
+      const venueKey = _normalizePlaceName(ev.venue);
+      if (nk) placeIndexes.byName[nk] = enriched;
+      if (venueKey) placeIndexes.byName[venueKey] = enriched;
+      if (p.maps_url) placeIndexes.byUrl[_mapsUrlKey(p.maps_url)] = enriched;
+    } catch (_) { /* ignore venue enrichment */ }
   }));
 }
 
@@ -3021,6 +3133,7 @@ async function _displayPlanOutput(data) {
   // URL 없는 관광지 이름(괄호형) 2차 Places 검색
   const unlinkedAttrNames = _extractUnlinkedAttrNames(reply, placeIndexes);
   await _enrichUnlinkedAttractions(unlinkedAttrNames, placeIndexes);
+  await _enrichTicketVenuePlaces(data.ticket_platform_events || [], placeIndexes);
 
   const ticketIdx = window.LinkPreview
     ? LinkPreview.buildEventIndex(data.ticket_platform_events || [])
@@ -3093,7 +3206,9 @@ async function _displayPlanOutput(data) {
   }
 
   const sportsEl = $("planSportsArea");
-  const sportsHtml = sportsEl ? _renderPlanSportsCards(data.sports_events || []) : "";
+  const lckHtml = _renderLckVenueCard();
+  const sportsCardsHtml = sportsEl ? _renderPlanSportsCards(data.sports_events || []) : "";
+  const sportsHtml = lckHtml + sportsCardsHtml;
   if (sportsEl) {
     sportsEl.innerHTML = sportsHtml;
     sportsEl.style.display = sportsHtml ? "block" : "none";
@@ -3114,13 +3229,15 @@ const _LEAGUE_LABELS = {
   kovo: "KOVO（バレー）",
   kleague: "Kリーグ（サッカー）",
   kleague2: "K2（サッカー）",
+  lck: "LCK（e-スポーツ）",
 };
 
 function _renderTicketPlatformCards(events) {
   if (!events || !events.length || !window.LinkPreview) return "";
   const cards = events.slice(0, 8).map((ev) => {
     const url = LinkPreview.normalizeUrl(ev.ticket_url || "");
-    return LinkPreview.renderCard(LinkPreview.eventToPreview(ev, url));
+    const venueCard = ev.venue_place ? _renderInlinePlaceCard(ev.venue_place) : "";
+    return `<div class="plan-ticket-with-venue">${LinkPreview.renderCard(LinkPreview.eventToPreview(ev, url))}${venueCard}</div>`;
   }).join("");
   return `<div class="plan-refs-section">
     <h3 class="plan-refs-title">🎫 チケット・公演（インターパーク）</h3>
@@ -3189,6 +3306,25 @@ function _renderPlanSportsCards(events) {
   return `<div class="plan-refs-section"><h3 class="plan-refs-title">⚽ 試合日程（宿泊先近郊・公式データ参照）</h3>
     <div class="plan-sport-grid">${cards.join("")}</div>
     <p class="plan-refs-note">※ 宿泊先近くで開催される試合のみ表示。最新日程・チケットは各公式サイトでご確認ください。</p></div>`;
+}
+
+function _renderLckVenueCard() {
+  const cityIds = wizardData.regionCityIds || [];
+  const acts = wizardData.activities || [];
+  if (!cityIds.includes("jongno") || !acts.includes("sports")) return "";
+  const ticketUrl = "https://ticket.interpark.com/Contents/Sports/GoodsInfo?SportsCode=07032";
+  return `<div class="plan-refs-section">
+    <h3 class="plan-refs-title">🎮 e-スポーツ観戦 — LCK（鍾路）</h3>
+    <div class="plan-sport-grid">
+      <div class="sport-event-card">
+        <span class="sport-league">LCK（League of Legends Champions Korea）</span>
+        <strong class="sport-venue-name">그랑서울 LoL Park</strong>
+        <span class="sport-venue">서울 종로구 새문안로 68, 그랑서울타워 B1</span>
+        <a href="${_escapeHtml(ticketUrl)}" target="_blank" rel="noopener" class="sport-official">チケットを見る →</a>
+      </div>
+    </div>
+    <p class="plan-refs-note">※ LCKは인터파크티켓で販売。シーズン・試合日程は公式サイト（lck.kr）でご確認ください。</p>
+  </div>`;
 }
 
 // ── UTILS ─────────────────────────────────────────────────────────────────

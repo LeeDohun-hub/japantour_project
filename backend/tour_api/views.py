@@ -132,6 +132,8 @@ def api_places_search(request):
         limit = min(max(int(request.GET.get("limit", 5)), 1), 20)
     except (TypeError, ValueError):
         limit = 5
+    place_type = request.GET.get("type", "").strip().lower()
+    included_type = "hotel" if place_type == "hotel" or sido or sigungu else ""
     try:
         pclient = GooglePlacesClient()
         if not pclient.is_configured:
@@ -139,9 +141,10 @@ def api_places_search(request):
         search_kwargs: dict = {
             "text_query": query,
             "language_code": "ja",
-            "included_type": "hotel",
             "location_restriction": KR_LOCATION_RESTRICTION,
         }
+        if included_type:
+            search_kwargs["included_type"] = included_type
         if fetch_all:
             results = pclient.search_by_text_all(max_total=60, **search_kwargs)
             next_token = None

@@ -404,7 +404,7 @@
         if (!q || q.length < 2) continue;
         try {
           const res = await fetch(
-            `/api/places/search/?q=${encodeURIComponent(q + " 韓国")}&limit=1`
+            `/api/places/search/?q=${encodeURIComponent(q + " 韓国")}&limit=1&type=general`
           );
           const body = await res.json();
           const p = body.places?.[0];
