@@ -6,6 +6,7 @@ from tour_api import views
 
 urlpatterns = [
     path("chat/", views.serve_chat, name="chat_page"),
+    path("share/plan/<path:token>/", views.serve_plan_share, name="plan_share_page"),
     path("styles.css", views.serve_styles),
     path("assets/bg-korea-theme.svg", views.serve_theme_bg),
     path("app.js", views.serve_app_js),

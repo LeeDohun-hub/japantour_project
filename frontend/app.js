@@ -316,6 +316,44 @@ function formatFlightTime(isoStr) {
   }
 }
 
+const AIRLINE_NAME_JA = {
+  "아시아나항공": "アシアナ航空",
+  "대한항공": "大韓航空",
+  "진에어": "ジンエアー",
+  "에어부산": "エアプサン",
+  "에어서울": "エアソウル",
+  "이스타항공": "イースター航空",
+  "제주항공": "チェジュ航空",
+  "티웨이항공": "ティーウェイ航空",
+  "에어로케이항공": "エアロK",
+  "에어프레미아": "エアプレミア",
+  "에어프레미아항공": "エアプレミア",
+  "플라이강원": "フライ江原",
+  "에티오피아항공": "エチオピア航空",
+  "파라타항공": "パラタ航空",
+  "ZIPAIR": "ZIPAIR",
+};
+
+const AIRLINE_CODE_NAME_JA = {
+  ET: "エチオピア航空",
+};
+
+function displayAirlineName(name, lang = "日本語", code = "") {
+  const raw = String(name || "").trim();
+  if (lang !== "日本語") return raw;
+  const norm = raw.replace(/\s+/g, "");
+  return AIRLINE_NAME_JA[raw] || AIRLINE_NAME_JA[norm] || AIRLINE_CODE_NAME_JA[String(code || "").toUpperCase()] || raw;
+}
+
+function displayOperatingDays(days, lang = "日本語") {
+  let text = String(days || "").trim();
+  if (!text || lang !== "日本語") return text;
+  const map = { 월: "月", 화: "火", 수: "水", 목: "木", 금: "金", 토: "土", 일: "日" };
+  text = text.replace(/[월화수목금토일]/g, (ch) => map[ch] || ch);
+  text = text.replace(/매일|매일운항/g, "毎日");
+  return text;
+}
+
 const FLIGHT_STATUS_LABEL = {
   "日本語": {
     scheduled: "予定", active: "運航中", landed: "到着済み",
@@ -351,7 +389,7 @@ function renderGyeonggiEventCards(events, lang) {
       ? `<div class="ev-desc">${escapeHtml(ev.description.slice(0, 80))}${ev.description.length > 80 ? "…" : ""}</div>`
       : "";
     const _src = ev.source_service || "";
-    const source = _src.startsWith("kintex") ? "KINTEX" : _src === "kpop_web" ? "K-pop 공연" : "전국행사";
+    const source = _src.startsWith("kintex") ? "KINTEX" : _src === "kpop_web" ? "K-pop公演" : "全国イベント";
     const inner  = `<div class="ev-name">${name}</div>
       <div class="ev-meta">${period}${ev.city ? " · " + escapeHtml(ev.city) : ""} <span class="ev-src">${source}</span></div>
       ${venue}${desc}`;
@@ -413,8 +451,8 @@ function renderFlightCards(flights, airport, flightSubtype, keyword, lang) {
     headerHtml = isJa ? "✈ フライト情報" : "✈ 항공편 정보";
   }
 
-  const depLabel  = isJa ? "출발" : "출발";
-  const arrLabel  = isJa ? "도착" : "도착";
+  const depLabel  = isJa ? "出発" : "출발";
+  const arrLabel  = isJa ? "到着" : "도착";
   const delayLabel = isJa ? "遅延" : "지연";
   const termLabel  = isJa ? "T" : "T";
   const gateLabel  = isJa ? "G" : "G";
@@ -434,7 +472,7 @@ function renderFlightCards(flights, airport, flightSubtype, keyword, lang) {
     const arrTermGate = f.arr_terminal ? `${termLabel}${escapeHtml(f.arr_terminal)}` : "";
 
     const delayHtml = (f.dep_delay && f.dep_delay > 0)
-      ? `<div class="flight-delay">⚠ ${delayLabel} +${f.dep_delay}분</div>`
+      ? `<div class="flight-delay">⚠ ${delayLabel} +${f.dep_delay}${isJa ? "分" : "분"}</div>`
       : "";
 
     const codeshareHtml = f.codeshared_iata
@@ -442,7 +480,7 @@ function renderFlightCards(flights, airport, flightSubtype, keyword, lang) {
       : "";
 
     // 정기편 스케줄 전용 메타정보 (운항요일 / 기간)
-    const days = f.operating_days || "";
+    const days = displayOperatingDays(f.operating_days || "", lang);
     const daysLabel = isJa ? "運航曜日" : "운항요일";
     const periodLabel = isJa ? "運航期間" : "운항기간";
     const daysHtml = days
@@ -454,7 +492,7 @@ function renderFlightCards(flights, airport, flightSubtype, keyword, lang) {
 
     return `<div class="flight-card">
   <div class="flight-card-header">
-    <span class="flight-airline">${escapeHtml(f.airline_name)}</span>
+    <span class="flight-airline">${escapeHtml(displayAirlineName(f.airline_name, lang, f.airline_iata))}</span>
     <span class="flight-num">${escapeHtml(f.flight_iata)}</span>
     ${codeshareHtml}
     <span class="flight-status-badge ${statusCls}">${statusText}</span>
@@ -684,7 +722,7 @@ chatForm.addEventListener("submit", async (e) => {
           if (payload.translated_ko && assistantBubble) {
             const t = document.createElement("div");
             t.className = "translation";
-            t.innerHTML = `<h4>한국어 번역</h4>${escapeHtml(payload.translated_ko)}`;
+            t.innerHTML = `<h4>韓国語訳</h4>${escapeHtml(payload.translated_ko)}`;
             assistantBubble.appendChild(t);
           }
           chatLog.scrollTop = chatLog.scrollHeight;

@@ -41,6 +41,12 @@ RT_BASE   = "http://apis.data.go.kr/B551177/StatusOfPassengerFlightsOdp"
 OP_RT_ARR = "getPassengerArrivalsOdp"
 OP_RT_DEP = "getPassengerDeparturesOdp"
 
+# ── 인천공항 지상교통 API ───────────────────────────────────────────
+BUS_BASE  = "http://apis.data.go.kr/B551177/BusInformation"
+OP_BUS    = "getBusInfo"
+TAXI_BASE = "http://apis.data.go.kr/B551177/StatusOfTaxi"
+OP_TAXI   = "getTaxiStatus"
+
 _WEEKDAY_FIELDS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 _WEEKDAY_KO     = ["월",     "화",       "수",         "목",        "금",      "토",        "일"]
 
@@ -154,6 +160,51 @@ class AirportInfo:
     longitude: float | None
 
 
+@dataclass(frozen=True)
+class AirportBusInfo:
+    area: str
+    busnumber: str
+    busclass: str
+    adultfare: str
+    cpname: str
+    routeinfo: str
+    t1ridelo: str
+    t2ridelo: str
+    t1wdayt: str
+    t1wt: str
+    t2wdayt: str
+    t2wt: str
+    toawfirst: str
+    toawlast: str
+    t1endfirst: str
+    t1endlast: str
+    t2endfirst: str
+    t2endlast: str
+
+
+@dataclass(frozen=True)
+class AirportTaxiStatus:
+    terno: str
+    updatetime: str
+    seoultaxicnt: str
+    seoulstandtime: str
+    seoultaxistand: str
+    incheontaxicnt: str
+    incheonstandtime: str
+    incheontaxistand: str
+    gyenggitaxicnt: str
+    gyenggistandtime: str
+    gyenggitaxistand: str
+    intercitytaxicnt: str
+    intercitystandtime: str
+    intercitytaxistand: str
+    besttaxicnt: str
+    beststandtime: str
+    bestVantaxistand: str
+    vantaxicnt: str
+    vanstandtime: str
+
+
 # ── 유틸리티 ───────────────────────────────────────────────────────
 
 def _days_str(item: dict) -> str:
@@ -251,6 +302,17 @@ def _append_flight_unique(results: list[FlightInfo], flight: FlightInfo) -> bool
     return True
 
 
+def _extract_items(payload: dict) -> list[dict]:
+    """data.go.kr 응답의 items/list/items.item 형태를 모두 평탄화."""
+    body = ((payload or {}).get("response") or {}).get("body") or {}
+    items = body.get("items") or []
+    if isinstance(items, dict) and "item" in items:
+        items = items.get("item") or []
+    if isinstance(items, dict):
+        items = [items]
+    return [x for x in items if isinstance(x, dict)]
+
+
 class IncheonAirportClient:
     """인천공항 항공편 API 클라이언트.
 
@@ -300,6 +362,60 @@ class IncheonAirportClient:
     def get_airport_info(self, iata_code: str) -> AirportInfo | None:
         logger.info("get_airport_info(%s): 미지원", iata_code)
         return None
+
+    def search_airport_buses(
+        self,
+        area_codes: list[int] | None = None,
+        *,
+        limit: int = 20,
+    ) -> list[AirportBusInfo]:
+        """인천공항 공항버스 정보. area: 1서울 2경기 3인천 4강원 5충청 6경상 7전라."""
+        if not self.service_key:
+            raise ValueError("INCHEONTRANSPORT_API_KEY가 설정되지 않았습니다.")
+        codes = area_codes or [1]
+        out: list[AirportBusInfo] = []
+        seen: set[str] = set()
+        for area in codes:
+            page = 1
+            while len(out) < limit:
+                items = self._fetch_bus_page(area, page)
+                if not items:
+                    break
+                for item in items:
+                    bus = self._normalize_bus(item)
+                    key = f"{bus.area}|{bus.busnumber}|{bus.routeinfo}"
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    out.append(bus)
+                    if len(out) >= limit:
+                        break
+                if len(items) < PAGE_SIZE:
+                    break
+                page += 1
+        logger.info("ICN bus areas=%s → %d routes", codes, len(out))
+        return out
+
+    def get_taxi_status(
+        self,
+        terminals: list[str] | None = None,
+    ) -> list[AirportTaxiStatus]:
+        """인천공항 터미널별 택시 출차/대기 정보. P01=T1, P03=T2."""
+        if not self.service_key:
+            raise ValueError("INCHEONTRANSPORT_API_KEY가 설정되지 않았습니다.")
+        ternos = terminals or ["P01", "P03"]
+        out: list[AirportTaxiStatus] = []
+        seen: set[str] = set()
+        for terno in ternos:
+            for item in self._fetch_taxi_page(terno):
+                status = self._normalize_taxi(item)
+                key = f"{status.terno}|{status.updatetime}|{status.seoultaxistand}|{status.incheontaxistand}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(status)
+        logger.info("ICN taxi terminals=%s → %d rows", ternos, len(out))
+        return out
 
     # ── 실시간 운항현황 API ────────────────────────────────────────
 
@@ -358,10 +474,7 @@ class IncheonAirportClient:
             if not r.ok:
                 logger.warning("ICN RT error: %s", r.text[:300])
                 return []
-            items = r.json()["response"]["body"].get("items") or []
-            if isinstance(items, dict):
-                items = [items]
-            return items
+            return _extract_items(r.json())
         except Exception as exc:
             logger.warning("ICN RT 요청 실패 (op=%s): %s", operation, exc)
             return []
@@ -487,10 +600,7 @@ class IncheonAirportClient:
             if not r.ok:
                 logger.warning("ICN sched error: %s", r.text[:300])
                 return []
-            items = r.json()["response"]["body"].get("items") or []
-            if isinstance(items, dict):
-                items = [items]
-            return items
+            return _extract_items(r.json())
         except Exception as exc:
             logger.warning("ICN sched 요청 실패 (op=%s page=%d): %s", operation, page, exc)
             return []
@@ -543,6 +653,99 @@ class IncheonAirportClient:
             schedule_start=item.get("firstdate"),
             schedule_end=item.get("lastdate"),
             operating_days=_days_str(item),
+        )
+
+    # ── 지상교통 API ───────────────────────────────────────────────
+
+    def _fetch_bus_page(self, area: int, page: int) -> list[dict]:
+        url = f"{BUS_BASE}/{OP_BUS}"
+        params: dict[str, Any] = {
+            "serviceKey": self.service_key,
+            "numOfRows": str(PAGE_SIZE),
+            "pageNo": str(page),
+            "area": str(area),
+            "type": "json",
+        }
+        try:
+            r = requests.get(url, params=params, timeout=self.timeout, verify=False)
+            logger.info("ICN bus HTTP %d — area=%s page=%d", r.status_code, area, page)
+            if not r.ok:
+                logger.warning("ICN bus error: %s", r.text[:300])
+                return []
+            return _extract_items(r.json())
+        except Exception as exc:
+            logger.warning("ICN bus 요청 실패 (area=%s page=%d): %s", area, page, exc)
+            return []
+
+    def _fetch_taxi_page(self, terno: str) -> list[dict]:
+        url = f"{TAXI_BASE}/{OP_TAXI}"
+        params: dict[str, Any] = {
+            "serviceKey": self.service_key,
+            "numOfRows": "20",
+            "pageNo": "1",
+            "terno": terno,
+            "type": "json",
+        }
+        try:
+            r = requests.get(url, params=params, timeout=self.timeout, verify=False)
+            logger.info("ICN taxi HTTP %d — terno=%s", r.status_code, terno)
+            if not r.ok:
+                logger.warning("ICN taxi error: %s", r.text[:300])
+                return []
+            return _extract_items(r.json())
+        except Exception as exc:
+            logger.warning("ICN taxi 요청 실패 (terno=%s): %s", terno, exc)
+            return []
+
+    def _normalize_bus(self, item: dict) -> AirportBusInfo:
+        def g(k: str) -> str:
+            return str(item.get(k) or "").strip()
+
+        return AirportBusInfo(
+            area=g("area"),
+            busnumber=g("busnumber"),
+            busclass=g("busclass"),
+            adultfare=g("adultfare"),
+            cpname=g("cpname"),
+            routeinfo=g("routeinfo"),
+            t1ridelo=g("t1ridelo"),
+            t2ridelo=g("t2ridelo"),
+            t1wdayt=g("t1wdayt"),
+            t1wt=g("t1wt"),
+            t2wdayt=g("t2wdayt"),
+            t2wt=g("t2wt"),
+            toawfirst=g("toawfirst"),
+            toawlast=g("toawlast"),
+            t1endfirst=g("t1endfirst"),
+            t1endlast=g("t1endlast"),
+            t2endfirst=g("t2endfirst"),
+            t2endlast=g("t2endlast"),
+        )
+
+    def _normalize_taxi(self, item: dict) -> AirportTaxiStatus:
+        def g(k: str) -> str:
+            return str(item.get(k) or "").strip()
+
+        return AirportTaxiStatus(
+            terno=g("terno"),
+            updatetime=g("updatetime"),
+            seoultaxicnt=g("seoultaxicnt"),
+            seoulstandtime=g("seoulstandtime"),
+            seoultaxistand=g("seoultaxistand"),
+            incheontaxicnt=g("incheontaxicnt"),
+            incheonstandtime=g("incheonstandtime"),
+            incheontaxistand=g("incheontaxistand"),
+            gyenggitaxicnt=g("gyenggitaxicnt"),
+            gyenggistandtime=g("gyenggistandtime"),
+            gyenggitaxistand=g("gyenggitaxistand"),
+            intercitytaxicnt=g("intercitytaxicnt"),
+            intercitystandtime=g("intercitystandtime"),
+            intercitytaxistand=g("intercitytaxistand"),
+            besttaxicnt=g("besttaxicnt"),
+            beststandtime=g("beststandtime"),
+            bestVantaxistand=g("bestVantaxistand"),
+            vantaxicnt=g("vantaxicnt"),
+            vanstandtime=g("vanstandtime"),
         )
 
     # ── 공통 헬퍼 ─────────────────────────────────────────────────

@@ -35,7 +35,14 @@ from src.api.google_places_client import (
     filter_meal_places,
     meets_min_meal_rating,
 )
-from src.api.aviation_client import IncheonAirportClient, FlightInfo, AirportInfo, resolve_iata
+from src.api.aviation_client import (
+    IncheonAirportClient,
+    FlightInfo,
+    AirportInfo,
+    AirportBusInfo,
+    AirportTaxiStatus,
+    resolve_iata,
+)
 from src.api.sports_schedule_client import (
     SportsMatch,
     SportsScheduleClient,
@@ -46,7 +53,13 @@ from src.api.sports_schedule_client import (
     leagues_from_profile,
     travel_dates_from_profile,
 )
-from src.api.visitkorea_client import TourApiItem, VisitKoreaClient, SEOUL_AREA_CODE
+from src.api.visitkorea_client import (
+    KtoDataLabClient,
+    KtoDataLabItem,
+    TourApiItem,
+    VisitKoreaClient,
+    SEOUL_AREA_CODE,
+)
 from src.api.gyeonggi_events_client import (
     GyeonggiEvent,
     GyeonggiEventsClient,
@@ -64,6 +77,7 @@ from src.api.ticket_platform_events_client import (
     fetch_ticket_platform_events,
     fmt_ticket_platform_events,
 )
+from src.api import region_resolver
 from src.chain.vector_store import get_vector_store
 from src.chain.prompts import CLASSIFIER_SYSTEM as _CLASSIFIER_SYSTEM
 
@@ -119,28 +133,88 @@ _ITINERARY_AREAS: dict[str, str] = {
     "유성": "유성", "유성구": "유성", "儒城": "유성", "yuseong": "유성", "ユソン": "유성",
     "충청": "대전", "忠清": "대전", "chungcheong": "대전", "忠清道": "대전",
     "속초": "속초", "sokcho": "속초", "강릉": "강릉", "gangneung": "강릉",
+    "춘천": "춘천", "chuncheon": "춘천", "春川": "춘천",
+    "평창": "평창", "pyeongchang": "평창", "고성": "고성",
     "전주": "전주", "jeonju": "전주", "全州": "전주",
+    "여수": "여수", "yeosu": "여수", "麗水": "여수",
+    "목포": "목포", "mokpo": "목포", "木浦": "목포",
+    "순천": "순천", "suncheon": "순천", "順天": "순천",
+    "광주": "광주", "gwangju": "광주", "光州": "광주",
     "대구": "대구", "daegu": "대구", "경주": "경주", "gyeongju": "경주",
     "인천": "인천", "incheon": "인천", "仁川": "인천",
     "랜더스": "인천", "landers": "인천", "文鶴": "인천", "문학": "인천",
     "랜더스필드": "인천", "ランダース": "인천",
     "일산": "고양", "一山": "고양", "킨텍스": "고양", "kintex": "고양",
+    "수원": "수원", "suwon": "수원", "水原": "수원",
+    "경기광주": "경기광주", "경기 광주": "경기광주", "경기도 광주": "경기광주",
+    "광주시": "경기광주", "gwangju-si": "경기광주",
+    "파주": "파주", "paju": "파주", "坡州": "파주",
+    "용인": "용인", "yongin": "용인", "龍仁": "용인",
+    "하남": "하남", "hanam": "하남", "河南": "하남",
+    "과천": "과천", "gwacheon": "과천", "果川": "과천",
+    "양평": "양평", "yangpyeong": "양평", "楊平": "양평",
+    "화성": "화성", "hwaseong": "화성", "華城": "화성",
+    "포천": "포천", "pocheon": "포천", "抱川": "포천",
+    "안성": "안성", "anseong": "안성", "安城": "안성",
+    "잠실": "잠실", "jamsil": "잠실", "蚕室": "잠실",
     "가평": "가평", "gapyeong": "가평", "加平": "가평", "カピョン": "가평",
     "남이섬": "가평", "nami": "가평",
     "덕양": "고양", "徳陽": "고양", "花井": "화정", "화정": "화정",
     "송도": "송도", "松島": "송도", "海雲台": "해운대", "해운대": "해운대",
+    "광안리": "광안리", "gwangalli": "광안리", "広安里": "광안리",
+    "영도": "영도", "yeongdo": "영도", "影島": "영도",
+    "서면": "서면", "seomyeon": "서면", "西面": "서면",
+    "양양": "양양", "yangyang": "양양", "襄陽": "양양",
+    "정선": "정선", "jeongseon": "정선", "旌善": "정선",
+    "원주": "원주", "wonju": "원주", "原州": "원주",
+    "동해": "동해", "donghae": "동해", "東海": "동해",
+    "삼척": "삼척", "samcheok": "삼척", "三陟": "삼척",
+    "홍천": "홍천", "hongcheon": "홍천", "洪川": "홍천",
+    "인제": "인제", "inje": "인제", "麟蹄": "인제",
+    "천안": "천안", "cheonan": "천안", "天安": "천안",
+    "아산": "아산", "asan": "아산", "牙山": "아산",
+    "공주": "공주", "gongju": "공주", "公州": "공주",
+    "부여": "부여", "buyeo": "부여", "扶余": "부여",
+    "보령": "보령", "boryeong": "보령", "保寧": "보령",
+    "태안": "태안", "taean": "태안", "泰安": "태안",
+    "단양": "단양", "danyang": "단양", "丹陽": "단양",
+    "제천": "제천", "jecheon": "제천", "堤川": "제천",
+    "청주": "청주", "cheongju": "청주", "清州": "청주",
+    "충주": "충주", "chungju": "충주", "忠州": "충주",
+    "군산": "군산", "gunsan": "군산", "群山": "군산",
+    "담양": "담양", "damyang": "담양", "潭陽": "담양",
+    "남원": "남원", "namwon": "남원", "南原": "남원",
+    "보성": "보성", "boseong": "보성", "宝城": "보성",
+    "해남": "해남", "haenam": "해남", "海南": "해남",
+    "완도": "완도", "wando": "완도", "莞島": "완도",
+    "신안": "신안", "sinan": "신안", "新安": "신안",
+    "고창": "고창", "gochang": "고창", "高敞": "고창",
+    "거제": "거제", "geoje": "거제", "巨済": "거제",
+    "통영": "통영", "tongyeong": "통영", "統営": "통영",
+    "안동": "안동", "andong": "안동", "安東": "안동",
+    "포항": "포항", "pohang": "포항", "浦項": "포항",
+    "울산": "울산", "ulsan": "울산", "蔚山": "울산",
+    "창원": "창원", "changwon": "창원", "昌原": "창원",
+    "진주": "진주", "jinju": "진주", "晋州": "진주",
+    "남해": "남해", "namhae": "남해", "南海": "남해",
+    "하동": "하동", "hadong": "하동", "河東": "하동",
+    "합천": "합천", "hapcheon": "합천", "陜川": "합천",
+    "영주": "영주", "yeongju": "영주", "栄州": "영주",
+    "서귀포": "서귀포", "seogwipo": "서귀포", "西帰浦": "서귀포",
+    "애월": "애월", "aewol": "애월",
+    "우도": "우도", "udo": "우도", "牛島": "우도",
 }
 
 _REGION_DEFAULT_AREAS: dict[str, list[str]] = {
-    "seoul": ["명동", "홍대", "동대문", "강남"],
-    "gyeonggi": ["가평", "고양", "수원"],
-    "incheon": ["인천"],
-    "busan": ["부산"],
-    "jeju": ["제주"],
-    "gangwon": ["속초", "강릉", "평창", "고성"],
-    "chungcheong": ["대전", "유성", "공주", "보령"],
-    "jeolla": ["전주", "여수", "목포"],
-    "gyeongsang": ["대구", "경주", "부산"],
+    "seoul": ["명동", "홍대", "동대문", "강남", "성수동", "여의도", "잠실"],
+    "gyeonggi": ["가평", "고양", "수원", "경기광주", "파주", "용인", "양평", "화성", "과천"],
+    "incheon": ["인천", "송도"],
+    "busan": ["부산", "해운대", "광안리", "영도", "서면"],
+    "jeju": ["제주", "서귀포", "애월", "우도"],
+    "gangwon": ["속초", "강릉", "양양", "춘천", "평창", "정선", "동해", "삼척"],
+    "chungcheong": ["대전", "공주", "부여", "보령", "태안", "단양", "청주", "천안"],
+    "jeolla": ["여수", "전주", "목포", "순천", "광주", "군산", "담양", "남원", "보성"],
+    "gyeongsang": ["경주", "부산", "대구", "거제", "통영", "안동", "포항", "남해"],
 }
 
 _SEOUL_DEFAULT_FOOD_AREAS = ["명동", "홍대"]
@@ -165,6 +239,41 @@ _NEARBY_ATTRACTION_RADIUS_M = 8000
 _MAX_NEARBY_FOOD = 15   # 주변 식당 후보 확대 (기존 8 → 15)
 _MAX_NEARBY_ATTRACTIONS = 4
 _MAX_ITINERARY_PLACES_TOTAL = 30   # 전체 후보 확대 (기존 16 → 30)
+
+_INTERNAL_DATA_DISCLOSURE_RE = re.compile(
+    r"(Reference Data|데이터셋|dataset|미게재|未掲載|未記載|取得不可|取得でき|"
+    r"検証済み.*(?:ありません|ない)|API.*(?:없|無|未|取得|unavailable|available)|"
+    r"(?:생략|省略).*(?:데이터|Data|情報|미게재|未掲載))",
+    re.IGNORECASE,
+)
+
+
+def _strip_internal_data_disclosure(text: str) -> str:
+    """ユーザーに見せない内部データ事情の説明行を取り除く。"""
+    if not text:
+        return text
+    lines = []
+    for line in text.splitlines():
+        if _INTERNAL_DATA_DISCLOSURE_RE.search(line):
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def _sanitize_stream_chunks(chunks):
+    """Streamingでも内部データ事情の説明行を画面に出さない。"""
+    buffer = ""
+    for chunk in chunks:
+        if not chunk:
+            continue
+        buffer += chunk
+        while "\n" in buffer:
+            line, buffer = buffer.split("\n", 1)
+            if not _INTERNAL_DATA_DISCLOSURE_RE.search(line):
+                yield line + "\n"
+    if buffer and not _INTERNAL_DATA_DISCLOSURE_RE.search(buffer):
+        yield buffer
+
 
 # プラン再生成時: 候補プールを広げてシャッフル（毎回同じ店に偏らない）
 _FOOD_PREF_SEARCH: dict[str, list[str]] = {
@@ -349,7 +458,8 @@ Use katakana alongside Korean place/area names (e.g., 明洞（ミョンドン�
 1. FACTUALITY FIRST: Do not generate information you cannot verify from the provided data.
 2. USE PROVIDED DATA: Base answers on [Reference Data] below, then on well-established general knowledge.
 3. NO DEFLECTION: Do not tell the user to "check booking sites", "search Naver", or "confirm yourself" as the main answer — provide what you can from the data; omit unverified prices rather than redirecting.
-4. CONCISENESS: Be practical and friendly. Avoid padding.
+4. INTERNAL DATA SILENCE: Never mention missing Reference Data, missing datasets, API failures, or that something was omitted because data was unavailable. If verified venue data is absent, simply write a general area/activity line without explaining the absence.
+5. CONCISENESS: Be practical and friendly. Avoid padding.
 """
 
     has_verified_venues = has_places or has_visitkorea
@@ -385,7 +495,8 @@ Real-time place search data is not available. Give a helpful answer using genera
 ✅ For lodging: describe each area's accommodation character (강남=luxury/business, 명동=mid-range tourist, 홍대=budget/guesthouses, 이태원=boutique) and transport access.
 ✅ For food/shopping: describe the area's well-known scene using general tourism knowledge.
 ❌ Do NOT invent local business names, specific addresses, phone numbers, or prices.
-❌ Do NOT tell the user to check Naver Hotel, booking sites, or "confirm yourself" — state briefly that live listings could not be loaded.
+❌ Do NOT tell the user to check Naver Hotel, booking sites, or "confirm yourself".
+❌ Do NOT mention that live listings, Reference Data, datasets, or APIs are unavailable.
 """
     elif category == "itinerary" and (has_rag or has_places):
         place_rule = """
@@ -420,8 +531,9 @@ Area names:
     elif category == "itinerary":
         place_rule = """
 [ITINERARY — NO VERIFIED VENUE DATA]
-Reference Data has NO 「食事候補」/「観光スポット候補」with Google Maps URLs.
+- Internal condition: no verified 「食事候補」/「観光スポット候補」with Google Maps URLs was supplied.
 - Reply in Japanese only. Headings: 「1日目」「2日目」…「最終日」.
+- Do NOT mention Reference Data, datasets, APIs, "not listed", "unavailable", or "omitted" in the user-facing itinerary.
 - Do NOT invent restaurant/cafe/attraction names or URLs.
 - Do NOT use generic meals (禁止: 한식점, 現地の店, 韓国料理店で, 別の店).
 - Day 2+ regular days: BOTH lunch AND dinner lines are required (not just one).
@@ -547,7 +659,11 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "  のような「1日おきに遠方へ行ったり戻ったりする」不自然な往復は絶対に作らない。\n"
             "- 遠方エリアを訪れるなら、次のどちらかに必ず寄せる:\n"
             "  ① **当日往復**（同じ日に宿へ戻る想定で、その翌日は宿周辺〜同一圏内で完結）\n"
-            "  ② **1泊移動**（遠方側の宿泊を入れて、遠方エリアの日程を連続日でまとめる）\n"
+            "  ② **遠方側で連泊/滞在**（2日目に遠方エリアへ移動し、遠方エリアの日程を連続日でまとめる）\n"
+            "- ソウル・仁川・京畿の宿泊先から釜山・光州・江原・済州などへ行く場合は、\n"
+            "  毎朝その宿泊先から遠方へ出発する日程にしない。遠方到着後はその地域で滞在している前提で組む。\n"
+            "- 出国前日には遠方エリアから元の宿泊先または出国空港圏へ戻る移動ブロックを置き、\n"
+            "  最終日は元の宿泊先/空港圏から空港へ向かう。\n"
             "- 複数エリア（例: 京畿＋仁川＋江原）を扱う場合も、\n"
             "  **同一圏内の行程は連続日でまとめ**、遠方エリアを日替わりで行き来しない。\n"
             "- もし日数制約で物理的に無理なら、遠方側は「次回候補」として箇条書きで別枠に回し、\n"
@@ -1259,6 +1375,137 @@ def _fmt_airport_itinerary_transport(profile: dict | None) -> str:
     )
 
 
+def _airport_terminal_codes_from_profile(profile: dict | None) -> list[str]:
+    """wizard flight terminal → 인천공항 API 터미널 코드(P01/P03)."""
+    if not profile:
+        return ["P01", "P03"]
+    flight = profile.get("flight") or {}
+    terminals: list[str] = []
+    for key in ("selected", "selectedReturn"):
+        f = flight.get(key) or {}
+        raw = " ".join(
+            str(f.get(k) or "") for k in ("arr_terminal", "dep_terminal", "terminal")
+        ).upper()
+        if "2" in raw or "P03" in raw or "T2" in raw:
+            terminals.append("P03")
+        elif "1" in raw or "P01" in raw or "T1" in raw:
+            terminals.append("P01")
+    return list(dict.fromkeys(terminals)) or ["P01", "P03"]
+
+
+def _airport_bus_area_codes(profile: dict | None) -> list[int]:
+    """숙소/선택지역 → 인천공항 버스 API area 코드."""
+    if not profile:
+        return [1]
+    accom = profile.get("accommodation") or {}
+    text = " ".join(
+        str(x or "")
+        for x in (
+            accom.get("address"),
+            accom.get("detail"),
+            accom.get("name"),
+            accom.get("region"),
+            (accom.get("selectedPlace") or {}).get("address"),
+            (accom.get("selectedHotel") or {}).get("address"),
+            _region_cities_text(profile),
+            " ".join(str(r) for r in profile.get("regions") or []),
+        )
+    ).lower()
+    rules: list[tuple[int, tuple[str, ...]]] = [
+        (3, ("인천", "incheon", "仁川", "송도", "부평", "연수")),
+        (2, ("경기", "gyeonggi", "京畿", "고양", "일산", "수원", "광주시", "경기광주", "경기도 광주", "파주", "용인", "가평", "양평")),
+        (4, ("강원", "gangwon", "江原", "속초", "강릉", "양양", "춘천", "평창")),
+        (5, ("충청", "chungcheong", "忠清", "대전", "공주", "천안", "청주", "보령", "태안")),
+        (6, ("경상", "gyeongsang", "慶尚", "부산", "대구", "경주", "거제", "통영", "안동", "포항")),
+        (7, ("전라", "jeolla", "全羅", "광주", "전주", "여수", "목포", "순천", "군산")),
+        (1, ("서울", "seoul", "ソウル", "명동", "홍대", "강남", "동대문")),
+    ]
+    codes = [code for code, kws in rules if any(k.lower() in text for k in kws)]
+    return list(dict.fromkeys(codes)) or [1]
+
+
+def _transport_prefers(profile: dict | None, key: str) -> bool:
+    if not profile:
+        return True
+    transport = [str(t).lower() for t in profile.get("transport") or []]
+    return not transport or key in transport
+
+
+def _filter_airport_buses_for_profile(
+    buses: list[AirportBusInfo],
+    profile: dict | None,
+) -> list[AirportBusInfo]:
+    if not buses or not profile:
+        return buses[:6]
+    accom = profile.get("accommodation") or {}
+    words = [
+        str(accom.get("address") or ""),
+        str(accom.get("detail") or ""),
+        str(accom.get("region") or ""),
+        _region_cities_text(profile),
+    ]
+    tokens = [
+        t.strip().lower()
+        for text in words
+        for t in re.split(r"[\s,、/・|()（）-]+", text)
+        if len(t.strip()) >= 2
+    ]
+    matched = [
+        b for b in buses
+        if any(tok in (b.routeinfo or "").lower() for tok in tokens)
+    ]
+    return (matched or buses)[:6]
+
+
+def _fmt_airport_bus_infos(buses: list[AirportBusInfo]) -> str:
+    if not buses:
+        return ""
+    lines = [
+        "=== 仁川空港 空港バス候補（公社API BusInformation/getBusInfo）===",
+        "※ 到着日・最終日の空港アクセスで、該当路線がある場合はAREXより優先候補として検討。",
+    ]
+    for i, b in enumerate(buses[:6], 1):
+        fare = f" / 大人運賃 {b.adultfare}ウォン" if b.adultfare else ""
+        ride = []
+        if b.t1ridelo:
+            ride.append(f"T1乗り場 {b.t1ridelo}")
+        if b.t2ridelo:
+            ride.append(f"T2乗り場 {b.t2ridelo}")
+        times = []
+        if b.t1wdayt:
+            times.append(f"T1平日 {b.t1wdayt}")
+        if b.t2wdayt:
+            times.append(f"T2平日 {b.t2wdayt}")
+        lines.append(
+            f"[{i}] {b.busnumber or '路線番号不明'} {b.busclass or ''}{fare}\n"
+            f"    運行会社: {b.cpname or '-'}\n"
+            f"    乗り場: {', '.join(ride) or '-'}\n"
+            f"    主な経由地: {b.routeinfo or '-'}\n"
+            f"    時刻表目安: {' / '.join(times) or '-'}"
+        )
+    return "\n".join(lines)
+
+
+def _fmt_airport_taxi_status(statuses: list[AirportTaxiStatus]) -> str:
+    if not statuses:
+        return ""
+    labels = {"P01": "T1", "P03": "T2"}
+    lines = [
+        "=== 仁川空港 タクシー出車・待機情報（公社API StatusOfTaxi/getTaxiStatus）===",
+        "※ タクシー利用時は到着ターミナルに合わせて乗り場・待機時間を反映。",
+    ]
+    for s in statuses[:4]:
+        t = labels.get(s.terno, s.terno or "ターミナル不明")
+        lines.append(
+            f"[{t}] 更新 {s.updatetime or '-'}\n"
+            f"    ソウル: {s.seoultaxicnt or '-'}台 / 待ち {s.seoulstandtime or '-'}分 / 乗り場 {s.seoultaxistand or '-'}\n"
+            f"    仁川: {s.incheontaxicnt or '-'}台 / 待ち {s.incheonstandtime or '-'}分 / 乗り場 {s.incheontaxistand or '-'}\n"
+            f"    京畿: {s.gyenggitaxicnt or '-'}台 / 待ち {s.gyenggistandtime or '-'}分 / 乗り場 {s.gyenggitaxistand or '-'}\n"
+            f"    インターナショナル/大型: {s.intercitytaxicnt or '-'}台 / {s.vantaxicnt or '-'}台"
+        )
+    return "\n".join(lines)
+
+
 def _fmt_traveler_flight_constraints(profile: dict | None) -> str:
     """위저드 확정 입국·귀국편 → 일정 LLM용 구조화 블록."""
     if not profile:
@@ -1434,26 +1681,31 @@ def _place_location_blob(place: NearbyPlace) -> str:
     return f"{place.name or ''} {place.address or ''} {place.search_area or ''}".lower()
 
 
+def _place_geo_blob(place: NearbyPlace) -> str:
+    """실제 장소 자체의 이름·주소만 사용. 검색어 라벨(search_area)은 지역 판정에서 제외."""
+    return f"{place.name or ''} {place.address or ''}".lower()
+
+
 def _blob_has_any(blob: str, keywords: tuple[str, ...]) -> bool:
     return any(k.lower() in blob for k in keywords)
 
 
 def _place_in_goyang_zone(place: NearbyPlace) -> bool:
-    blob = _place_location_blob(place)
+    blob = _place_geo_blob(place)
     if _blob_has_any(blob, _GYEONGGI_NON_GOYANG_KEYWORDS):
         return False  # 화성·부천·수원 등 고양 외 경기도 시
     return _blob_has_any(blob, _GOYANG_LOCATION_KEYWORDS)
 
 
 def _place_in_incheon_zone(place: NearbyPlace) -> bool:
-    blob = _place_location_blob(place)
+    blob = _place_geo_blob(place)
     if _blob_has_any(blob, _GOYANG_LOCATION_KEYWORDS):
         return False
     return _blob_has_any(blob, _INCHEON_LOCATION_KEYWORDS)
 
 
 def _place_in_seoul_zone(place: NearbyPlace) -> bool:
-    blob = _place_location_blob(place)
+    blob = _place_geo_blob(place)
     if _blob_has_any(blob, _GOYANG_LOCATION_KEYWORDS + _INCHEON_LOCATION_KEYWORDS):
         return False
     return _blob_has_any(blob, _SEOUL_LOCATION_KEYWORDS)
@@ -1482,34 +1734,86 @@ _SEOUL_SUB_AREAS: frozenset[str] = frozenset({
 _AREA_LOCATION_KEYWORDS: dict[str, tuple[str, ...]] = {
     "고양": ("고양", "goyang", "일산", "ilsan", "화정", "덕양", "능곡", "행신", "킨텍스", "kintex"),
     "수원": ("수원", "suwon", "팔달", "영통", "권선"),
+    "파주": ("파주", "paju", "헤이리", "임진각", "출판도시"),
+    "용인": ("용인", "yongin", "에버랜드", "한국민속촌"),
+    "하남": ("하남", "hanam", "미사"),
+    "과천": ("과천", "gwacheon", "서울대공원"),
+    "양평": ("양평", "yangpyeong", "두물머리"),
+    "화성": ("화성", "hwaseong", "제부도", "궁평항", "전곡항"),
+    "포천": ("포천", "pocheon", "산정호수"),
+    "안성": ("안성", "anseong"),
     "인천": ("인천", "incheon", "미추홀", "연수", "부평", "문학"),
     "송도": ("송도", "songdo", "인천", "incheon"),
     "화정": ("화정", "hwajung", "고양"),
     "부산": ("부산", "busan", "해운대", "haeundae", "서면", "seomyeon", "광안리", "gwangalli", "센텀"),
     "해운대": ("해운대", "haeundae", "busan", "부산"),
+    "광안리": ("광안리", "gwangalli", "수영구", "busan", "부산"),
+    "영도": ("영도", "yeongdo", "태종대", "busan", "부산"),
+    "서면": ("서면", "seomyeon", "부전", "busan", "부산"),
     "제주": ("제주", "jeju", "서귀포", "seogwipo"),
+    "서귀포": ("서귀포", "seogwipo", "중문"),
+    "애월": ("애월", "aewol", "제주"),
+    "우도": ("우도", "udo", "제주"),
     "속초": ("속초", "sokcho", "고성군"),
     "강릉": ("강릉", "gangneung"),
+    "양양": ("양양", "yangyang"),
+    "춘천": ("춘천", "chuncheon"),
     "평창": ("평창", "pyeongchang"),
+    "정선": ("정선", "jeongseon"),
+    "원주": ("원주", "wonju"),
+    "동해": ("동해", "donghae"),
+    "삼척": ("삼척", "samcheok"),
+    "홍천": ("홍천", "hongcheon"),
+    "인제": ("인제", "inje"),
     "대전": ("대전", "daejeon"),
     "유성": ("유성", "yuseong", "대전", "daejeon"),
+    "천안": ("천안", "cheonan"),
+    "아산": ("아산", "asan", "온양"),
+    "공주": ("공주", "gongju"),
+    "부여": ("부여", "buyeo"),
+    "보령": ("보령", "boryeong", "대천"),
+    "태안": ("태안", "taean"),
+    "단양": ("단양", "danyang"),
+    "제천": ("제천", "jecheon"),
+    "청주": ("청주", "cheongju"),
+    "충주": ("충주", "chungju"),
     "대구": ("대구", "daegu"),
     "경주": ("경주", "gyeongju"),
     "전주": ("전주", "jeonju"),
     "여수": ("여수", "yeosu"),
     "목포": ("목포", "mokpo"),
     "순천": ("순천", "suncheon"),
+    "군산": ("군산", "gunsan"),
+    "담양": ("담양", "damyang"),
+    "남원": ("남원", "namwon"),
+    "보성": ("보성", "boseong"),
+    "해남": ("해남", "haenam"),
+    "완도": ("완도", "wando"),
+    "신안": ("신안", "sinan"),
+    "고창": ("고창", "gochang"),
     "광주": ("광주광역시", "gwangju"),
+    "거제": ("거제", "geoje"),
+    "통영": ("통영", "tongyeong"),
     "창원": ("창원", "changwon"),
     "울산": ("울산", "ulsan"),
     "포항": ("포항", "pohang"),
     "안동": ("안동", "andong"),
-    "경주": ("경주", "gyeongju"),
+    "진주": ("진주", "jinju"),
+    "남해": ("남해", "namhae"),
+    "하동": ("하동", "hadong"),
+    "합천": ("합천", "hapcheon"),
+    "영주": ("영주", "yeongju"),
 }
+_AREA_LOCATION_KEYWORDS["경기광주"] = (
+    "경기도 광주", "광주시", "경기광주", "gwangju-si", "곤지암", "남한산성"
+)
+
 _NON_SUDOGWON_AREAS: frozenset[str] = frozenset({
-    "부산", "해운대", "제주", "속초", "강릉", "평창",
-    "대전", "유성", "대구", "경주", "전주", "여수", "목포", "순천",
-    "광주", "창원", "울산", "포항", "안동",
+    "부산", "해운대", "광안리", "영도", "서면", "제주", "서귀포", "애월", "우도",
+    "속초", "강릉", "양양", "춘천", "평창", "정선", "원주", "동해", "삼척", "홍천", "인제",
+    "대전", "유성", "천안", "아산", "공주", "부여", "보령", "태안", "단양", "제천", "청주", "충주",
+    "대구", "경주", "거제", "통영", "창원", "울산", "포항", "안동", "진주", "남해", "하동", "합천", "영주",
+    "전주", "여수", "목포", "순천", "광주", "군산", "담양", "남원", "보성", "해남", "완도", "신안", "고창",
 })
 
 
@@ -1523,8 +1827,8 @@ def _place_in_area(place: NearbyPlace, area: str) -> bool:
         return _place_in_incheon_zone(place)
     kws = _AREA_LOCATION_KEYWORDS.get(area)
     if kws:
-        return _blob_has_any(_place_location_blob(place), kws)
-    return area.lower() in _place_location_blob(place)
+        return _blob_has_any(_place_geo_blob(place), kws)
+    return area.lower() in _place_geo_blob(place)
 
 
 def _place_matches_travel_areas(place: NearbyPlace, areas: list[str]) -> bool:
@@ -1602,6 +1906,7 @@ def _fmt_penultimate_day_return_rule(
     return (
         f"【최종일 전날 귀환 규칙 — 필수】\n"
         f"관광지({dest_str})와 숙소(수도권) 간 거리가 멀어 당일 복귀가 어렵습니다{transit_line}.\n"
+        f"▶ 2일目 이후 원거리 일정은 매일 수도권 숙소에서 출발하지 말고, {dest_str} 현지에 머무르는 전제로 연속 배치.\n"
         f"▶ 최종일 전날(penultimate day) 오후 일정: {dest_str} 관광 마무리 후 KTX·고속버스로 수도권 귀환 이동 블록 필수 배치.\n"
         f"▶ 귀환 이동 예: 오후 3~5시 출발 → 숙소 오후 6~8시 도착.\n"
         f"▶ 귀환 당일 저녁: 숙소 근처 저녁 식사 1건만 포함, 추가 관광 배치 금지.\n"
@@ -1610,15 +1915,15 @@ def _fmt_penultimate_day_return_rule(
 
 
 _REGION_CHIP_TO_AREAS: dict[str, list[str]] = {
-    "seoul": ["명동", "홍대"],
-    "gyeonggi": ["가평", "고양", "수원"],
-    "incheon": ["인천"],
-    "busan": ["부산"],
-    "jeju": ["제주"],
-    "gangwon": ["속초", "강릉"],
-    "chungcheong": ["대전", "유성"],
-    "jeolla": ["전주"],
-    "gyeongsang": ["부산", "대구"],
+    "seoul": ["명동", "홍대", "동대문", "강남", "성수동", "여의도", "잠실"],
+    "gyeonggi": ["가평", "고양", "수원", "경기광주", "파주", "용인", "양평", "화성", "과천"],
+    "incheon": ["인천", "송도"],
+    "busan": ["부산", "해운대", "광안리", "영도", "서면"],
+    "jeju": ["제주", "서귀포", "애월", "우도"],
+    "gangwon": ["속초", "강릉", "양양", "춘천", "평창", "정선", "동해", "삼척"],
+    "chungcheong": ["대전", "공주", "부여", "보령", "태안", "단양", "청주", "천안"],
+    "jeolla": ["여수", "전주", "목포", "순천", "광주", "군산", "담양", "남원", "보성"],
+    "gyeongsang": ["경주", "부산", "대구", "거제", "통영", "안동", "포항", "남해"],
 }
 
 _REGION_CHIP_LABELS_JA: dict[str, str] = {
@@ -1647,12 +1952,19 @@ def _tourism_search_areas(traveler_profile: dict | None) -> list[str]:
             seen.add(a)
             out.append(a)
 
+    for a in _areas_from_region_city_ids(traveler_profile):
+        add(a)
+    if out:
+        return out[:_MAX_ITINERARY_AREAS]
+
     cities = _region_cities_text(traveler_profile)
     if cities:
         for a in _areas_from_region_cities(cities):
             add(a)
         if _profile_has_landers_focus(traveler_profile):
             add("인천")
+        if out:
+            return out[:_MAX_ITINERARY_AREAS]
 
     for reg in traveler_profile.get("regions") or []:
         key = str(reg).lower()
@@ -1694,6 +2006,24 @@ def _sort_food_queries_by_tourism_priority(
         return 1
 
     return sorted(queries, key=rank)
+
+
+def _expanded_tourism_areas_for_plan(
+    traveler_profile: dict | None,
+    *,
+    min_count: int = 3,
+) -> list[str]:
+    areas = list(_tourism_search_areas(traveler_profile))
+    if not traveler_profile:
+        return areas
+    regs = {str(r).lower() for r in (traveler_profile.get("regions") or [])}
+    if "seoul" in regs and len(areas) < min_count:
+        for area in _REGION_CHIP_TO_AREAS.get("seoul", _REGION_DEFAULT_AREAS.get("seoul", [])):
+            if area not in areas:
+                areas.append(area)
+            if len(areas) >= min_count:
+                break
+    return areas[:max(min_count, _MAX_ITINERARY_AREAS)]
 
 
 def _profile_has_landers_focus(traveler_profile: dict | None) -> bool:
@@ -2147,6 +2477,35 @@ def _region_cities_text(traveler_profile: dict | None) -> str:
     return str(traveler_profile.get("regionCities") or "").strip()
 
 
+def _region_city_ids(traveler_profile: dict | None) -> list[str]:
+    return region_resolver.region_city_ids_from_profile(traveler_profile)
+
+
+def _areas_from_region_city_ids(traveler_profile: dict | None) -> list[str]:
+    return region_resolver.areas_from_region_city_ids(traveler_profile)[:_MAX_ITINERARY_AREAS]
+
+
+def _fmt_selected_destination_context(traveler_profile: dict | None) -> str:
+    context = region_resolver.selected_destination_context(traveler_profile)
+    if not context:
+        return ""
+    return (
+        context
+        + "\nPlanner rule: do not reinterpret these destination IDs from similar Korean names. "
+        "For example, gyeonggi:gwangju_si means 경기도 광주시, not 광주광역시."
+    )
+
+
+def _prefers_gyeonggi_gwangju(traveler_profile: dict | None, text: str = "") -> bool:
+    if "gyeonggi:gwangju_si" in _region_city_ids(traveler_profile):
+        return True
+    regions = {str(r).lower() for r in (traveler_profile or {}).get("regions") or []}
+    blob = f"{text} {_region_cities_text(traveler_profile)}".lower()
+    explicit_gyeonggi = any(k in blob for k in ("경기 광주", "경기도 광주", "경기광주", "gwangju-si"))
+    city_only = "광주시" in blob and "광주광역시" not in blob
+    return explicit_gyeonggi or ("gyeonggi" in regions and city_only)
+
+
 def _parse_region_city_tokens(text: str) -> list[str]:
     if not text:
         return []
@@ -2170,13 +2529,21 @@ def _areas_from_region_cities(text: str) -> list[str]:
             areas.append(a)
 
     blob = text.lower()
+    if any(k in blob for k in ("경기 광주", "경기도 광주", "경기광주", "gwangju-si")):
+        add("경기광주")
+    if "광주시" in text and "광주광역시" not in text:
+        add("경기광주")
     for kw, area in _ITINERARY_AREAS.items():
+        if area == "광주" and "경기광주" in seen:
+            continue
         if kw.lower() in blob:
             add(area)
     for token in _parse_region_city_tokens(text):
         tok_lower = token.lower()
         matched = False
         for kw, area in _ITINERARY_AREAS.items():
+            if area == "광주" and "경기광주" in seen:
+                continue
             if kw.lower() in tok_lower:
                 add(area)
                 matched = True
@@ -2253,7 +2620,10 @@ def _detect_itinerary_areas(
             parts.append(str(reg))
 
     text = " ".join(parts).lower()
+    gyeonggi_gwangju = _prefers_gyeonggi_gwangju(traveler_profile, text)
     for kw, area in _ITINERARY_AREAS.items():
+        if area == "광주" and gyeonggi_gwangju:
+            continue
         if kw.lower() in text and area not in areas:
             areas.append(area)
 
@@ -2375,6 +2745,98 @@ def _is_meal_candidate_place(place: NearbyPlace) -> bool:
     return True
 
 
+_ATTRACTION_TYPE_ALLOW = frozenset({
+    "tourist_attraction",
+    "historical_landmark",
+    "cultural_landmark",
+    "historical_place",
+    "monument",
+    "museum",
+    "art_gallery",
+    "performing_arts_theater",
+    "amusement_park",
+    "theme_park",
+    "aquarium",
+    "zoo",
+    "park",
+    "national_park",
+    "botanical_garden",
+    "garden",
+    "beach",
+    "marina",
+    "observation_deck",
+    "shopping_mall",
+    "market",
+    "church",
+    "cathedral",
+    "buddhist_temple",
+    "hindu_temple",
+    "mosque",
+    "synagogue",
+    "stadium",
+    "sports_complex",
+    "event_venue",
+})
+_ATTRACTION_TYPE_EXCLUDE = frozenset({
+    "association_or_organization",
+    "corporate_office",
+    "government_office",
+    "local_government_office",
+    "city_hall",
+    "district_office",
+    "community_center",
+    "senior_citizen_center",
+    "social_services_organization",
+    "non_profit_organization",
+    "office",
+    "school",
+    "university",
+    "hospital",
+    "doctor",
+    "pharmacy",
+    "police",
+    "fire_station",
+    "post_office",
+    "bank",
+    "insurance_agency",
+    "real_estate_agency",
+})
+_ATTRACTION_NAME_EXCLUDE_RE = re.compile(
+    r"노인회|대한노인회|노인복지|경로당|마을회관|복지관|"
+    r"관광정보센터|관광정보센타|관광안내소|관광안내센터|관광안내센타|"
+    r"여행자센터|여행자센타|방문자센터|방문자센타|"
+    r"협회|지부|연합회|재단|센터|지원센터|사무소|관리사무소|"
+    r"시청|군청|구청|읍사무소|면사무소|동사무소|주민센터|행정복지센터|"
+    r"경찰서|소방서|우체국|병원|약국|요양원|"
+    r"観光情報センター|観光案内所|ツーリストインフォメーション|"
+    r"tourist\s*information|visitor\s*center|information\s*center|"
+    r"association|organization|office|senior|welfare|community\s*center|city\s*hall",
+    re.IGNORECASE,
+)
+
+
+def _is_itinerary_attraction_candidate(place: NearbyPlace) -> bool:
+    cat = (place.category or "").lower().strip()
+    blob = _place_blob(place).lower()
+    if _ATTRACTION_NAME_EXCLUDE_RE.search(blob):
+        return False
+    if cat in _ATTRACTION_TYPE_EXCLUDE:
+        return False
+    # broad text search can return ordinary offices; keep either known tourism
+    # types or very clearly named/located landmarks.
+    if cat in _ATTRACTION_TYPE_ALLOW:
+        return True
+    return any(
+        kw in blob
+        for kw in (
+            "박물관", "미술관", "전시", "갤러리", "공원", "해변", "해수욕장",
+            "전망대", "성당", "사찰", "절", "시장", "몰", "거리", "마을",
+            "유적", "유원지", "관광", "랜드", "스카이", "temple", "museum",
+            "gallery", "park", "beach", "market", "mall", "landmark",
+        )
+    )
+
+
 def _filter_places_by_food_preferences(
     places: list[NearbyPlace],
     prefs: list[str],
@@ -2427,6 +2889,40 @@ def _refine_itinerary_food_places(
 ) -> list[NearbyPlace]:
     prefs, _ = _food_preferences_from_profile(traveler_profile)
     meal = [p for p in places if _is_meal_candidate_place(p) and _is_korea_place(p)]
+    min_food = min(max_total, 8)
+    if len(meal) < min_food:
+        extra_batches: list[NearbyPlace] = []
+        fallback_areas = _expanded_tourism_areas_for_plan(traveler_profile)
+        if not fallback_areas:
+            fallback_areas = areas[:_MAX_ITINERARY_AREAS]
+        for area in fallback_areas[:4]:
+            for suffix in ("맛집", "한식 맛집", "restaurant", "카페"):
+                q = f"{area} {suffix}"
+                try:
+                    inc_type = "cafe" if "카페" in q else "restaurant"
+                    results, _ = pclient.search_by_text(
+                        text_query=q,
+                        max_results=10,
+                        language_code=lang,
+                        included_type=inc_type,
+                        location_restriction=KR_LOCATION_RESTRICTION,
+                    )
+                    extra_batches.extend(
+                        replace(p, search_area=area)
+                        for p in filter_meal_places(results)
+                        if _is_korea_place(p)
+                    )
+                except Exception as exc:
+                    logger.warning("fallback food fetch [%r]: %s", q, exc)
+        seen = {f"{p.name}|{p.address}" for p in meal}
+        for p in extra_batches:
+            key = f"{p.name}|{p.address}"
+            if key not in seen:
+                seen.add(key)
+                meal.append(p)
+            if len(meal) >= max_total:
+                break
+
     if not prefs:
         return meal[:max_total]
 
@@ -2534,7 +3030,7 @@ def _build_itinerary_food_queries(
             seen.add(q)
             queries.append(q)
 
-    tourism_areas = _tourism_search_areas(traveler_profile)
+    tourism_areas = _expanded_tourism_areas_for_plan(traveler_profile)
     prefs, _ = _food_preferences_from_profile(traveler_profile)
     for q in _food_queries_from_preferences(traveler_profile, areas):
         add(q)
@@ -2649,22 +3145,232 @@ _AREA_FAMOUS_SPOTS: dict[str, list[str]] = {
     "압구정": ["청담동 갤러리아백화점"],
     "부산": ["감천문화마을 부산"],
     "해운대": ["해운대해수욕장", "해동 용궁사 부산"],
-    "제주": ["성산일출봉 제주", "만장굴 제주"],
+    "광안리": ["광안리해수욕장", "민락수변공원 부산"],
+    "영도": ["태종대 부산", "흰여울문화마을 영도"],
+    "서면": ["서면 젊음의거리 부산", "전포카페거리 부산"],
+    "제주": ["성산일출봉 제주", "만장굴 제주", "함덕해수욕장 제주"],
+    "서귀포": ["천지연폭포 서귀포", "정방폭포 서귀포", "중문관광단지"],
+    "애월": ["애월한담해안산책로", "곽지해수욕장 제주"],
+    "우도": ["우도봉 제주", "검멀레해변 우도"],
     "대전": ["엑스포과학공원 대전"],
+    "공주": ["공산성 공주", "무령왕릉 공주"],
+    "부여": ["부소산성 부여", "궁남지 부여"],
+    "보령": ["대천해수욕장 보령", "개화예술공원 보령"],
+    "태안": ["안면도 꽃지해수욕장", "천리포수목원 태안"],
+    "단양": ["도담삼봉 단양", "만천하스카이워크 단양"],
+    "청주": ["청남대 청주", "수암골 청주"],
+    "천안": ["독립기념관 천안", "아라리오갤러리 천안"],
     "전주": ["전주한옥마을"],
+    "여수": ["여수 해상케이블카", "오동도 여수", "이순신광장 여수", "돌산공원 여수"],
+    "목포": ["목포 해상케이블카", "갓바위 목포", "근대역사관 목포"],
+    "순천": ["순천만국가정원", "순천만습지", "낙안읍성 순천"],
+    "광주": ["국립아시아문화전당 광주", "양림동 펭귄마을 광주"],
+    "군산": ["군산 시간여행마을", "초원사진관 군산"],
+    "담양": ["죽녹원 담양", "메타세쿼이아길 담양"],
+    "남원": ["광한루원 남원", "춘향테마파크 남원"],
+    "보성": ["보성 녹차밭", "대한다원 보성"],
     "경주": ["불국사 경주", "첨성대 경주"],
+    "대구": ["김광석 다시그리기길 대구", "서문시장 대구"],
+    "거제": ["외도 보타니아 거제", "거제 해금강", "바람의 언덕 거제", "매미성 거제"],
+    "통영": ["동피랑 벽화마을 통영", "통영 케이블카", "이순신공원 통영"],
+    "안동": ["안동 하회마을", "월영교 안동", "도산서원 안동"],
+    "포항": ["스페이스워크 포항", "호미곶 포항", "영일대해수욕장 포항"],
+    "울산": ["태화강 국가정원 울산", "대왕암공원 울산", "간절곶 울산"],
+    "창원": ["진해 여좌천", "마산 어시장", "저도 콰이강의 다리 창원"],
+    "진주": ["진주성", "남강유등축제 진주"],
+    "남해": ["독일마을 남해", "보리암 남해", "다랭이마을 남해"],
+    "하동": ["화개장터 하동", "최참판댁 하동", "쌍계사 하동"],
+    "합천": ["해인사 합천", "합천 영상테마파크"],
+    "영주": ["부석사 영주", "소수서원 영주"],
     "속초": ["설악산 국립공원 속초"],
     "강릉": ["경포대 강릉", "강릉 오죽헌"],
+    "양양": ["낙산사 양양", "서피비치 양양"],
+    "춘천": ["남이섬 춘천", "소양강 스카이워크 춘천"],
+    "평창": ["대관령 양떼목장 평창", "월정사 평창"],
+    "정선": ["정선 아리랑시장", "화암동굴 정선"],
+    "동해": ["묵호등대 동해", "논골담길 동해"],
+    "삼척": ["삼척 해상케이블카", "장호항 삼척"],
+    "가평": ["남이섬 가평", "아침고요수목원 가평"],
+    "고양": ["일산 호수공원", "스타필드 고양"],
+    "수원": ["수원화성", "화성행궁 수원"],
+    "경기광주": ["남한산성 경기도 광주", "화담숲 곤지암", "곤지암리조트 경기도 광주"],
+    "파주": ["임진각 평화누리공원 파주", "헤이리 예술마을 파주", "파주출판도시"],
+    "용인": ["에버랜드 용인", "한국민속촌 용인"],
+    "양평": ["두물머리 양평", "세미원 양평"],
+    "화성": ["제부도 화성", "궁평항 화성", "융건릉 화성"],
+    "과천": ["서울대공원 과천", "국립과천과학관"],
+    "인천": ["송월동 동화마을 인천", "차이나타운 인천", "월미도 인천"],
+    "송도": ["센트럴파크 송도", "트리플스트리트 송도"],
 }
+
+
+_AREA_SHOPPING_ANCHORS: dict[str, list[str]] = {
+    "명동": [
+        "명동거리 서울",
+        "롯데백화점 본점 명동",
+        "신세계백화점 본점 명동",
+        "눈스퀘어 명동",
+        "올리브영 명동 플래그십",
+    ],
+    "홍대": [
+        "AK플라자 홍대",
+        "홍대 걷고싶은거리 서울",
+        "무신사 스토어 홍대",
+        "카카오프렌즈 홍대",
+        "KT&G 상상마당 홍대",
+    ],
+    "강남": [
+        "스타필드 코엑스몰 강남",
+        "현대백화점 무역센터점",
+        "파르나스몰 삼성동",
+        "강남역 지하쇼핑센터",
+        "카카오프렌즈 강남",
+    ],
+    "동대문": [
+        "동대문디자인플라자 DDP",
+        "두타몰 동대문",
+        "현대시티아울렛 동대문점",
+        "밀리오레 동대문",
+        "apM PLACE 동대문",
+        "굿모닝시티 동대문",
+        "동대문종합시장",
+        "동대문 지하쇼핑센터",
+    ],
+    "성수동": [
+        "LCDC SEOUL 성수",
+        "무신사 스토어 성수",
+        "아모레 성수",
+        "성수동 카페거리 편집숍",
+        "디올 성수",
+    ],
+    "여의도": [
+        "더현대서울 여의도",
+        "IFC몰 여의도",
+        "현대백화점 더현대 서울",
+    ],
+    "압구정": [
+        "갤러리아백화점 명품관 압구정",
+        "압구정 로데오거리",
+        "신사동 가로수길",
+    ],
+    "잠실": [
+        "롯데월드몰 잠실",
+        "롯데백화점 잠실점",
+        "롯데월드타워몰 잠실",
+    ],
+    "수원": [
+        "스타필드 수원",
+        "AK플라자 수원",
+        "롯데몰 수원",
+        "수원 남문시장",
+    ],
+    "경기광주": [
+        "경안시장 경기도 광주",
+        "곤지암 도자공원",
+        "화담숲 곤지암",
+    ],
+    "고양": [
+        "스타필드 고양",
+        "현대백화점 킨텍스점",
+        "라페스타 일산",
+        "웨스턴돔 일산",
+    ],
+    "파주": [
+        "파주 프리미엄아울렛",
+        "롯데프리미엄아울렛 파주",
+        "헤이리 예술마을 편집숍",
+        "파주출판도시",
+    ],
+    "용인": [
+        "롯데프리미엄아울렛 기흥점",
+        "보정동 카페거리",
+        "에버랜드 기념품샵",
+    ],
+    "하남": [
+        "스타필드 하남",
+        "신세계백화점 하남점",
+    ],
+    "강릉": [
+        "강릉 중앙시장",
+        "월화거리 강릉",
+        "안목해변 카페거리",
+        "초당동 강릉 편집숍",
+    ],
+    "속초": [
+        "속초관광수산시장",
+        "속초 중앙로 상점가",
+        "아바이마을 속초",
+    ],
+    "춘천": [
+        "춘천 명동거리",
+        "춘천 중앙시장",
+        "육림고개 춘천",
+    ],
+    "부산": ["신세계백화점 센텀시티", "국제시장 부산", "부평깡통시장 부산"],
+    "해운대": ["신세계백화점 센텀시티", "해운대 전통시장", "해리단길"],
+    "광안리": ["밀락더마켓 부산", "광안리 카페거리"],
+    "서면": ["서면 지하상가", "전포카페거리 부산", "롯데백화점 부산본점"],
+    "제주": ["동문시장 제주", "칠성로 쇼핑거리 제주"],
+    "서귀포": ["서귀포 매일올레시장", "중문관광단지"],
+    "대전": ["성심당 대전 본점", "으능정이문화의거리 대전", "신세계 Art & Science 대전"],
+    "공주": ["공주 산성시장", "공주 한옥마을"],
+    "부여": ["부여 중앙시장", "궁남지 주변 상점가"],
+    "보령": ["대천해수욕장 머드광장", "보령 중앙시장"],
+    "태안": ["안면도 수산시장", "꽃지해수욕장 상점가"],
+    "단양": ["단양 구경시장", "단양강 잔도 주변"],
+    "전주": ["전주 남부시장", "전주 한옥마을 상점가", "객리단길 전주"],
+    "여수": ["여수 이순신광장", "여수 교동시장", "여수 낭만포차거리"],
+    "목포": ["목포 자유시장", "목포 근대역사거리"],
+    "순천": ["순천 웃장", "순천 아랫장", "순천만국가정원 기념품샵"],
+    "광주": ["충장로 광주", "양림동 펭귄마을", "1913송정역시장"],
+    "군산": ["군산 시간여행마을", "군산 공설시장"],
+    "담양": ["담양 메타프로방스", "담양 죽녹원 상점가"],
+    "경주": ["황리단길 경주", "경주 중앙시장", "불국사 상점가"],
+    "대구": ["동성로 대구", "서문시장 대구", "더현대 대구"],
+    "거제": ["고현종합시장 거제", "매미성 주변 상점가", "장승포항 거제"],
+    "통영": ["통영 중앙시장", "동피랑 벽화마을 상점가"],
+    "안동": ["안동구시장", "월영교 주변 상점가", "하회마을 상점가"],
+    "포항": ["죽도시장 포항", "영일대해수욕장 상점가"],
+    "울산": ["성남동 젊음의거리 울산", "태화강 국가정원 주변"],
+    "남해": ["남해 독일마을 상점가", "남해 전통시장"],
+    "속초": ["속초관광수산시장", "속초 중앙로 상점가", "아바이마을 속초"],
+}
+
+
+def _has_itinerary_shopping_interest(traveler_profile: dict | None, text: str = "") -> bool:
+    """ショッピング系の希望がある場合だけ、商業施設アンカーを追加する。"""
+    profile = traveler_profile or {}
+    tokens: list[str] = []
+    tokens.extend(str(a).lower() for a in profile.get("activities") or [])
+    additional = profile.get("additional") or {}
+    tokens.extend(str(s).lower() for s in additional.get("travelStyles") or [])
+    blob = " ".join(tokens + [text.lower()])
+    return any(
+        key in blob
+        for key in (
+            "shopping",
+            "shop_hard",
+            "kpop",
+            "hallyu",
+            "쇼핑",
+            "買い物",
+            "ショッピング",
+            "k-pop",
+            "굿즈",
+            "グッズ",
+        )
+    )
 
 
 def _build_itinerary_attraction_queries(
     user_message: str,
     keyword: str,
     traveler_profile: dict | None,
+    priority_queries: list[str] | None = None,
 ) -> list[str]:
     """일정용 관광·카페 Places Text Search 쿼리."""
     areas = _detect_itinerary_areas(user_message, keyword, traveler_profile)
+    expanded_areas = _expanded_tourism_areas_for_plan(traveler_profile)
     queries: list[str] = []
     seen: set[str] = set()
 
@@ -2674,11 +3380,23 @@ def _build_itinerary_attraction_queries(
             seen.add(q)
             queries.append(q)
 
-    for area in areas:
+    has_shopping_interest = _has_itinerary_shopping_interest(
+        traveler_profile, f"{user_message} {keyword}"
+    )
+
+    for q in priority_queries or []:
+        add(q)
+
+    for area in expanded_areas or areas:
         add(f"{area} 관광")
         add(f"{area} 명소")
         for spot in _AREA_FAMOUS_SPOTS.get(area, []):
             add(spot)
+        if has_shopping_interest:
+            add(f"{area} 쇼핑")
+            add(f"{area} 쇼핑몰")
+            for spot in _AREA_SHOPPING_ANCHORS.get(area, []):
+                add(spot)
 
     reroll = int((traveler_profile or {}).get("plan_reroll") or 0)
     if reroll > 0 and traveler_profile:
@@ -2687,7 +3405,7 @@ def _build_itinerary_attraction_queries(
             for q in _shuffled_copy(_REROLL_EXTRA_ATTR_QUERIES.get(str(reg).lower(), []), seed):
                 add(q)
 
-    return queries[:16]
+    return queries[:24 if has_shopping_interest else 16]
 
 
 def _merge_itinerary_places(
@@ -2714,6 +3432,7 @@ def _search_places_for_itinerary(
     keyword: str,
     lang: str,
     traveler_profile: dict | None = None,
+    priority_attr_queries: list[str] | None = None,
 ) -> list[NearbyPlace]:
     """itinerary: 숙소 좌표 Nearby + 지역별 Text Search 맛집·관광."""
     try:
@@ -2772,7 +3491,10 @@ def _search_places_for_itinerary(
             )
             # 식당·카페 제외 (food 섹션에서 처리)
             nearby_attr_filtered = [
-                p for p in nearby_attr if not _is_meal_candidate_place(p)
+                p for p in nearby_attr
+                if not _is_meal_candidate_place(p)
+                and _is_itinerary_attraction_candidate(p)
+                and _is_korea_place(p)
             ]
             attr_batches.append(
                 [replace(p, search_area=f"{label}周辺") for p in nearby_attr_filtered]
@@ -2795,6 +3517,12 @@ def _search_places_for_itinerary(
                 location_restriction=KR_LOCATION_RESTRICTION,
             )
             filtered = [p for p in filter_meal_places(results) if _is_korea_place(p)]
+            query_areas = _areas_from_region_cities(text_query)
+            if query_areas:
+                area_matched = [
+                    p for p in filtered if _place_matches_travel_areas(p, query_areas)
+                ]
+                filtered = area_matched
             return [
                 replace(p, search_area=label)
                 for p in filtered[: limits["max_food_per_area"]]
@@ -2820,15 +3548,23 @@ def _search_places_for_itinerary(
             # 식당·카페는 food 섹션에서 처리하므로 여기서 제외
             filtered = [
                 p for p in results
-                if not _is_meal_candidate_place(p) and _is_korea_place(p)
+                if not _is_meal_candidate_place(p)
+                and _is_itinerary_attraction_candidate(p)
+                and _is_korea_place(p)
             ]
+            query_areas = _areas_from_region_cities(text_query)
+            if query_areas:
+                area_matched = [
+                    p for p in filtered if _place_matches_travel_areas(p, query_areas)
+                ]
+                filtered = area_matched
             return [replace(p, search_area=label) for p in filtered[:limits["max_attr_per_area"]]]
         except Exception as exc:
             logger.warning("itinerary attr [%r]: %s", text_query, exc)
             return []
 
     attr_queries = _build_itinerary_attraction_queries(
-        user_message, keyword, traveler_profile
+        user_message, keyword, traveler_profile, priority_attr_queries
     )
     if search_queries or attr_queries:
         with concurrent.futures.ThreadPoolExecutor(
@@ -3017,6 +3753,30 @@ def _fmt_places(places: list[NearbyPlace], *, group_by_area: bool = False) -> st
     return "\n".join(lines)
 
 
+def _fmt_itinerary_area_rotation_hint(traveler_profile: dict | None) -> str:
+    if not traveler_profile:
+        return ""
+    try:
+        days = int(traveler_profile.get("days") or 0)
+    except Exception:
+        days = 0
+    if days <= 3:
+        return ""
+    areas = _expanded_tourism_areas_for_plan(traveler_profile, min_count=min(4, max(2, days - 2)))
+    if len(areas) < 2:
+        return ""
+    usable_days = max(1, days - 2)
+    plan = []
+    for idx in range(usable_days):
+        plan.append(f"Day {idx + 2}: {areas[idx % len(areas)]}")
+    return (
+        "=== Itinerary area rotation hint ===\n"
+        "Do not repeat one small district for every full sightseeing day. "
+        "Use this as the default day-by-day area spread unless flights or explicit user constraints conflict.\n"
+        + "\n".join(plan)
+    )
+
+
 def _fmt_place_line(i: int, p: NearbyPlace) -> str:
     rating_str = f"★{p.rating:.1f}" if p.rating else "評価なし"
     reviews_str = f"({p.user_rating_count}件)" if p.user_rating_count else ""
@@ -3043,6 +3803,7 @@ def _fmt_place_line(i: int, p: NearbyPlace) -> str:
 
 # ─── Visit Korea (관광공사 API) ─────────────────────────────────────────
 _LEGACY_AREA_CODE_HINTS: dict[str, str] = {
+    "경기광주": "31", "경기도 광주": "31", "광주시": "31", "gwangju-si": "31",
     "서울": "1", "ソウル": "1", "seoul": "1", "明洞": "1", "江南": "1", "강남": "1", "弘大": "1", "홍대": "1",
     "경복궁": "1", "景福宮": "1", "광화문": "1", "光化門": "1", "북촌": "1", "北村": "1",
     "인사동": "1", "仁寺洞": "1", "창덕궁": "1", "昌德宮": "1", "덕수궁": "1", "德寿宮": "1",
@@ -3100,6 +3861,8 @@ def _area_codes_from_profile(
             codes.append(c)
 
     if traveler_profile:
+        for area in _areas_from_region_city_ids(traveler_profile):
+            add(_infer_legacy_area_code(area))
         for reg in traveler_profile.get("regions") or []:
             add(_REGION_CHIP_AREA.get(str(reg).lower(), ""))
         cities = (
@@ -3222,6 +3985,150 @@ def _fmt_visitkorea_attractions(items: list[TourApiItem]) -> str:
 
 
 # ─── 결과 데이터클래스 ─────────────────────────────────────────────────
+def _fmt_kto_datalab_items(title: str, items: list[KtoDataLabItem], limit: int = 12) -> str:
+    if not items:
+        return ""
+    lines = [f"[{title}]"]
+    for i, it in enumerate(items[:limit], 1):
+        label = it.name or it.related_name
+        if not label:
+            continue
+        line = f"{i}. {label}"
+        if it.related_name and it.related_name != label:
+            line += f" -> {it.related_name}"
+        if it.area:
+            line += f" | area: {it.area}"
+        if it.address:
+            line += f" | address: {it.address}"
+        if it.category:
+            line += f" | category: {it.category}"
+        if it.rank:
+            line += f" | rank: {it.rank}"
+        if it.score:
+            line += f" | score: {it.score}"
+        lines.append(line)
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
+def _fmt_kto_datalab_context(
+    hubs: list[KtoDataLabItem],
+    related: list[KtoDataLabItem],
+    demand: list[KtoDataLabItem],
+    extra_sections: dict[str, list[KtoDataLabItem]] | None = None,
+) -> str:
+    blocks = [
+        _fmt_kto_datalab_items("KTO local hub tourism candidates", hubs),
+        _fmt_kto_datalab_items("KTO related tourism candidates", related),
+        _fmt_kto_datalab_items("KTO regional demand/resource hints", demand, limit=8),
+    ]
+    for title, items in (extra_sections or {}).items():
+        blocks.append(_fmt_kto_datalab_items(title, items, limit=8))
+    body = "\n".join(b for b in blocks if b)
+    if not body:
+        return ""
+    return (
+        "=== KTO Tourism DataLab / Data.go.kr enrichment ===\n"
+        "Use this only to choose stronger tourist areas and candidate anchors. "
+        "Prefer sections that match traveler preferences: accessibility, nature/healing, SNS/photo, culture, family/parents. "
+        "When writing the user-facing plan, do not mention internal datasets or API availability.\n"
+        + body
+    )
+
+
+def _kto_preference_flags(traveler_profile: dict | None, user_message: str = "") -> dict[str, bool]:
+    profile = traveler_profile or {}
+    add = profile.get("additional") or {}
+    styles = {str(x).lower() for x in add.get("travelStyles") or []}
+    activities = {str(x).lower() for x in profile.get("activities") or []}
+    companion = str(add.get("companion") or "").lower()
+    mobility = str(add.get("mobility") or "").lower()
+    blob = " ".join(
+        sorted(styles | activities)
+        + [
+            companion,
+            mobility,
+            str(add.get("note") or ""),
+            user_message,
+        ]
+    ).lower()
+    return {
+        "accessibility": (
+            mobility in {"stairs", "wheelchair", "stroller"}
+            or companion in {"family", "parents"}
+            or any(k in blob for k in ("wheelchair", "stroller", "階段", "車椅子", "ベビーカー", "高齢"))
+        ),
+        "green": bool({"nature", "healing"} & styles)
+        or any(k in blob for k in ("自然", "힐링", "癒し", "eco", "green")),
+        "photo": bool({"sns_hot", "local_vibe"} & styles)
+        or any(k in blob for k in ("sns", "写真", "フォト", "인스타", "photo")),
+        "culture": "culture" in styles or any(k in blob for k in ("歴史", "文化", "예술", "history", "museum")),
+        "must_see": "must_see" in styles,
+    }
+
+
+def _kto_numeric_score(item: KtoDataLabItem) -> float:
+    raw = (item.score or item.rank or "").replace(",", "").strip()
+    if not raw:
+        return 0.0
+    try:
+        value = float(raw)
+    except ValueError:
+        return 0.0
+    if item.rank:
+        return max(0.0, 100.0 - value)
+    return value
+
+
+def _kto_candidate_queries(
+    *,
+    hubs: list[KtoDataLabItem],
+    related: list[KtoDataLabItem],
+    extra_sections: dict[str, list[KtoDataLabItem]] | None = None,
+    travel_areas: list[str] | None = None,
+    limit: int = 10,
+) -> list[str]:
+    weighted: list[tuple[float, str]] = []
+
+    def add_items(items: list[KtoDataLabItem], base_score: float) -> None:
+        for item in items:
+            name = (item.name or item.related_name or "").strip()
+            if not name:
+                continue
+            area_bonus = 0.0
+            if travel_areas and item.area:
+                if any(area in item.area or item.area in area for area in travel_areas):
+                    area_bonus = 20.0
+            query = name
+            if item.area and item.area not in query:
+                query = f"{name} {item.area}"
+            elif travel_areas and not any(area in query for area in travel_areas):
+                query = f"{name} {travel_areas[0]}"
+            weighted.append((base_score + area_bonus + _kto_numeric_score(item) / 10.0, query))
+
+    add_items(hubs, 100.0)
+    add_items(related, 90.0)
+    for title, items in (extra_sections or {}).items():
+        base = 80.0
+        lower = title.lower()
+        if "accessible" in lower or "eco" in lower or "photo" in lower:
+            base = 95.0
+        elif "korean tourism" in lower:
+            base = 88.0
+        add_items(items, base)
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for _, name in sorted(weighted, key=lambda x: x[0], reverse=True):
+        cleaned = " ".join(name.split()).strip()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        out.append(cleaned)
+        if len(out) >= limit:
+            break
+    return out
+
+
 @dataclass
 class RouteResult:
     reply: str
@@ -3453,11 +4360,17 @@ def route_and_answer(
             return [], None, "", str(exc)
         return [], None, "", ""
 
-    def _do_itinerary_places() -> list:
+    def _do_itinerary_places(priority_attr_queries: list[str] | None = None) -> list:
         if category != "itinerary":
             return []
         try:
-            return _search_places_for_itinerary(user_message, keyword, lang, traveler_profile)
+            return _search_places_for_itinerary(
+                user_message,
+                keyword,
+                lang,
+                traveler_profile,
+                priority_attr_queries=priority_attr_queries,
+            )
         except Exception as exc:
             logger.warning("itinerary Places search failed: %s", exc)
             return []
@@ -3562,6 +4475,140 @@ def route_and_answer(
         except Exception as exc:
             logger.warning("VisitKorea API error [%s]: %s", category, exc, exc_info=True)
             return [], [], [], str(exc)
+
+    def _do_kto_datalab() -> tuple[str, list[str]]:
+        if not _wants_visitkorea_region_data(category):
+            return "", []
+        try:
+            kto = KtoDataLabClient()
+            if not kto.is_configured:
+                return "", []
+            area_codes = _area_codes_from_profile(
+                traveler_profile, user_message, keyword
+            )
+            fallback_area = _infer_legacy_area_code(user_message, keyword)
+            if not area_codes and fallback_area:
+                area_codes = [fallback_area]
+            primary_area = area_codes[0] if area_codes else ""
+            city_hint = _region_cities_text(traveler_profile)
+            search_keyword = (city_hint.split(",")[0].strip() if city_hint else "") or keyword
+
+            hubs: list[KtoDataLabItem] = []
+            related: list[KtoDataLabItem] = []
+            demand: list[KtoDataLabItem] = []
+            extra_sections: dict[str, list[KtoDataLabItem]] = {}
+            pref_flags = _kto_preference_flags(traveler_profile, user_message)
+
+            try:
+                hubs = kto.search_local_hub_attractions(
+                    area_code=primary_area,
+                    num_of_rows=16,
+                )
+            except Exception as exc:
+                logger.info("KTO local hub enrichment skipped: %s", exc)
+
+            related_seed = next((h.code for h in hubs if h.code), "")
+            try:
+                related = kto.search_related_attractions(
+                    keyword=search_keyword,
+                    hub_code=related_seed,
+                    area_code=primary_area,
+                    num_of_rows=16,
+                )
+            except Exception as exc:
+                logger.info("KTO related enrichment skipped: %s", exc)
+
+            try:
+                demand = kto.search_resource_demand(
+                    area_code=primary_area,
+                    num_of_rows=8,
+                )
+            except Exception as exc:
+                logger.info("KTO demand enrichment skipped: %s", exc)
+
+            try:
+                diversity = kto.search_diversity(
+                    area_code=primary_area,
+                    num_of_rows=8,
+                )
+                if diversity:
+                    extra_sections["KTO tourism diversity hints"] = diversity
+            except Exception as exc:
+                logger.info("KTO diversity enrichment skipped: %s", exc)
+
+            if pref_flags["green"]:
+                try:
+                    green = kto.search_green_tour(
+                        area_code=primary_area,
+                        num_of_rows=8,
+                    )
+                    if green:
+                        extra_sections["KTO eco/nature tourism candidates"] = green
+                except Exception as exc:
+                    logger.info("KTO green tourism enrichment skipped: %s", exc)
+
+            if pref_flags["accessibility"]:
+                try:
+                    accessible = kto.search_accessible_tour(
+                        area_code=primary_area,
+                        keyword=search_keyword,
+                        num_of_rows=8,
+                    )
+                    if accessible:
+                        extra_sections["KTO accessible travel candidates"] = accessible
+                except Exception as exc:
+                    logger.info("KTO accessible tourism enrichment skipped: %s", exc)
+
+            if pref_flags["culture"] or pref_flags["must_see"]:
+                try:
+                    kor_info = kto.search_kor_tour_info(
+                        area_code=primary_area,
+                        keyword=search_keyword,
+                        num_of_rows=8,
+                    )
+                    if kor_info:
+                        extra_sections["KTO Korean tourism info candidates"] = kor_info
+                except Exception as exc:
+                    logger.info("KTO Korean tourism info enrichment skipped: %s", exc)
+
+            if pref_flags["photo"]:
+                try:
+                    photos = kto.search_photo_gallery(
+                        keyword=search_keyword,
+                        num_of_rows=8,
+                    )
+                    if photos:
+                        extra_sections["KTO photo/SNS location hints"] = photos
+                except Exception as exc:
+                    logger.info("KTO photo gallery enrichment skipped: %s", exc)
+
+            context = _fmt_kto_datalab_context(
+                hubs,
+                related,
+                demand,
+                extra_sections=extra_sections,
+            )
+            kto_priority_queries = _kto_candidate_queries(
+                hubs=hubs,
+                related=related,
+                extra_sections=extra_sections,
+                travel_areas=_tourism_search_areas(traveler_profile),
+                limit=10,
+            )
+            if context:
+                logger.info(
+                    "KTO context hubs=%d related=%d demand=%d priority=%d extras=%s area=%s",
+                    len(hubs),
+                    len(related),
+                    len(demand),
+                    len(kto_priority_queries),
+                    ",".join(extra_sections.keys()) or "-",
+                    primary_area or "(nationwide)",
+                )
+            return context, kto_priority_queries
+        except Exception as exc:
+            logger.warning("KTO DataLab worker failed: %s", exc, exc_info=True)
+            return "", []
 
     def _do_gyeonggi() -> list[GyeonggiEvent]:
         """전국공연행사정보표준데이터 + 경기데이터드림 KINTEX — 행사 조회."""
@@ -3751,28 +4798,56 @@ def route_and_answer(
             logger.warning("ticket platform events worker failed: %s", exc)
             return []
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=9) as _pool:
+    def _do_icn_ground_transport() -> tuple[list[AirportBusInfo], list[AirportTaxiStatus]]:
+        """인천공항 공사 버스/택시 정보를 일정 Reference Data로 제공."""
+        if category != "itinerary" or arrival_airport_iata(traveler_profile) != "ICN":
+            return [], []
+        try:
+            client = IncheonAirportClient()
+            if not client.is_configured:
+                return [], []
+            buses: list[AirportBusInfo] = []
+            taxis: list[AirportTaxiStatus] = []
+            if _transport_prefers(traveler_profile, "bus"):
+                buses = client.search_airport_buses(
+                    _airport_bus_area_codes(traveler_profile),
+                    limit=30,
+                )
+                buses = _filter_airport_buses_for_profile(buses, traveler_profile)
+            if _transport_prefers(traveler_profile, "taxi"):
+                taxis = client.get_taxi_status(
+                    _airport_terminal_codes_from_profile(traveler_profile)
+                )
+            return buses, taxis
+        except Exception as exc:
+            logger.warning("ICN ground transport worker failed: %s", exc)
+            return [], []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=11) as _pool:
         _f_rag      = _pool.submit(_do_rag)
         _f_places   = _pool.submit(_do_places)
         _f_flights  = _pool.submit(_do_flights)
-        _f_itin     = _pool.submit(_do_itinerary_places)
         _f_sports   = _pool.submit(_do_sports)
         _f_vk       = _pool.submit(_do_visitkorea)
+        _f_kto_dl   = _pool.submit(_do_kto_datalab)
         _f_gyeonggi = _pool.submit(_do_gyeonggi)
         _f_websearch = _pool.submit(_do_web_search)
         _f_ticketpf = _pool.submit(_do_ticket_platform)
+        _f_icn_ground = _pool.submit(_do_icn_ground_transport)
 
         rag_bundle                                               = _f_rag.result()
         places_results, places_error                             = _f_places.result()
         flights_results, airport_result, flight_subtype, flights_error = _f_flights.result()
-        itinerary_places                                         = _f_itin.result()
         sports_events                                            = _f_sports.result()
         visitkorea_stays, visitkorea_festivals, visitkorea_attractions, visitkorea_error = (
             _f_vk.result()
         )
+        kto_datalab_context, kto_priority_queries                 = _f_kto_dl.result()
+        itinerary_places                                          = _do_itinerary_places(kto_priority_queries)
         gyeonggi_events: list[GyeonggiEvent]                     = _f_gyeonggi.result()
         web_search_results: list[WebSearchResult]                = _f_websearch.result()
         ticket_platform_events: list[TicketPlatformEvent]       = _f_ticketpf.result()
+        icn_bus_infos, icn_taxi_statuses                         = _f_icn_ground.result()
 
     rag_results = rag_bundle.results
 
@@ -3830,12 +4905,24 @@ def route_and_answer(
         airport_transport = _fmt_airport_itinerary_transport(traveler_profile)
         if airport_transport:
             ctx_parts.append(airport_transport)
+        bus_context = _fmt_airport_bus_infos(icn_bus_infos)
+        if bus_context:
+            ctx_parts.append(bus_context)
+        taxi_context = _fmt_airport_taxi_status(icn_taxi_statuses)
+        if taxi_context:
+            ctx_parts.append(taxi_context)
         food_pref_hint = _fmt_food_preference_hint(traveler_profile)
         if food_pref_hint:
             ctx_parts.append(food_pref_hint)
+        dest_context = _fmt_selected_destination_context(traveler_profile)
+        if dest_context:
+            ctx_parts.append(dest_context)
         area_bind = _fmt_itinerary_daily_area_binding(traveler_profile)
         if area_bind:
             ctx_parts.append(area_bind)
+        area_rotation = _fmt_itinerary_area_rotation_hint(traveler_profile)
+        if area_rotation:
+            ctx_parts.append(area_rotation)
     if flights_results:
         ctx_parts.append(f"=== 仁川空港 定期便スケジュール ===\n{_fmt_flights(flights_results)}")
     if airport_result is not None:
@@ -3938,6 +5025,8 @@ def route_and_answer(
                         )
                 except Exception as exc:
                     logger.warning("stadium food context failed: %s", exc)
+    if kto_datalab_context:
+        ctx_parts.append(kto_datalab_context)
     if visitkorea_stays:
         ctx_parts.append(
             "=== Visit Korea Tourism API — 宿泊 (searchStay2) ===\n"
@@ -4004,6 +5093,8 @@ def route_and_answer(
         sources_used.append("places")
     if has_visitkorea:
         sources_used.append("visitkorea")
+    if kto_datalab_context:
+        sources_used.append("kto_datalab")
     if sports_events:
         sources_used.append("sports")
     if ticket_platform_events:
@@ -4059,7 +5150,11 @@ def route_and_answer(
             for _chunk in _stream_obj:
                 yield _chunk.choices[0].delta.content or ""
 
-        return RouteResult(reply="", token_stream=_token_gen(), **_common_result_kwargs)
+        return RouteResult(
+            reply="",
+            token_stream=_sanitize_stream_chunks(_token_gen()),
+            **_common_result_kwargs,
+        )
 
     # ── non-streaming (기본) ──────────────────────────────────────────────
     try:
@@ -4068,7 +5163,7 @@ def route_and_answer(
             messages=messages,
             temperature=answer_temperature,
         )
-        reply = completion.choices[0].message.content or ""
+        reply = _strip_internal_data_disclosure(completion.choices[0].message.content or "")
     except Exception as _ans_exc:
         logger.error("Answer generation failed (model=%s): %s", _model, _ans_exc)
         raise

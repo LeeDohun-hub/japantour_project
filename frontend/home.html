@@ -135,13 +135,13 @@
               <div class="flight-endpoint">
                 <label>出発地</label>
                 <select id="flightFrom">
-                  <optgroup label="🇰🇷 한국">
-                    <option value="ICN">인천국제공항 (ICN)</option>
-                    <option value="GMP">김포국제공항 (GMP)</option>
-                    <option value="PUS">김해국제공항 (PUS)</option>
-                    <option value="CJU">제주국제공항 (CJU)</option>
+                  <optgroup label="🇰🇷 韓国">
+                    <option value="ICN">仁川国際空港 (ICN)</option>
+                    <option value="GMP">金浦国際空港 (GMP)</option>
+                    <option value="PUS">金海国際空港 (PUS)</option>
+                    <option value="CJU">済州国際空港 (CJU)</option>
                   </optgroup>
-                  <optgroup label="🇯🇵 일본">
+                  <optgroup label="🇯🇵 日本">
                     <option value="NRT" selected>成田国際空港 (NRT)</option>
                     <option value="HND">羽田空港 (HND)</option>
                     <option value="KIX">関西国際空港 (KIX)</option>
@@ -152,17 +152,17 @@
                   </optgroup>
                 </select>
               </div>
-              <button type="button" id="swapFlightRoute" class="swap-btn" title="출발·도착 교체">⇄</button>
+              <button type="button" id="swapFlightRoute" class="swap-btn" title="出発地・目的地を入れ替え">⇄</button>
               <div class="flight-endpoint">
                 <label>目的地</label>
                 <select id="flightTo">
-                  <optgroup label="🇰🇷 한국">
-                    <option value="ICN" selected>인천국제공항 (ICN)</option>
-                    <option value="GMP">김포국제공항 (GMP)</option>
-                    <option value="PUS">김해국제공항 (PUS)</option>
-                    <option value="CJU">제주국제공항 (CJU)</option>
+                  <optgroup label="🇰🇷 韓国">
+                    <option value="ICN" selected>仁川国際空港 (ICN)</option>
+                    <option value="GMP">金浦国際空港 (GMP)</option>
+                    <option value="PUS">金海国際空港 (PUS)</option>
+                    <option value="CJU">済州国際空港 (CJU)</option>
                   </optgroup>
-                  <optgroup label="🇯🇵 일본">
+                  <optgroup label="🇯🇵 日本">
                     <option value="NRT">成田国際空港 (NRT)</option>
                     <option value="HND">羽田空港 (HND)</option>
                     <option value="KIX">関西国際空港 (KIX)</option>
@@ -242,7 +242,7 @@
       <section class="wiz-card" data-step="3">
         <div class="wiz-card-inner">
           <div class="wiz-step-header">
-            <span class="wiz-step-num">🏨 숙소</span>
+            <span class="wiz-step-num">🏨 宿泊</span>
             <h2>宿泊はどちらですか？</h2>
           </div>
           <div class="option-cards" id="accomOptions">
@@ -269,15 +269,15 @@
             <div class="addr-selector">
               <div class="addr-row">
                 <div class="addr-field">
-                  <label class="addr-label">도 / 특별시 / 광역시</label>
+                  <label class="addr-label">道・特別市・広域市</label>
                   <select id="addrSido" class="addr-select">
-                    <option value="">-- 선택 --</option>
+                    <option value="">-- 選択 --</option>
                   </select>
                 </div>
                 <div class="addr-field">
-                  <label class="addr-label">시 / 군 / 구</label>
+                  <label class="addr-label">市・郡・区</label>
                   <select id="addrSigungu" class="addr-select" disabled>
-                    <option value="">-- 위에서 먼저 선택 --</option>
+                    <option value="">-- 先に上の地域を選択 --</option>
                   </select>
                 </div>
               </div>
@@ -321,15 +321,15 @@
             <div class="addr-selector" style="margin-top:.65rem">
               <div class="addr-row">
                 <div class="addr-field">
-                  <label class="addr-label">도 / 특별시 / 광역시</label>
+                  <label class="addr-label">道・特別市・広域市</label>
                   <select id="addrSidoUnd" class="addr-select">
-                    <option value="">-- 선택 --</option>
+                    <option value="">-- 選択 --</option>
                   </select>
                 </div>
                 <div class="addr-field">
-                  <label class="addr-label">시 / 군 / 구</label>
+                  <label class="addr-label">市・郡・区</label>
                   <select id="addrSigunguUnd" class="addr-select" disabled>
-                    <option value="">-- 위에서 먼저 선택 --</option>
+                    <option value="">-- 先に上の地域を選択 --</option>
                   </select>
                 </div>
               </div>
@@ -351,7 +351,7 @@
                 <input type="text" id="hotelManualInput" placeholder="例：ロッテホテル釜山、釜山ゲストハウス" />
                 <button type="button" id="hotelManualSearchBtn" class="btn btn-sm secondary">検索</button>
               </div>
-              <p class="accom-search-hint">エリア（시·군·구）＋ホテル名で検索します。エリア未選択の場合は入力した名前のみで検索します。</p>
+              <p class="accom-search-hint">エリア（市・郡・区）＋ホテル名で検索します。エリア未選択の場合は入力した名前のみで検索します。</p>
             </div>
             <!-- 選択済みホテル表示 -->
             <div id="hotelSelectedPanel" class="hotel-selected-panel" style="display:none">
@@ -374,7 +374,7 @@
       <section class="wiz-card" data-step="4">
         <div class="wiz-card-inner">
           <div class="wiz-step-header">
-            <span class="wiz-step-num">🚌 교통</span>
+            <span class="wiz-step-num">🚌 交通</span>
             <h2>空港からの交通手段は？</h2>
             <p class="wiz-lead">複数選択可</p>
           </div>
@@ -394,10 +394,10 @@
       <section class="wiz-card" data-step="5">
         <div class="wiz-card-inner">
           <div class="wiz-step-header">
-            <span class="wiz-step-num">🗺 관광</span>
+            <span class="wiz-step-num">🗺 観光</span>
             <h2>どこを観光したいですか？</h2>
           </div>
-          <div class="wiz-section-label">① 広域エリア <span class="opt">複数選択可</span></div>
+          <div class="wiz-section-label" style="margin-top:1.25rem">① 広域エリア <span class="req-badge">必須</span></div>
           <div class="chip-grid" id="regionChips">
             <button type="button" class="chip" data-val="seoul">🏙 ソウル</button>
             <button type="button" class="chip" data-val="gyeonggi">🌳 京畿道</button>
@@ -408,12 +408,12 @@
             <button type="button" class="chip" data-val="gyeongsang">🏯 慶尚道</button>
             <button type="button" class="chip" data-val="jeju">🌺 済州島</button>
           </div>
-          <p id="regionAreaError" class="field-error" role="alert" hidden>広域エリアを1つ以上選んでください。</p>
+          <p id="regionAreaError" class="field-error" role="alert" hidden>広域エリアを1つ選んでください。</p>
 
           <div id="regionCitySection" class="region-city-section">
             <div class="wiz-section-label" style="margin-top:1.25rem">② 市・郡・区を選択 <span class="req-badge">必須</span></div>
-            <p class="accom-search-hint">①で選んだ道・広域ごとに、<strong>市・郡・区（시군구）</strong>のボタンを選んでください（複数可）。</p>
-            <p id="regionCityPlaceholder" class="region-city-placeholder">↑ まず「① 広域エリア」を1つ以上選ぶと、ここに市・郡・区の選択肢が表示されます。</p>
+            <p class="accom-search-hint">①で選んだ道・広域から、<strong>市・郡・区</strong>を1つ選んでください。</p>
+            <p id="regionCityPlaceholder" class="region-city-placeholder">↑ まず「① 広域エリア」を1つ選ぶと、ここに市・郡・区の選択肢が表示されます。</p>
             <div id="regionCityPanels" class="region-city-panels"></div>
             <details class="region-cities-other-fold">
               <summary>リストにない都市・区がある場合のみ入力</summary>
@@ -421,11 +421,11 @@
                 type="text"
                 id="regionCitiesOther"
                 class="region-cities-input"
-                placeholder="例：安養、富川（カンマ・「・」で複数可）"
+                placeholder="例：安養"
                 autocomplete="off"
               />
             </details>
-            <p id="regionCityError" class="field-error" role="alert" hidden>都市・区を1つ以上選んでください。</p>
+            <p id="regionCityError" class="field-error" role="alert" hidden>都市・区を1つだけ選んでください。</p>
           </div>
           <div class="wiz-section-label" style="margin-top:1.5rem">やりたいこと（複数選択可）</div>
           <div class="chip-grid" id="activityChips">
@@ -465,12 +465,12 @@
       <section class="wiz-card" data-step="6">
         <div class="wiz-card-inner">
           <div class="wiz-step-header">
-            <span class="wiz-step-num">💰 예산</span>
+            <span class="wiz-step-num">💰 予算</span>
             <h2>予算はどのくらいですか？</h2>
           </div>
           <div class="budget-section">
             <div class="field-sm">
-              <label>総予算 <span class="req">*</span></label>
+              <label>総予算 <span class="opt">任意</span></label>
               <div class="budget-input-row">
                 <select id="budgetCurrency" class="currency-sel">
                   <option value="JPY">¥ 円</option>
@@ -507,7 +507,7 @@
       <section class="wiz-card" data-step="7">
         <div class="wiz-card-inner">
           <div class="wiz-step-header">
-            <span class="wiz-step-num">📝 추가정보</span>
+            <span class="wiz-step-num">📝 追加情報</span>
             <h2>あなたについて教えてください</h2>
             <p class="wiz-lead">より良いプランのために活用します（すべて任意）</p>
           </div>
@@ -594,7 +594,7 @@
       <section class="wiz-card" data-step="8">
         <div class="wiz-card-inner">
           <div class="wiz-step-header">
-            <span class="wiz-step-num">🗓 플랜</span>
+            <span class="wiz-step-num">🗓 プラン</span>
             <h2 id="planTitle">旅行プランを生成中...</h2>
           </div>
 
@@ -608,7 +608,7 @@
 
           <div id="planOutputArea" style="display:none">
             <div class="plan-source-badge plan-source-badge--primary">
-              📚 K-Culture 관광 콘텐츠 특화 일본어 말뭉치 데이터 기반 — 全体旅行プラン
+              📚 K-Culture・韓国旅行向け日本語データを参考にした全体旅行プラン
             </div>
 
             <div id="planMapShell" class="plan-map-shell" style="display:none" aria-label="旅行ルートマップ">
@@ -628,6 +628,8 @@
               <div class="plan-content" id="planContent"></div>
             </details>
 
+            <div id="planChecklistArea" style="display:none"></div>
+
             <div id="planRefsBlock" class="plan-refs-block">
               <div class="plan-source-badge plan-source-badge--refs">
                 🔗 旅行先周辺のスポーツ・イベント・観光 — URL・写真・料金帯など（参照データ）
@@ -643,6 +645,8 @@
             </div>
             <div class="plan-actions">
               <a href="/chat/" class="btn primary">💬 AIチャットで詳しく聞く</a>
+              <button type="button" class="btn wiz-btn-outline" id="btnSharePlan">🔗 共有リンクをコピー</button>
+              <button type="button" class="btn wiz-btn-outline" id="btnPrintPlan">📄 PDF保存</button>
               <button type="button" class="btn wiz-btn-outline" id="btnRerollPlan">🔄 別のプランを生成</button>
               <button type="button" class="btn wiz-btn-outline" id="btnRestart">最初からやり直す</button>
             </div>

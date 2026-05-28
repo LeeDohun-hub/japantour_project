@@ -12,6 +12,7 @@ urlpatterns = [
     path("maps/config/", views.api_maps_config, name="api_maps_config"),
     path("photo/", views.api_photo, name="api_photo"),
     path("places-debug/", views.api_places_debug, name="api_places_debug"),
+    path("plan-snapshot/", views.api_plan_snapshot, name="api_plan_snapshot"),
     path("chat/", views.api_chat, name="api_chat"),
     path("chat/stream/", views.api_chat_stream, name="api_chat_stream"),
     path("auth/register/", views.api_register, name="api_register"),

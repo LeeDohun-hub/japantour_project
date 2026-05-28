@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import html
 import json
 import logging
 import os
@@ -30,6 +31,7 @@ from tour_api.chat_persistence import (
     upsert_traveler_profile,
 )
 from tour_api.llm_service import get_client, run_chat
+from tour_api.models import TravelPlanSnapshot
 
 _FRONTEND: Path = settings.FRONTEND_DIR
 
@@ -207,6 +209,7 @@ def api_places_enrich(request):
         sys.path.insert(0, str(_root / "src"))
 
     from src.api.google_places_client import GooglePlacesClient, normalize_plan_query_label
+    from src.api.region_resolver import address_matches_destination
 
     try:
         body = json.loads(request.body.decode("utf-8"))
@@ -224,40 +227,16 @@ def api_places_enrich(request):
     # 목적지 리전 필터: 지역을 벗어난 장소(예: 강릉 일정에 서울 식당) 제거
     dest_regions: list[str] = body.get("regions") or []
     region_cities: str = str(body.get("region_cities") or "").strip()
-    _REGION_ADDR_KW: dict[str, tuple[str, ...]] = {
-        "gangwon": (
-            "강원", "gangwon", "강릉", "속초", "평창", "고성", "고성군", "춘천", "원주", "정선", "태백", "동해",
-            "gangneung", "sokcho", "chuncheon", "wonju", "pyeongchang", "goseong",
-        ),
-        "busan": ("부산", "busan", "해운대", "기장", "사하", "사상", "dongnae", "haeundae"),
-        "jeju": ("제주", "jeju", "seogwipo", "서귀포"),
-        "gyeonggi": (
-            "경기", "gyeonggi", "고양", "수원", "성남", "용인", "안양", "과천", "의정부", "파주", "부천", "시흥", "안산", "화성",
-            "goyang", "suwon", "seongnam", "yongin", "anyang", "bucheon", "paju", "ilsan", "namyangju", "hwaseong",
-        ),
-        "seoul": ("서울", "seoul", "mapo", "gangnam", "myeongdong", "jongno", "hongdae"),
-        "incheon": ("인천", "incheon", "영종", "영종도", "songdo", "yeongjong", "yeongjongdo"),
-        "chungcheong": (
-            "충청", "chungcheong", "대전", "청주", "충주", "천안", "공주", "세종", "충북", "충남",
-            "daejeon", "cheongju", "cheonan", "sejong", "chungju",
-        ),
-        "jeolla": (
-            "전라", "jeolla", "전주", "광주", "여수", "목포", "순천", "나주",
-            "jeonju", "gwangju", "yeosu", "mokpo", "suncheon",
-        ),
-        "gyeongsang": (
-            "경상", "gyeongsang", "대구", "경주", "창원", "포항", "울산", "진주", "거제", "경북", "경남",
-            "daegu", "gyeongju", "changwon", "pohang", "ulsan", "jinju", "geoje",
-        ),
-    }
-
+    region_city_ids: list[str] = [
+        str(x).strip().lower()
+        for x in (body.get("region_city_ids") or [])
+        if str(x).strip()
+    ]
     def _addr_matches_dest(addr: str) -> bool:
-        if not dest_regions:
-            return True
-        a = addr.lower()
-        return any(
-            any(kw in a for kw in _REGION_ADDR_KW.get(reg, ()))
-            for reg in dest_regions
+        return address_matches_destination(
+            addr,
+            region_city_ids=region_city_ids,
+            dest_regions=dest_regions,
         )
 
     try:
@@ -545,6 +524,217 @@ def api_health(request):
     )
 
 
+def _session_key(request: HttpRequest) -> str:
+    if not request.session.session_key:
+        request.session.save()
+    return request.session.session_key or ""
+
+
+def _latest_plan_snapshot(request: HttpRequest) -> TravelPlanSnapshot | None:
+    qs = TravelPlanSnapshot.objects.all()
+    if request.user.is_authenticated:
+        snap = qs.filter(user=request.user).first()
+        if snap:
+            return snap
+    key = request.session.session_key
+    if key:
+        return qs.filter(session_key=key).first()
+    return None
+
+
+def _chat_profile_from_snapshot(snapshot: TravelPlanSnapshot | None) -> dict | None:
+    if not snapshot or not isinstance(snapshot.profile, dict):
+        return None
+    profile = dict(snapshot.profile)
+    for key in (
+        "plan_mode",
+        "plan_reroll",
+        "plan_variant_seed",
+        "avoid_place_names",
+        "plan_auto_defaults",
+        "days",
+        "nights",
+    ):
+        profile.pop(key, None)
+    return profile
+
+
+def _format_plan_snapshot_context(snapshot: TravelPlanSnapshot | None) -> str:
+    if not snapshot:
+        return ""
+    profile = snapshot.profile if isinstance(snapshot.profile, dict) else {}
+    parts: list[str] = []
+    if snapshot.title:
+        parts.append(f"Title: {snapshot.title}")
+    days = profile.get("days")
+    nights = profile.get("nights")
+    if nights or days:
+        parts.append(f"Trip length: {nights or '?'} nights / {days or '?'} days")
+    regions = profile.get("regions") or []
+    if regions:
+        parts.append(f"Regions: {', '.join(map(str, regions[:3]))}")
+    city = profile.get("regionCities") or profile.get("regionCitiesOther")
+    if city:
+        parts.append(f"Selected city/district: {city}")
+    activities = profile.get("activities") or []
+    if activities:
+        parts.append(f"Interests: {', '.join(map(str, activities[:8]))}")
+    add = profile.get("additional") or {}
+    if isinstance(add, dict):
+        prefs = add.get("foodPreferences") or []
+        avoid = add.get("foodAvoid") or []
+        styles = add.get("travelStyles") or []
+        if prefs:
+            parts.append(f"Food preferences: {', '.join(map(str, prefs[:8]))}")
+        if avoid:
+            parts.append(f"Food restrictions/avoid: {', '.join(map(str, avoid[:8]))}")
+        if styles:
+            parts.append(f"Travel styles: {', '.join(map(str, styles[:8]))}")
+    budget = profile.get("budget") or {}
+    if isinstance(budget, dict) and budget.get("total"):
+        parts.append(
+            f"Budget: {budget.get('currency') or ''} {budget.get('total')}"
+            + (f" / daily {budget.get('daily')}" if budget.get("daily") else "")
+        )
+    plan_text = " ".join(str(snapshot.plan_text or "").split())
+    if plan_text:
+        parts.append(f"Latest generated plan excerpt: {plan_text[:1800]}")
+    if not parts:
+        return ""
+    return (
+        "[Recent Plan Context]\n"
+        + "\n".join(f"- {p}" for p in parts)
+        + "\nUse this only when it helps answer follow-up questions about the user's trip. "
+        "Do not expose private account identifiers or say this context came from storage."
+    )
+
+
+def _with_recent_plan_context(message: str, snapshot: TravelPlanSnapshot | None) -> str:
+    context = _format_plan_snapshot_context(snapshot)
+    if not context:
+        return message
+    return f"{context}\n\n[User Question]\n{message}"
+
+
+_PLAN_SHARE_SIGNER = TimestampSigner(salt="travel-plan-share")
+
+
+def _plan_share_token(snapshot_id: int) -> str:
+    return urllib.parse.quote(_PLAN_SHARE_SIGNER.sign(str(snapshot_id)), safe="")
+
+
+def _snapshot_from_share_token(token: str) -> TravelPlanSnapshot | None:
+    try:
+        raw = urllib.parse.unquote(token or "")
+        snapshot_id = int(_PLAN_SHARE_SIGNER.unsign(raw, max_age=60 * 60 * 24 * 90))
+    except (BadSignature, SignatureExpired, TypeError, ValueError):
+        return None
+    return TravelPlanSnapshot.objects.filter(id=snapshot_id).first()
+
+
+@require_POST
+def api_plan_snapshot(request):
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"detail": "Invalid JSON body"}, status=400)
+
+    profile = body.get("profile")
+    plan_text = body.get("plan_text")
+    places = body.get("places") or []
+    metadata = body.get("metadata") or {}
+    title = str(body.get("title") or "").strip()[:255]
+
+    if not isinstance(profile, dict):
+        return JsonResponse({"detail": "profile must be an object"}, status=400)
+    if not isinstance(plan_text, str) or not plan_text.strip():
+        return JsonResponse({"detail": "plan_text is required"}, status=400)
+    if not isinstance(places, list):
+        places = []
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    session_key = _session_key(request)
+    user = request.user if request.user.is_authenticated else None
+    defaults = {
+        "session_key": session_key,
+        "title": title,
+        "profile": profile,
+        "plan_text": plan_text[:30000],
+        "places": places[:80],
+        "metadata": metadata,
+    }
+    if user:
+        snapshot, _ = TravelPlanSnapshot.objects.update_or_create(
+            user=user,
+            defaults=defaults,
+        )
+    else:
+        snapshot, _ = TravelPlanSnapshot.objects.update_or_create(
+            session_key=session_key,
+            user=None,
+            defaults=defaults,
+        )
+    token = _plan_share_token(snapshot.id)
+    return JsonResponse({
+        "ok": True,
+        "snapshot_id": snapshot.id,
+        "share_url": request.build_absolute_uri(f"/share/plan/{token}/"),
+    })
+
+
+@require_GET
+def serve_plan_share(request, token: str):
+    snapshot = _snapshot_from_share_token(token)
+    if not snapshot:
+        return HttpResponse("Shared plan not found or expired.", status=404)
+    title = html.escape(snapshot.title or "韓国旅行プラン")
+    plan_text = html.escape(snapshot.plan_text or "")
+    updated = snapshot.updated_at.strftime("%Y-%m-%d %H:%M")
+    body = f"""<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{title}</title>
+  <style>
+    body {{ margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #172033; background: #f6f7fb; }}
+    main {{ max-width: 860px; margin: 0 auto; padding: 28px 18px 48px; }}
+    header {{ display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 18px; }}
+    h1 {{ margin: 0 0 6px; font-size: 1.45rem; line-height: 1.3; }}
+    .meta {{ margin: 0; color: #687085; font-size: .86rem; }}
+    .actions {{ display: flex; gap: 8px; flex-wrap: wrap; }}
+    button {{ border: 1px solid #cfd6e4; border-radius: 8px; background: #fff; padding: 8px 12px; font-weight: 700; cursor: pointer; }}
+    article {{ white-space: pre-wrap; line-height: 1.75; background: #fff; border: 1px solid #dfe4ee; border-radius: 10px; padding: 20px; }}
+    footer {{ margin-top: 14px; color: #687085; font-size: .78rem; }}
+    @media print {{
+      body {{ background: #fff; }}
+      main {{ padding: 0; max-width: none; }}
+      .actions {{ display: none; }}
+      article {{ border: none; padding: 0; }}
+    }}
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>{title}</h1>
+        <p class="meta">Shared travel plan · {html.escape(updated)}</p>
+      </div>
+      <div class="actions">
+        <button type="button" onclick="navigator.clipboard?.writeText(location.href); this.textContent='コピー済み';">リンクコピー</button>
+        <button type="button" onclick="window.print()">PDF保存</button>
+      </div>
+    </header>
+    <article>{plan_text}</article>
+    <footer>施設の営業時間・チケット・交通情報は出発前に公式情報で確認してください。</footer>
+  </main>
+</body>
+</html>"""
+    return HttpResponse(body, content_type="text/html; charset=utf-8")
+
+
 @require_POST
 def api_chat(request):
     try:
@@ -605,9 +795,13 @@ def api_chat(request):
     upsert_traveler_profile(chat_session, traveler_profile if isinstance(traveler_profile, dict) else None)
 
     profile_payload = traveler_profile if isinstance(traveler_profile, dict) else None
+    recent_snapshot = None if profile_payload else _latest_plan_snapshot(request)
+    chat_message = _with_recent_plan_context(message, recent_snapshot)
+    if profile_payload is None:
+        profile_payload = _chat_profile_from_snapshot(recent_snapshot)
     try:
         chat_result = run_chat(
-            message=message,
+            message=chat_message,
             reply_language=reply_language,
             history=clean_history,
             latitude=latitude,
@@ -729,6 +923,10 @@ def api_chat_stream(request):
         longitude=longitude,
     )
     profile_payload = traveler_profile if isinstance(traveler_profile, dict) else None
+    recent_snapshot = None if profile_payload else _latest_plan_snapshot(request)
+    chat_message = _with_recent_plan_context(message, recent_snapshot)
+    if profile_payload is None:
+        profile_payload = _chat_profile_from_snapshot(recent_snapshot)
     upsert_traveler_profile(chat_session, profile_payload)
 
     from tour_api.llm_service import run_chat_stream
@@ -737,7 +935,7 @@ def api_chat_stream(request):
         full_reply = ""
         try:
             for event_type, data in run_chat_stream(
-                message=message,
+                message=chat_message,
                 reply_language=reply_language,
                 history=clean_history,
                 latitude=latitude,

@@ -61,7 +61,195 @@
         opts
       );
     }
-    return p.google_maps_uri || p.maps_url || stop?.url || "#";
+    if (p.google_maps_uri || p.maps_url || stop?.url) {
+      return p.google_maps_uri || p.maps_url || stop?.url;
+    }
+    if (stop?.lat != null && stop?.lng != null) {
+      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${stop.lat},${stop.lng}`)}`;
+    }
+    const q = p.name || stop?.label;
+    return q ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}` : "#";
+  }
+
+  function _normStopText(s) {
+    return String(s || "").toLowerCase().replace(/\s+/g, "").trim();
+  }
+
+  function _sameStop(a, b) {
+    if (!a || !b) return false;
+    if (a.isAirport && b.isAirport) return true;
+    if (a.isAccommodation && b.isAccommodation) return true;
+    if (a.lat != null && a.lng != null && b.lat != null && b.lng != null) {
+      return Math.abs(Number(a.lat) - Number(b.lat)) < 0.0005 &&
+        Math.abs(Number(a.lng) - Number(b.lng)) < 0.0005;
+    }
+    const an = _normStopText(a.place?.name || a.label);
+    const bn = _normStopText(b.place?.name || b.label);
+    return Boolean(an && bn && an === bn);
+  }
+
+  function buildAirportStop(iata) {
+    const geo = AIRPORT_GEO[String(iata || "").toUpperCase()];
+    if (!geo) return null;
+    return {
+      url: "",
+      place: { name: geo.name, latitude: geo.lat, longitude: geo.lng },
+      label: geo.name,
+      line: geo.name,
+      lat: geo.lat,
+      lng: geo.lng,
+      isAirport: true,
+    };
+  }
+
+  function buildAccommodationStop(meta) {
+    const a = meta?.accommodation || {};
+    const selected = a.selectedHotel || a.selectedPlace || {};
+    const lat = a.latitude ?? selected.latitude ?? null;
+    const lng = a.longitude ?? selected.longitude ?? null;
+    const rawName = a.name || selected.name || a.address || a.region || "";
+    const address = a.address || selected.address || a.detail || a.region || "";
+    if (!rawName && !address && lat == null) return null;
+    const name = rawName || "宿泊先";
+    return {
+      url: selected.google_maps_uri || selected.maps_url || "",
+      place: {
+        ...selected,
+        name,
+        address,
+        latitude: lat,
+        longitude: lng,
+        primary_type: "宿泊先",
+      },
+      label: name,
+      line: address || "宿泊先",
+      lat: lat != null ? Number(lat) : null,
+      lng: lng != null ? Number(lng) : null,
+      isAccommodation: true,
+    };
+  }
+
+  function ensureDay(days, dayNum, title) {
+    let day = days.find((d) => d.day === dayNum);
+    if (!day) {
+      day = { day: dayNum, title, stops: [] };
+      days.push(day);
+      days.sort((a, b) => a.day - b.day);
+    }
+    return day;
+  }
+
+  function ensureFallbackDays(days, fallbackDayCount) {
+    const n = Number(fallbackDayCount || 0);
+    if (!Number.isFinite(n) || n <= 0) return days;
+    for (let d = 1; d <= n; d++) {
+      ensureDay(days, d, `Day ${d}`);
+    }
+    days.sort((a, b) => a.day - b.day);
+    return days;
+  }
+
+  function normalizePlanDays(days, fallbackDayCount) {
+    const n = Number(fallbackDayCount || 0);
+    const hasCap = Number.isFinite(n) && n > 0;
+    const byDay = new Map();
+    for (const src of days || []) {
+      const dayNum = Number(src?.day || 0);
+      if (!Number.isFinite(dayNum) || dayNum <= 0) continue;
+      if (hasCap && dayNum > n) continue;
+      const existing = byDay.get(dayNum);
+      if (existing) {
+        existing.stops.push(...(src.stops || []));
+        if (!existing.title || /^Day\s+\d+$/i.test(existing.title)) {
+          existing.title = src.title || existing.title;
+        }
+      } else {
+        byDay.set(dayNum, {
+          day: dayNum,
+          title: src.title || `Day ${dayNum}`,
+          stops: [...(src.stops || [])],
+        });
+      }
+    }
+    const out = [...byDay.values()].sort((a, b) => a.day - b.day);
+    ensureFallbackDays(out, fallbackDayCount);
+    return out;
+  }
+
+  function _textHasAny(text, words) {
+    const s = String(text || "").toLowerCase();
+    return words.some((w) => s.includes(String(w).toLowerCase()));
+  }
+
+  function _isSudogwonAccommodation(meta) {
+    const a = meta?.accommodation || {};
+    const text = [
+      a.name,
+      a.address,
+      a.detail,
+      a.region,
+      a.selectedHotel?.address,
+      a.selectedPlace?.address,
+    ].filter(Boolean).join(" ");
+    return _textHasAny(text, [
+      "서울", "ソウル", "seoul",
+      "경기", "京畿", "gyeonggi",
+      "인천", "仁川", "incheon",
+      "고양", "高陽", "goyang",
+      "수원", "水原", "suwon",
+    ]);
+  }
+
+  function _isLongDistanceFromAccommodation(meta) {
+    if (!_isSudogwonAccommodation(meta)) return false;
+    const regions = meta?.regions || [];
+    if (regions.some((r) => ["gangwon", "chungcheong", "jeolla", "gyeongsang", "jeju"].includes(r))) {
+      return true;
+    }
+    return _textHasAny(meta?.regionCities || meta?.region_cities || "", [
+      "부산", "釜山", "busan",
+      "광주", "光州", "gwangju",
+      "강릉", "江陵", "gangneung",
+      "속초", "束草", "sokcho",
+      "제주", "済州", "jeju",
+      "대구", "大邱", "daegu",
+      "전주", "全州", "jeonju",
+      "여수", "麗水", "yeosu",
+    ]);
+  }
+
+  function addRouteAnchors(days, meta) {
+    const airportStop = buildAirportStop(meta?.arrivalAirport);
+    const accommodationStop = buildAccommodationStop(meta);
+    const isLongDistance = _isLongDistanceFromAccommodation(meta);
+
+    if (airportStop || accommodationStop) {
+      const day1 = ensureDay(days, 1, "1日目（到着日）");
+      if (airportStop && !day1.stops.some((s) => _sameStop(s, airportStop))) {
+        day1.stops.unshift({ ...airportStop });
+      }
+      if (accommodationStop && !day1.stops.some((s) => _sameStop(s, accommodationStop))) {
+        const airportIdx = airportStop
+          ? day1.stops.findIndex((s) => _sameStop(s, airportStop))
+          : -1;
+        day1.stops.splice(Math.max(airportIdx + 1, 0), 0, { ...accommodationStop });
+      }
+    }
+
+    if (accommodationStop) {
+      days.forEach((day) => {
+        if (day.day <= 1 || !day.stops?.length) return;
+        const isOutboundDay = isLongDistance && day.day === 2;
+        const isReturnDay = isLongDistance && meta?.days && day.day === Number(meta.days) - 1;
+        if (!isLongDistance && !_sameStop(day.stops[0], accommodationStop)) {
+          day.stops.unshift({ ...accommodationStop });
+        } else if (isOutboundDay && !_sameStop(day.stops[0], accommodationStop)) {
+          day.stops.unshift({ ...accommodationStop });
+        } else if (isReturnDay && !day.stops.some((s) => _sameStop(s, accommodationStop))) {
+          day.stops.push({ ...accommodationStop });
+        }
+      });
+    }
   }
 
   function showMapStatus(msg, isError) {
@@ -172,8 +360,7 @@
       days[0].stops.unshift(...orphanStops);
     }
 
-    days.sort((a, b) => a.day - b.day);
-    return days.filter((d) => d.stops.length > 0 || days.length === 1);
+    return normalizePlanDays(days, fallbackDayCount);
   }
 
   async function fetchMapsConfig() {
@@ -352,6 +539,10 @@
   function renderDayStops(day) {
     const el = document.getElementById("planDayStops");
     if (!el) return;
+    if (!day?.stops?.length) {
+      el.innerHTML = `<p class="plan-map-fallback-msg">この日の地図表示用スポットはまだありません。テキスト詳細計画を確認してください。</p>`;
+      return;
+    }
     const colors = markerColors();
     let mapNum = 0; // 지도 마커 번호 (좌표 있는 stop만 카운트)
     el.innerHTML = (day.stops || [])
@@ -361,9 +552,13 @@
         const name = esc(p.name || stop.label);
         const cat = stop.isAirport
           ? "空港"
+          : stop.isAccommodation
+          ? "宿泊先"
           : esc(p.primary_type || p.types?.[0] || "観光スポット");
         const thumb = stop.isAirport
           ? `<span class="plan-day-stop__fallback">✈️</span>`
+          : stop.isAccommodation
+          ? `<span class="plan-day-stop__fallback">🏨</span>`
           : p.photo_name
           ? `<img src="/api/photo/?name=${encodeURIComponent(p.photo_name)}" alt="" loading="lazy" />`
           : `<span class="plan-day-stop__fallback">📍</span>`;
@@ -474,29 +669,10 @@
     _planDays.forEach((d) => {
       d.stops = d.stops.filter((s) => !_isJpLocation(s.label));
     });
-    _planDays = _planDays.filter((d) => d.stops.length > 0);
+    _planDays = normalizePlanDays(_planDays, meta?.days || meta?.nights + 1);
 
-    if (meta?.arrivalAirport) {
-      const geo = AIRPORT_GEO[String(meta.arrivalAirport).toUpperCase()];
-      if (geo) {
-        const airportStop = {
-          url: "",
-          place: null,
-          label: geo.name,
-          line: geo.name,
-          lat: geo.lat,
-          lng: geo.lng,
-          isAirport: true,
-        };
-        if (_planDays.length > 0 && _planDays[0].day === 1) {
-          // 파싱된 Day 1이 있으면 맨 앞에 추가
-          _planDays[0].stops.unshift(airportStop);
-        } else {
-          // 플랜이 Day 2부터 시작하는 경우(도착일 이동만인 경우) → 합성 Day 1 생성
-          _planDays.unshift({ day: 1, title: "1日目（到着日）", stops: [airportStop] });
-        }
-      }
-    }
+    addRouteAnchors(_planDays, meta);
+    _planDays = normalizePlanDays(_planDays, meta?.days || meta?.nights + 1);
 
     if (!_planDays.length) {
       shell.style.display = "none";

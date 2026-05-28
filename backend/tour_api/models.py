@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 
+from django.conf import settings
 from django.db import models
 from pgvector.django import VectorField
 
@@ -72,6 +73,31 @@ class TravelerProfile(models.Model):
     extra_preferences = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+
+class TravelPlanSnapshot(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="travel_plan_snapshots",
+    )
+    session_key = models.CharField(max_length=64, blank=True, db_index=True)
+    title = models.CharField(max_length=255, blank=True)
+    profile = models.JSONField(default=dict, blank=True)
+    plan_text = models.TextField(blank=True)
+    places = models.JSONField(default=list, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        indexes = [
+            models.Index(fields=["user", "updated_at"]),
+            models.Index(fields=["session_key", "updated_at"]),
+        ]
 
 
 class KnowledgeDocument(models.Model):

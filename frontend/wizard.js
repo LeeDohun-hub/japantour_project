@@ -30,7 +30,7 @@ async function init() {
   setupStep2();
   setupStep3();
   setupChipGroup("transportChips",       false);
-  setupChipGroup("regionChips",          false);
+  setupChipGroup("regionChips",          true);
   setupRegionCityPicker();
   setupChipGroup("activityChips",        false);
   setupChipGroup("budgetPriorityChips",  false);
@@ -176,6 +176,35 @@ function setupNavigation() {
     generatePlan(true);
     window.scrollTo(0, 0);
   });
+
+  $("btnPrintPlan")?.addEventListener("click", () => {
+    window.print();
+  });
+
+  $("btnSharePlan")?.addEventListener("click", async () => {
+    const url = wizardData.planShareUrl || "";
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      _setShareButtonLabel("コピー済み");
+      setTimeout(() => _syncPlanShareActions(), 1400);
+    } catch {
+      window.prompt("共有リンク", url);
+    }
+  });
+}
+
+function _setShareButtonLabel(text) {
+  const btn = $("btnSharePlan");
+  if (btn) btn.textContent = `🔗 ${text}`;
+}
+
+function _syncPlanShareActions() {
+  const btn = $("btnSharePlan");
+  if (!btn) return;
+  const hasUrl = Boolean(wizardData.planShareUrl);
+  btn.disabled = !hasUrl;
+  _setShareButtonLabel(hasUrl ? "共有リンクをコピー" : "共有リンク準備中");
 }
 
 // ── VALIDATION ────────────────────────────────────────────────────────────
@@ -206,14 +235,8 @@ function validate(step) {
     if (err) err.style.display = "none";
   }
   if (step === 6) {
-    const total = $("budgetTotal").value;
     const errEl = $("budgetTotalError");
-    if (!total || +total <= 0) {
-      errEl.textContent = "総予算を入力してください";
-      $("budgetTotal").focus();
-      return false;
-    }
-    errEl.textContent = "";
+    if (errEl) errEl.textContent = "";
   }
   if (step === 5) {
     const regions = chips("regionChips");
@@ -226,8 +249,10 @@ function validate(step) {
     if (areaErr) areaErr.hidden = true;
 
     const cityCount = document.querySelectorAll("#regionCityPanels .chip.selected").length;
+    const cityOtherCount = _regionCityOtherTokens().length;
     const cityErr = $("regionCityError");
-    if (cityCount === 0) {
+    if (cityCount + cityOtherCount !== 1) {
+      if (cityErr) cityErr.textContent = "都市・区は1つだけ選んでください。";
       if (cityErr) cityErr.hidden = false;
       $("regionCitySection")?.scrollIntoView({ behavior: "smooth", block: "center" });
       return false;
@@ -297,8 +322,9 @@ function collect(step) {
       wizardData.transport = chips("transportChips");
       break;
     case 5: {
-      wizardData.regions = chips("regionChips");
-      wizardData.regionCityIds = getSelectedRegionCityIds();
+      wizardData.regions = chips("regionChips").slice(0, 1);
+      wizardData.regionCityIds = getSelectedRegionCityIds().slice(0, 1);
+      wizardData.regionCityMeta = getSelectedRegionCityMeta().slice(0, 1);
       const built = buildRegionCitiesString();
       if (built) wizardData.regionCities = built;
       else delete wizardData.regionCities;
@@ -982,6 +1008,43 @@ function setupReturnPager() {
   };
 }
 
+const AIRLINE_NAME_JA = {
+  "아시아나항공": "アシアナ航空",
+  "대한항공": "大韓航空",
+  "진에어": "ジンエアー",
+  "에어부산": "エアプサン",
+  "에어서울": "エアソウル",
+  "이스타항공": "イースター航空",
+  "제주항공": "チェジュ航空",
+  "티웨이항공": "ティーウェイ航空",
+  "에어로케이항공": "エアロK",
+  "에어프레미아": "エアプレミア",
+  "에어프레미아항공": "エアプレミア",
+  "플라이강원": "フライ江原",
+  "에티오피아항공": "エチオピア航空",
+  "파라타항공": "パラタ航空",
+  "ZIPAIR": "ZIPAIR",
+};
+
+const AIRLINE_CODE_NAME_JA = {
+  ET: "エチオピア航空",
+};
+
+function displayAirlineName(name, code = "") {
+  const raw = String(name || "").trim();
+  const norm = raw.replace(/\s+/g, "");
+  return AIRLINE_NAME_JA[raw] || AIRLINE_NAME_JA[norm] || AIRLINE_CODE_NAME_JA[String(code || "").toUpperCase()] || raw;
+}
+
+function displayOperatingDays(days) {
+  let text = String(days || "").trim();
+  if (!text) return "";
+  const map = { 월: "月", 화: "火", 수: "水", 목: "木", 금: "金", 토: "土", 일: "日" };
+  text = text.replace(/[월화수목금토일]/g, (ch) => map[ch] || ch);
+  text = text.replace(/매일|매일운항/g, "毎日");
+  return text;
+}
+
 function renderFlightSelectCard(f, idx, leg = "arrival") {
   const dep = f.dep_scheduled || "--:--";
   const arr = f.arr_scheduled || "--:--";
@@ -997,18 +1060,18 @@ function renderFlightSelectCard(f, idx, leg = "arrival") {
       : f.arr_terminal
         ? ` · ${f.arr_terminal}`
         : "";
-  const delay = f.arr_delay > 0 ? `<span class="fsc-delay">+${f.arr_delay}분 지연</span>` : "";
-  const days = f.operating_days ? `<span class="fsc-days">${f.operating_days}</span>` : "";
+  const delay = f.arr_delay > 0 ? `<span class="fsc-delay">+${f.arr_delay}分遅延</span>` : "";
+  const days = f.operating_days ? `<span class="fsc-days">${escHtml(displayOperatingDays(f.operating_days))}</span>` : "";
   const aliases = [...new Set((f.codeshare_aliases || []).filter(Boolean))];
   const MAX_ALIASES = 4;
   const aliasShown = aliases.slice(0, MAX_ALIASES);
-  const aliasMore = aliases.length > MAX_ALIASES ? ` 외 ${aliases.length - MAX_ALIASES}편` : "";
+  const aliasMore = aliases.length > MAX_ALIASES ? ` 他${aliases.length - MAX_ALIASES}便` : "";
   const aliasHtml = aliasShown.length
     ? `<span class="fsc-aliases">+ ${aliasShown.join(" · ")}${aliasMore}</span>`
     : "";
   return `
 <div class="flight-sel-card" data-idx="${idx}">
-  <div class="fsc-airline">${escHtml(f.airline_name)} <span class="fsc-num">${escHtml(f.flight_iata)}</span>${aliasHtml}${days}</div>
+  <div class="fsc-airline">${escHtml(displayAirlineName(f.airline_name, f.airline_iata))} <span class="fsc-num">${escHtml(f.flight_iata)}</span>${aliasHtml}${days}</div>
   <div class="fsc-route">
     <span class="fsc-ap">${escHtml(f.dep_iata)}</span>
     <span class="fsc-time">${dep}</span>
@@ -1076,8 +1139,9 @@ function setupChipGroup(id, singleSelect) {
     const chip = e.target.closest(".chip");
     if (!chip) return;
     if (singleSelect) {
+      const wasSelected = chip.classList.contains("selected");
       el.querySelectorAll(".chip").forEach((c) => c.classList.remove("selected"));
-      chip.classList.add("selected");
+      if (!wasSelected) chip.classList.add("selected");
     } else {
       chip.classList.toggle("selected");
     }
@@ -1096,6 +1160,11 @@ function setupRegionCityPicker() {
 
   regionEl.addEventListener("click", () => {
     setTimeout(() => {
+      wizardData.regionCityIds = [];
+      wizardData.regionCityMeta = [];
+      wizardData.regionCities = "";
+      const otherIn = $("regionCitiesOther");
+      if (otherIn) otherIn.value = "";
       syncRegionCityPanels();
       syncSportsChipsForRegion();
     }, 0);
@@ -1104,12 +1173,22 @@ function setupRegionCityPicker() {
   panels.addEventListener("click", (e) => {
     const chip = e.target.closest(".chip");
     if (!chip?.dataset?.val) return;
+    panels.querySelectorAll(".chip").forEach((c) => {
+      if (c !== chip) c.classList.remove("selected");
+    });
     chip.classList.toggle("selected");
+    if (chip.classList.contains("selected")) {
+      const otherIn = $("regionCitiesOther");
+      if (otherIn) otherIn.value = "";
+    }
     const err = $("regionCityError");
     if (err) err.hidden = true;
   });
 
   $("regionCitiesOther")?.addEventListener("input", () => {
+    if (($("regionCitiesOther").value || "").trim()) {
+      panels.querySelectorAll(".chip.selected").forEach((c) => c.classList.remove("selected"));
+    }
     const err = $("regionCityError");
     if (err && ($("regionCitiesOther").value || "").trim()) err.hidden = true;
   });
@@ -1169,6 +1248,15 @@ function syncRegionCityPanels() {
   panels.innerHTML = html;
 }
 
+function _regionCityOtherTokens() {
+  const other = ($("regionCitiesOther")?.value || "").trim();
+  if (!other) return [];
+  return other
+    .split(/[,、/・\n|]+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
 function getSelectedRegionCityIds() {
   const ids = [];
   document.querySelectorAll("#regionCityPanels .chip.selected").forEach((chip) => {
@@ -1179,24 +1267,38 @@ function getSelectedRegionCityIds() {
   return ids;
 }
 
+function getSelectedRegionCityMeta() {
+  return getSelectedRegionCityIds()
+    .map((key) => {
+      const [region, id] = key.split(":");
+      const option = (window.REGION_CITY_OPTIONS?.[region] || []).find((c) => c.id === id);
+      if (!option) return null;
+      return {
+        key,
+        region,
+        id,
+        label: option.label,
+        query: option.query,
+      };
+    })
+    .filter(Boolean);
+}
+
 function buildRegionCitiesString() {
   const parts = [];
   document.querySelectorAll("#regionCityPanels .chip.selected").forEach((chip) => {
     const q = (chip.dataset.query || "").trim();
     if (q) parts.push(q);
   });
-  const other = ($("regionCitiesOther")?.value || "").trim();
-  if (other) {
-    other.split(/[,、/・\n|]+/).forEach((t) => {
-      const s = t.trim();
-      if (s) parts.push(s);
-    });
-  }
+  parts.push(..._regionCityOtherTokens());
   return [...new Set(parts)].join("・");
 }
 
 function restoreRegionCityStep() {
-  const regions = wizardData.regions || [];
+  const regions = (wizardData.regions || []).slice(0, 1);
+  wizardData.regions = regions;
+  wizardData.regionCityIds = (wizardData.regionCityIds || []).slice(0, 1);
+  wizardData.regionCityMeta = (wizardData.regionCityMeta || []).slice(0, 1);
   document.querySelectorAll("#regionChips .chip").forEach((c) => {
     c.classList.toggle("selected", regions.includes(c.dataset.val));
   });
@@ -1358,6 +1460,8 @@ async function generatePlan(isReroll = false) {
   $("planLoadingArea").style.display = "block";
   $("planOutputArea").style.display  = "none";
   $("planErrorArea").style.display   = "none";
+  wizardData.planShareUrl = "";
+  _syncPlanShareActions();
   if (window.PlanMapView?.destroy) window.PlanMapView.destroy();
 
   let progress = 0;
@@ -1464,6 +1568,9 @@ async function generatePlan(isReroll = false) {
       $("planLoadingArea").style.display = "none";
       $("planTitle").textContent = _planResultTitle(currentUser || {});
       await _displayPlanOutput({ ...metaData, reply: fullReply });
+      const snapshot = await _savePlanSnapshot(profilePayload, fullReply, metaData || {});
+      wizardData.planShareUrl = snapshot?.share_url || "";
+      _syncPlanShareActions();
       $("planOutputArea").style.display = "block";
     }, 400);
 
@@ -1472,6 +1579,42 @@ async function generatePlan(isReroll = false) {
     $("planLoadingArea").style.display = "none";
     $("planErrorArea").style.display   = "block";
     $("btnRetryPlan").onclick = generatePlan;
+  }
+}
+
+async function _savePlanSnapshot(profilePayload, reply, metaData) {
+  if (!reply?.trim()) return;
+  const rMap = { seoul:"ソウル", gyeonggi:"京畿道", incheon:"仁川", gangwon:"江原道",
+                 chungcheong:"忠清道", jeolla:"全羅道", gyeongsang:"慶尚道", jeju:"済州島" };
+  const regions = (profilePayload.regions || []).map((r) => rMap[r] || r).filter(Boolean);
+  const city = profilePayload.regionCities || profilePayload.regionCitiesOther || "";
+  const days = profilePayload.days ? `${profilePayload.days}日` : "";
+  const title = [regions[0], city, days].filter(Boolean).join(" · ") || "韓国旅行プラン";
+  try {
+    const res = await fetch("/api/plan-snapshot/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrfToken() },
+      credentials: "same-origin",
+      body: JSON.stringify({
+        title,
+        profile: profilePayload,
+        plan_text: reply,
+        places: metaData.places || [],
+        metadata: {
+          visitkorea_stays: metaData.visitkorea_stays || [],
+          visitkorea_festivals: metaData.visitkorea_festivals || [],
+          visitkorea_attractions: metaData.visitkorea_attractions || [],
+          sports_events: metaData.sports_events || [],
+          gyeonggi_events: metaData.gyeonggi_events || [],
+          ticket_platform_events: metaData.ticket_platform_events || [],
+        },
+      }),
+    });
+    if (!res.ok) return null;
+    return await res.json().catch(() => null);
+  } catch (err) {
+    console.warn("plan snapshot save failed", err);
+    return null;
   }
 }
 
@@ -1677,7 +1820,8 @@ function buildPrompt(isReroll = false) {
 
   if (d.regions?.length) {
     lines.push(
-      "【到着日】1日目は入国・移動・チェックイン・休息のみ。観光・食事は【希望エリア】の順で2日目以降に配置（宿泊先の市区だけで観光エリアを決めない）。"
+      "【到着日】1日目は入国・移動・チェックイン・休息のみ。観光・食事は【希望エリア】の順で2日目以降に配置（宿泊先の市区だけで観光エリアを決めない）。",
+      "【遠方観光地の扱い】宿泊先と希望エリアが遠い場合（例: ソウル/仁川/京畿の宿泊先から釜山・光州・江原・済州など）は、毎日宿泊先から日帰り往復させない。2日目に遠方エリアへ移動し、そのエリア側で滞在する前提で連続日程を組み、出国前日に元の宿泊先または出国空港圏へ戻る移動ブロックを入れる。最終日は元の宿泊先/空港圏から出国する。"
     );
   }
   if (isReroll) {
@@ -1841,7 +1985,7 @@ function setupUndecidedAddrDropdown() {
 
   sido.addEventListener("change", () => {
     const districts = ADDR_DATA[sido.value] || [];
-    sigungu.innerHTML = `<option value="">-- 선택 --</option>` +
+    sigungu.innerHTML = `<option value="">-- 選択 --</option>` +
       districts.map((d) => `<option value="${d}">${d}</option>`).join("");
     sigungu.disabled = !sido.value;
     // 도만 선택돼도 검색 (선택사항)
@@ -2587,6 +2731,8 @@ function _mapsOpenOpts() {
   return {
     regions: wizardData.regions || [],
     regionCities: wizardData.regionCities || wizardData.regionCitiesOther || "",
+    regionCityIds: wizardData.regionCityIds || [],
+    regionCityMeta: wizardData.regionCityMeta || [],
   };
 }
 
@@ -2712,7 +2858,6 @@ function _tryRenderPlaceCard(indexes, rendered, url) {
 function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
   const lines = text.split(/\r?\n/);
   const out = [];
-  const rendered = new Set();
   let timelineOpen = false;
 
   const closeTimeline = () => {
@@ -2794,6 +2939,7 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
     const line = _stripPlanClocks(rawLine);
     const trimmed = line.trim();
     if (!trimmed || _isEchoCardLine(trimmed)) return;
+    const rendered = new Set();
 
     const ticketUrls = LP ? LP.extractTicketUrls(line) : [];
     if (ticketUrls.length) {
@@ -2984,6 +3130,120 @@ function _renderPlanPlacesRefSection(places, reply) {
     <p class="plan-refs-note">${note}</p></div>`;
 }
 
+function _dateLabelJa(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function _hasAnySelected(keys, values) {
+  const set = new Set((values || []).map((v) => String(v).toLowerCase()));
+  return keys.some((k) => set.has(k));
+}
+
+function _buildTravelChecklistItems(meta = {}) {
+  const d = wizardData || {};
+  const add = d.additional || {};
+  const flight = d.flight || {};
+  const transport = d.transport || [];
+  const activities = d.activities || [];
+  const styles = add.travelStyles || [];
+  const avoid = add.foodAvoid || add.foodRestrictions || [];
+  const hasSports = activities.includes("sports") || (d.sports || []).length > 0;
+  const hasTickets = hasSports || (meta.ticket_platform_events || []).length > 0 || (meta.gyeonggi_events || []).length > 0;
+  const items = [];
+  const push = (group, text, detail = "", priority = "normal") => {
+    items.push({ group, text, detail, priority });
+  };
+
+  const arrival = flight.selected || {};
+  const ret = flight.selectedReturn || {};
+  push("航空", "航空券・パスポート名・搭乗時刻を確認", [
+    arrival.flight_no ? `往路 ${arrival.flight_no}` : "",
+    arrival.dep_time && arrival.arr_time ? `${arrival.dep_time}→${arrival.arr_time}` : "",
+    ret.flight_no ? `復路 ${ret.flight_no}` : "",
+  ].filter(Boolean).join(" / "), "high");
+  if (flight.depart || flight.returnDate) {
+    push("航空", "旅行日程をカレンダーに保存", `${_dateLabelJa(flight.depart)}${flight.returnDate ? `〜${_dateLabelJa(flight.returnDate)}` : ""}`);
+  }
+  push("入国", "パスポート残存期間・入国条件を確認", "出発前に最新条件を確認");
+  push("入国", "Q-CODE/税関申告など入国前手続きを確認", "必要な場合は出発前に登録");
+
+  const accomName = d.accommodation?.name || d.accommodation?.address || d.accommodation?.region;
+  push("宿泊", "宿泊予約・チェックイン時刻を確認", accomName || "ホテル名・住所・連絡先を保存", "high");
+  push("宿泊", "宿泊先住所を韓国語で保存", "タクシー・配送・緊急時に使いやすい形で保存");
+
+  if (_hasAnySelected(["bus"], transport)) {
+    push("交通", "空港バスの乗り場・最終便を確認", "仁川空港T1/T2の乗り場番号も確認");
+  }
+  if (_hasAnySelected(["arex", "subway", "rail"], transport) || !transport.length) {
+    push("交通", "T-money/交通カードまたはWOWPASSを準備", "空港・コンビニ・駅でチャージ");
+  }
+  if (_hasAnySelected(["taxi"], transport)) {
+    push("交通", "Kakao T用の宿泊先住所を保存", "韓国語住所と地図リンクを用意");
+  }
+  if (_hasAnySelected(["rental"], transport)) {
+    push("交通", "国際運転免許証・レンタカー予約を確認", "受取場所・返却時間・保険を確認", "high");
+  }
+
+  push("通信", "eSIM/ローミング/Wi-Fiを準備", "空港到着後すぐ使えるよう事前設定");
+  push("決済", "クレジットカード・現金・WOWPASS/両替を準備", "屋台・市場用に少額現金も用意");
+  push("電源", "韓国用C/SEタイプ変換プラグを準備", "モバイルバッテリーも持参");
+  push("天気", "出発前日に天気と服装を確認", "雨具・日焼け止め・歩きやすい靴");
+
+  if (hasTickets) {
+    push("チケット", "公演・スポーツ観戦チケットを確認", "QR/予約番号・会場・開始時間を保存", "high");
+  }
+  if (_hasAnySelected(["shop_hard"], styles) || activities.includes("shopping")) {
+    push("買い物", "免税・荷物スペース・決済上限を確認", "コスメ/グッズ購入用の余裕を確保");
+  }
+  if (_hasAnySelected(["no_spicy", "allergy", "vegetarian", "no_pork"], avoid)) {
+    push("食事", "苦手な食材・アレルギー説明文を準備", "韓国語/日本語で見せられるメモを保存", "high");
+  }
+  if (["wheelchair", "stroller", "stairs"].includes(add.mobility || "")) {
+    push("移動", "エレベーター・段差・駅出口を事前確認", "無理な徒歩移動を避ける");
+  }
+  return items;
+}
+
+function _renderTravelChecklist(meta = {}) {
+  const items = _buildTravelChecklistItems(meta);
+  if (!items.length) return "";
+  const groups = [];
+  const seen = new Set();
+  for (const item of items) {
+    if (!seen.has(item.group)) {
+      seen.add(item.group);
+      groups.push(item.group);
+    }
+  }
+  const body = groups.map((group) => {
+    const rows = items.filter((it) => it.group === group).map((it, idx) => {
+      const id = `travel-check-${_normalizePlaceName(group)}-${idx}`;
+      const badge = it.priority === "high" ? `<span class="travel-checklist__badge">重要</span>` : "";
+      const detail = it.detail ? `<p>${_escapeHtml(it.detail)}</p>` : "";
+      return `<label class="travel-checklist__item" for="${id}">
+        <input id="${id}" type="checkbox">
+        <span class="travel-checklist__box"></span>
+        <span class="travel-checklist__copy"><strong>${_escapeHtml(it.text)}</strong>${detail}</span>
+        ${badge}
+      </label>`;
+    }).join("");
+    return `<section class="travel-checklist__group">
+      <h4>${_escapeHtml(group)}</h4>
+      <div class="travel-checklist__items">${rows}</div>
+    </section>`;
+  }).join("");
+  return `<div class="travel-checklist">
+    <div class="travel-checklist__head">
+      <h3>旅行チェックリスト</h3>
+      <p>出発前に確認しておくと安心な項目です。</p>
+    </div>
+    <div class="travel-checklist__grid">${body}</div>
+  </div>`;
+}
+
 // 플랜 텍스트에서 URL 없는 관광지 이름 추출 (괄호형 또는 **bold** 형식)
 // 식당/카페 키워드가 포함된 이름은 제외 (food 카드에서 이미 처리)
 const _ATTR_PAREN_RE = /([가-힣A-Za-z][가-힣A-Za-z0-9\s]{1,25})\(([가-힣A-Za-z][가-힣A-Za-z0-9\s]{1,25})\)/gu;
@@ -3117,6 +3377,8 @@ async function _displayPlanOutput(data) {
           language: "ja",
           regions: wizardData.regions || [],
           region_cities: wizardData.regionCities || wizardData.regionCitiesOther || "",
+          region_city_ids: wizardData.regionCityIds || [],
+          region_city_meta: wizardData.regionCityMeta || [],
         }),
       });
       const body = await res.json();
@@ -3163,8 +3425,11 @@ async function _displayPlanOutput(data) {
       title,
       subtitle: "Dayタブで日程を切り替え。番号順にルートを表示します。",
       arrivalAirport: arrivalIata,
+      accommodation: wizardData.accommodation || null,
       regions: wizardData.regions || [],
       regionCities: wizardData.regionCities || wizardData.regionCitiesOther || "",
+      regionCityIds: wizardData.regionCityIds || [],
+      regionCityMeta: wizardData.regionCityMeta || [],
     });
     setTimeout(() => window.PlanMapView?.refreshMapLayout?.(), 450);
     setTimeout(() => window.PlanMapView?.refreshMapLayout?.(), 1200);
@@ -3214,6 +3479,13 @@ async function _displayPlanOutput(data) {
     sportsEl.style.display = sportsHtml ? "block" : "none";
   }
 
+  const checklistEl = $("planChecklistArea");
+  const checklistHtml = checklistEl ? _renderTravelChecklist(data) : "";
+  if (checklistEl) {
+    checklistEl.innerHTML = checklistHtml;
+    checklistEl.style.display = checklistHtml ? "block" : "none";
+  }
+
   const refsEmpty = $("planRefsEmpty");
   if (refsEmpty) {
     const hasRefs = Boolean(placesHtml || vkHtml || eventsHtml || ticketHtml || sportsHtml);
@@ -3258,7 +3530,7 @@ function _renderPlanEventsCards(events) {
       ? `<div class="plan-ev-desc">${_escapeHtml(ev.description.slice(0, 80))}${ev.description.length > 80 ? "…" : ""}</div>`
       : "";
     const _src = ev.source_service || "";
-    const source = _src.startsWith("kintex") ? "KINTEX" : _src === "kpop_web" ? "K-pop 공연" : "전국행사";
+    const source = _src.startsWith("kintex") ? "KINTEX" : _src === "kpop_web" ? "K-pop公演" : "全国イベント";
     const badge  = `<span class="plan-ev-source">${source}</span>`;
     const inner  = `
       <div class="plan-vk-thumb-wrap"><span class="plan-vk-thumb plan-vk-thumb--fallback" aria-hidden="true">🎭</span></div>

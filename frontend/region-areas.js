@@ -34,6 +34,7 @@ window.REGION_CITY_OPTIONS = {
     { id: "bucheon", label: "富川市", query: "부천시" },
     { id: "anyang", label: "安養市", query: "안양시" },
     { id: "paju", label: "坡州市", query: "파주시" },
+    { id: "gwangju_si", label: "広州市（京畿道）", query: "경기도 광주시" },
     { id: "gapyeong", label: "加平郡", query: "가평군" },
     { id: "hwaseong", label: "華城市", query: "화성시" },
     { id: "siheung", label: "始興市", query: "시흥시" },
