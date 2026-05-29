@@ -29,6 +29,9 @@ REGION_CITY_ID_TO_ITINERARY_AREA: dict[str, str] = {
     "gyeonggi:gwangju_si": "경기광주",
     "gyeonggi:gapyeong": "가평",
     "gyeonggi:hwaseong": "화성",
+    "gyeonggi:ansan": "안산",
+    "gyeonggi:ansan_danwon": "안산",
+    "gyeonggi:ansan_sangnok": "안산",
     "gyeonggi:siheung": "시흥",
     "gyeonggi:namyangju": "남양주",
     "gyeonggi:pyeongtaek": "평택",
@@ -69,6 +72,7 @@ REGION_CITY_ID_TO_ITINERARY_AREA: dict[str, str] = {
     "gyeongsang:ulsan": "울산",
     "gyeongsang:changwon": "창원",
     "gyeongsang:geoje": "거제",
+    "gyeongsang:goseong_gn": "경남고성",
     "gyeongsang:pohang": "포항",
     "gyeongsang:andong": "안동",
     "jeju:jeju_city": "제주",
@@ -85,9 +89,9 @@ REGION_ADDR_KEYWORDS: dict[str, tuple[str, ...]] = {
     "jeju": ("제주", "jeju", "seogwipo", "서귀포"),
     "gyeonggi": (
         "경기", "gyeonggi", "고양", "수원", "성남", "용인", "안양", "과천", "의정부", "파주",
-        "부천", "시흥", "안산", "화성", "광주시", "경기도 광주", "곤지암", "남한산성",
+        "부천", "시흥", "안산", "대부도", "단원구", "상록구", "화성", "광주시", "경기도 광주", "곤지암", "남한산성",
         "goyang", "suwon", "seongnam", "yongin", "anyang", "bucheon", "paju", "ilsan",
-        "namyangju", "hwaseong", "gwangju-si",
+        "namyangju", "hwaseong", "ansan", "daebudo", "danwon", "sangnok", "gwangju-si",
     ),
     "seoul": ("서울", "seoul", "mapo", "gangnam", "myeongdong", "jongno", "hongdae"),
     "incheon": ("인천", "incheon", "영종", "영종도", "songdo", "yeongjong", "yeongjongdo"),
@@ -100,8 +104,8 @@ REGION_ADDR_KEYWORDS: dict[str, tuple[str, ...]] = {
         "jeonju", "gwangju metropolitan", "yeosu", "mokpo", "suncheon",
     ),
     "gyeongsang": (
-        "경상", "gyeongsang", "대구", "경주", "창원", "포항", "울산", "진주", "거제", "경북", "경남",
-        "daegu", "gyeongju", "changwon", "pohang", "ulsan", "jinju", "geoje",
+        "경상", "gyeongsang", "대구", "경주", "창원", "포항", "울산", "진주", "거제", "고성", "경북", "경남",
+        "daegu", "gyeongju", "changwon", "pohang", "ulsan", "jinju", "geoje", "goseong",
     ),
 }
 
@@ -110,8 +114,47 @@ CITY_ID_ADDR_KEYWORDS: dict[str, tuple[str, ...]] = {
     "gyeonggi:gwangju_si": (
         "경기도 광주", "광주시", "gwangju-si", "gwangju si", "gonjiam", "곤지암", "남한산성",
     ),
+    "gyeonggi:ansan": (
+        "안산", "안산시", "대부도", "단원구", "상록구", "ansan", "daebudo", "danwon", "sangnok",
+    ),
+    "gyeonggi:ansan_danwon": (
+        "안산", "안산시", "대부도", "단원구", "ansan", "daebudo", "danwon",
+    ),
+    "gyeonggi:ansan_sangnok": (
+        "안산", "안산시", "상록구", "ansan", "sangnok",
+    ),
+    "gangwon:goseong": (
+        "강원 고성", "강원도 고성", "강원특별자치도 고성", "강원", "gangwon-do",
+        "gangwon do", "gangwon", "goseong-gun", "ganseong", "geojin", "toseong",
+        "간성", "거진", "토성", "현내", "죽왕",
+    ),
+    "gyeongsang:goseong_gn": (
+        "경남 고성", "경상남도 고성", "경남", "gyeongsangnam-do", "gyeongsangnam do",
+        "gyeongnam", "goseong-eup", "dong-oe-ri", "songhak-ro", "고성읍", "동외리",
+    ),
     "jeolla:gwangju": (
-        "광주광역시", "gwangju metropolitan", "gwangju-si, gwangju",
+        "광주광역시", "gwangju metropolitan", "gwangju, south korea", "gwangju-si, gwangju",
+        "gwangsan-gu", "buk-gu, gwangju", "dong-gu, gwangju", "seo-gu, gwangju", "nam-gu, gwangju",
+    ),
+}
+
+
+CITY_ID_ADDR_NEGATIVE_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "jeolla:gwangju": (
+        "경기도 광주", "경기광주", "gyeonggi-do", "gyeonggi do", "gwangju-si, gyeonggi",
+        "gwangju-si, gyeonggi-do", "gwangju si, gyeonggi", "gonjiam", "곤지암", "남한산성",
+    ),
+    "gyeonggi:gwangju_si": (
+        "광주광역시", "gwangju metropolitan", "gwangju, south korea",
+        "gwangsan-gu", "buk-gu, gwangju", "dong-gu, gwangju", "seo-gu, gwangju", "nam-gu, gwangju",
+    ),
+    "gangwon:goseong": (
+        "경상남도", "경남", "gyeongsangnam-do", "gyeongsangnam do", "gyeongnam",
+        "goseong-eup", "dong-oe-ri", "songhak-ro", "고성읍", "동외리",
+    ),
+    "gyeongsang:goseong_gn": (
+        "강원도", "강원특별자치도", "gangwon-do", "gangwon do", "ganseong", "geojin",
+        "toseong", "간성", "거진", "토성", "현내", "죽왕",
     ),
 }
 
@@ -158,6 +201,13 @@ def address_matches_destination(
     a = (address or "").lower()
     ids = [str(x).strip().lower() for x in (region_city_ids or []) if str(x).strip()]
     if ids:
+        negative_kws = [
+            kw.lower()
+            for cid in ids
+            for kw in CITY_ID_ADDR_NEGATIVE_KEYWORDS.get(cid, ())
+        ]
+        if negative_kws and any(kw in a for kw in negative_kws):
+            return False
         city_kws = [kw.lower() for cid in ids for kw in CITY_ID_ADDR_KEYWORDS.get(cid, ())]
         if city_kws:
             return any(kw in a for kw in city_kws)

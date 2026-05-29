@@ -269,13 +269,13 @@
             <div class="addr-selector">
               <div class="addr-row">
                 <div class="addr-field">
-                  <label class="addr-label">道・特別市・広域市</label>
+                  <label class="addr-label">韓国の広域エリア</label>
                   <select id="addrSido" class="addr-select">
                     <option value="">-- 選択 --</option>
                   </select>
                 </div>
                 <div class="addr-field">
-                  <label class="addr-label">市・郡・区</label>
+                  <label class="addr-label">市・郡・区（宿泊エリア）</label>
                   <select id="addrSigungu" class="addr-select" disabled>
                     <option value="">-- 先に上の地域を選択 --</option>
                   </select>
@@ -297,7 +297,7 @@
             </div>
             <div class="accom-search-block">
               <label class="addr-label">詳細住所で検索 <span class="opt">任意</span></label>
-              <p class="accom-search-hint">道・市・区のみで検索すると道路名住所一覧（行政安全部 API）が表示されます。施設名入力時は Google Places で検索します。</p>
+              <p class="accom-search-hint">広域エリア・宿泊エリアのみで検索すると道路名住所一覧（行政安全部 API）が表示されます。施設名入力時は Google Places で検索します。</p>
               <div class="accom-search-row">
                 <input type="text" id="accomDetailSearchInput" placeholder="例：강남구12、서울아파트" />
                 <button type="button" id="accomDetailSearchBtn" class="btn btn-sm secondary">検索</button>
@@ -321,13 +321,13 @@
             <div class="addr-selector" style="margin-top:.65rem">
               <div class="addr-row">
                 <div class="addr-field">
-                  <label class="addr-label">道・特別市・広域市</label>
+                  <label class="addr-label">韓国の広域エリア</label>
                   <select id="addrSidoUnd" class="addr-select">
                     <option value="">-- 選択 --</option>
                   </select>
                 </div>
                 <div class="addr-field">
-                  <label class="addr-label">市・郡・区</label>
+                  <label class="addr-label">市・郡・区（宿泊エリア）</label>
                   <select id="addrSigunguUnd" class="addr-select" disabled>
                     <option value="">-- 先に上の地域を選択 --</option>
                   </select>
@@ -351,7 +351,7 @@
                 <input type="text" id="hotelManualInput" placeholder="例：ロッテホテル釜山、釜山ゲストハウス" />
                 <button type="button" id="hotelManualSearchBtn" class="btn btn-sm secondary">検索</button>
               </div>
-              <p class="accom-search-hint">エリア（市・郡・区）＋ホテル名で検索します。エリア未選択の場合は入力した名前のみで検索します。</p>
+              <p class="accom-search-hint">宿泊エリア＋ホテル名で検索します。エリア未選択の場合は入力した名前のみで検索します。</p>
             </div>
             <!-- 選択済みホテル表示 -->
             <div id="hotelSelectedPanel" class="hotel-selected-panel" style="display:none">
@@ -519,14 +519,14 @@
                 <button class="chip" data-val="couple">💑 カップル</button>
                 <button class="chip" data-val="friends">👫 友人</button>
                 <button class="chip" data-val="family">👨‍👩‍👧 ファミリー</button>
-                <button class="chip" data-val="parents">👴 親孝行</button>
+                <button class="chip" data-val="parents">👴 親との旅行</button>
               </div>
             </div>
             <div class="add-group">
               <div class="wiz-section-label">移動について</div>
               <div class="chip-grid" id="mobilityChips">
-                <button class="chip" data-val="any">🚶 歩き多くてもOK</button>
-                <button class="chip" data-val="stairs">⚠ 階段不便</button>
+                <button class="chip" data-val="any">🚶 徒歩多めでもOK</button>
+                <button class="chip" data-val="stairs">⚠ 階段は少なめがよい</button>
                 <button class="chip" data-val="wheelchair">♿ ベビーカー・車椅子</button>
               </div>
             </div>
@@ -535,13 +535,13 @@
               <p class="accom-search-hint">選んだメニューが食べられる<strong>韓国料理店</strong>を、プランの昼食・夕食に優先します（配達専門店は除外）。</p>
               <div class="chip-grid" id="foodPreferenceChips">
                 <button class="chip" data-val="grilled_meat">🥩 焼肉・BBQ（サムギョプサル・カルビ）</button>
-                <button class="chip" data-val="bossam">🐷 보쌈・족발・돼지국밥</button>
-                <button class="chip" data-val="soup">🍲 スープ・チゲ・クッパ（찌개・국밥・삼계탕）</button>
-                <button class="chip" data-val="noodles">🍜 麺類（冷麺・カルクッス・チャジャン等）</button>
-                <button class="chip" data-val="seafood">🦐 海鮮・生魚（회・해물탕・조개구이）</button>
+                <button class="chip" data-val="bossam">🐷 ポッサム・チョッパル・豚クッパ</button>
+                <button class="chip" data-val="soup">🍲 スープ・チゲ・クッパ（キムチチゲ・参鶏湯など）</button>
+                <button class="chip" data-val="noodles">🍜 麺料理（冷麺・カルグクス・ジャージャー麺など）</button>
+                <button class="chip" data-val="seafood">🦐 海鮮・刺身（フェ・海鮮鍋・貝焼き）</button>
                 <button class="chip" data-val="chicken">🍗 韓国チキン（フライド・ヤンニョム・タッカルビ）</button>
-                <button class="chip" data-val="snack">🌭 分食・軽食（떡볶이・김밥・파전）</button>
-                <button class="chip" data-val="cafe">☕ カフェ・スイーツ（빙수・디저트）</button>
+                <button class="chip" data-val="snack">🌭 粉食・軽食（トッポッキ・キンパ・チヂミ）</button>
+                <button class="chip" data-val="cafe">☕ カフェ・スイーツ（ピンス・デザート）</button>
               </div>
             </div>
             <div class="add-group">

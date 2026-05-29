@@ -105,16 +105,17 @@
   function buildAccommodationStop(meta) {
     const a = meta?.accommodation || {};
     const selected = a.selectedHotel || a.selectedPlace || {};
-    const lat = a.latitude ?? selected.latitude ?? null;
-    const lng = a.longitude ?? selected.longitude ?? null;
-    const rawName = a.name || selected.name || a.address || a.region || "";
+    const isPrivateStay = a.type === "friend";
+    const lat = isPrivateStay ? null : (a.latitude ?? selected.latitude ?? null);
+    const lng = isPrivateStay ? null : (a.longitude ?? selected.longitude ?? null);
+    const rawName = isPrivateStay ? "友人・家族宅" : (a.name || selected.name || a.address || a.region || "");
     const address = a.address || selected.address || a.detail || a.region || "";
     if (!rawName && !address && lat == null) return null;
     const name = rawName || "宿泊先";
     return {
-      url: selected.google_maps_uri || selected.maps_url || "",
+      url: isPrivateStay ? "" : (selected.google_maps_uri || selected.maps_url || ""),
       place: {
-        ...selected,
+        ...(isPrivateStay ? {} : selected),
         name,
         address,
         latitude: lat,
@@ -220,6 +221,7 @@
 
   function addRouteAnchors(days, meta) {
     const airportStop = buildAirportStop(meta?.arrivalAirport);
+    const departureAirportStop = buildAirportStop(meta?.departureAirport || meta?.arrivalAirport);
     const accommodationStop = buildAccommodationStop(meta);
     const isLongDistance = _isLongDistanceFromAccommodation(meta);
 
@@ -233,6 +235,17 @@
           ? day1.stops.findIndex((s) => _sameStop(s, airportStop))
           : -1;
         day1.stops.splice(Math.max(airportIdx + 1, 0), 0, { ...accommodationStop });
+      }
+    }
+
+    const finalDayNum = Number(meta?.days || 0);
+    if (finalDayNum > 1 && (departureAirportStop || accommodationStop)) {
+      const finalDay = ensureDay(days, finalDayNum, "最終日");
+      if (accommodationStop && !finalDay.stops.some((s) => _sameStop(s, accommodationStop))) {
+        finalDay.stops.unshift({ ...accommodationStop });
+      }
+      if (departureAirportStop && !finalDay.stops.some((s) => _sameStop(s, departureAirportStop))) {
+        finalDay.stops.push({ ...departureAirportStop });
       }
     }
 
@@ -595,7 +608,9 @@
     for (const day of days) {
       for (const stop of day.stops) {
         if (stop.lat != null) continue;
-        const q = stop.place?.name || stop.label;
+        const q = stop.isAccommodation
+          ? (stop.place?.address || stop.line || stop.label)
+          : (stop.place?.name || stop.label);
         if (!q || q.length < 2) continue;
         try {
           const res = await fetch(
@@ -608,7 +623,16 @@
             if (_isKoreanCoords(lat, lng)) {
               stop.lat = lat;
               stop.lng = lng;
-              stop.place = { ...stop.place, ...p, google_maps_uri: p.maps_url || stop.url };
+              if (stop.isAccommodation) {
+                stop.place = {
+                  ...stop.place,
+                  latitude: lat,
+                  longitude: lng,
+                  google_maps_uri: stop.url || "",
+                };
+              } else {
+                stop.place = { ...stop.place, ...p, google_maps_uri: p.maps_url || stop.url };
+              }
             }
             // 한국 영역 밖 좌표(일본 등)는 null 유지
           }

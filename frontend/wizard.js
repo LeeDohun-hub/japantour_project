@@ -1387,6 +1387,77 @@ const ADDR_DATA = {
   "제주특별자치도":  ["서귀포시","제주시"],
 };
 
+const SIDO_DISPLAY_LABELS = {
+  "서울특별시": "Seoul",
+  "부산광역시": "Busan",
+  "대구광역시": "Daegu",
+  "인천광역시": "Incheon",
+  "광주광역시": "Gwangju",
+  "대전광역시": "Daejeon",
+  "울산광역시": "Ulsan",
+  "세종특별자치시": "Sejong",
+  "경기도": "Gyeonggi-do",
+  "강원특별자치도": "Gangwon-do",
+  "충청북도": "Chungcheongbuk-do",
+  "충청남도": "Chungcheongnam-do",
+  "전북특별자치도": "Jeonbuk-do",
+  "전라남도": "Jeollanam-do",
+  "경상북도": "Gyeongsangbuk-do",
+  "경상남도": "Gyeongsangnam-do",
+  "제주특별자치도": "Jeju-do",
+};
+
+const HANGUL_INITIAL_ROMAN = ["g","kk","n","d","tt","r","m","b","pp","s","ss","","j","jj","ch","k","t","p","h"];
+const HANGUL_MEDIAL_ROMAN = ["a","ae","ya","yae","eo","e","yeo","ye","o","wa","wae","oe","yo","u","wo","we","wi","yu","eu","ui","i"];
+const HANGUL_FINAL_ROMAN = ["","k","k","ks","n","nj","nh","t","l","lk","lm","lb","ls","lt","lp","lh","m","p","ps","t","t","ng","t","t","k","t","p","t"];
+
+function _hangulToRoman(text) {
+  return String(text || "").replace(/[가-힣]/g, (ch) => {
+    const code = ch.charCodeAt(0) - 0xac00;
+    const jong = code % 28;
+    const jung = Math.floor(code / 28) % 21;
+    const cho = Math.floor(code / 588);
+    return `${HANGUL_INITIAL_ROMAN[cho] || ""}${HANGUL_MEDIAL_ROMAN[jung] || ""}${HANGUL_FINAL_ROMAN[jong] || ""}`;
+  });
+}
+
+function _titleCaseRoman(text) {
+  return String(text || "")
+    .split(/(\s|-)/)
+    .map((part) => /^[a-z]/.test(part) ? part.charAt(0).toUpperCase() + part.slice(1) : part)
+    .join("");
+}
+
+function _romanizedAreaLabel(part) {
+  const suffixMap = { "시": "-si", "군": "-gun", "구": "-gu" };
+  const suffix = suffixMap[part.slice(-1)];
+  if (suffix) return `${_titleCaseRoman(_hangulToRoman(part.slice(0, -1)))}${suffix}`;
+  return _titleCaseRoman(_hangulToRoman(part));
+}
+
+function _areaDisplayLabel(name) {
+  if (!name) return "";
+  if (SIDO_DISPLAY_LABELS[name]) return SIDO_DISPLAY_LABELS[name];
+  return String(name)
+    .split(" ")
+    .map((part) => {
+      return _romanizedAreaLabel(part);
+    })
+    .join(" ");
+}
+
+function _selectedOptionLabel(selectId) {
+  const el = $(selectId);
+  if (!el || !el.value) return "";
+  return el.options[el.selectedIndex]?.textContent || _areaDisplayLabel(el.value);
+}
+
+function _buildAccomDisplayBase() {
+  return [_selectedOptionLabel("addrSido"), _selectedOptionLabel("addrSigungu")]
+    .filter(Boolean)
+    .join(" ");
+}
+
 // ── PLAN GENERATION ───────────────────────────────────────────────────────
 let _planRerollCount = 0;
 
@@ -1647,7 +1718,7 @@ function buildPrompt(isReroll = false) {
   };
   const tMap = { rail:"鉄道・地下鉄（AREX・広域鉄道）", taxi:"タクシー", bus:"空港バス", rental:"レンタカー",
                  arex:"鉄道・地下鉄（AREX）", subway:"鉄道・地下鉄" }; // 하위호환
-  const cMap = { solo:"一人旅", couple:"カップル", friends:"友人", family:"ファミリー", parents:"親孝行" };
+  const cMap = { solo:"一人旅", couple:"カップル", friends:"友人", family:"ファミリー", parents:"親との旅行" };
   const pMap = { packed:"びっしり", relaxed:"のんびり" };
   const sMap = { budget:"コスパ重視", normal:"バランス", premium:"プレミアム" };
 
@@ -1784,10 +1855,10 @@ function buildPrompt(isReroll = false) {
     if (add.companion)              parts.push(cMap[add.companion]||add.companion);
     if (add.pace)                   parts.push(pMap[add.pace]||add.pace);
     const prefMap = {
-      grilled_meat: "焼肉・サムギョプサル", bossam: "보쌈・족발・돼지국밥",
-      soup: "スープ・チゲ・クッパ", noodles: "麺類",
-      seafood: "海鮮・生魚", chicken: "韓国チキン",
-      snack: "分食・軽食", cafe: "カフェ・スイーツ",
+      grilled_meat: "焼肉・サムギョプサル", bossam: "ポッサム・チョッパル・豚クッパ",
+      soup: "スープ・チゲ・クッパ", noodles: "麺料理",
+      seafood: "海鮮・刺身", chicken: "韓国チキン",
+      snack: "粉食・軽食", cafe: "カフェ・スイーツ",
     };
     const avoidMap = {
       no_spicy: "辛いものは苦手", allergy: "アレルギーあり", vegan: "ベジタリアン",
@@ -1979,14 +2050,15 @@ function setupUndecidedAddrDropdown() {
 
   Object.keys(ADDR_DATA).forEach((d) => {
     const opt = document.createElement("option");
-    opt.value = opt.textContent = d;
+    opt.value = d;
+    opt.textContent = _areaDisplayLabel(d);
     sido.appendChild(opt);
   });
 
   sido.addEventListener("change", () => {
     const districts = ADDR_DATA[sido.value] || [];
     sigungu.innerHTML = `<option value="">-- 選択 --</option>` +
-      districts.map((d) => `<option value="${d}">${d}</option>`).join("");
+      districts.map((d) => `<option value="${_escapeAttr(d)}">${escHtml(_areaDisplayLabel(d))}</option>`).join("");
     sigungu.disabled = !sido.value;
     // 도만 선택돼도 검색 (선택사항)
     _fetchHotelRecommend();
@@ -2012,7 +2084,9 @@ function _buildUndecidedArea() {
 function _buildHotelSearchContext() {
   const sido    = ($("addrSidoUnd")?.value    || "").trim();
   const sigungu = ($("addrSigunguUnd")?.value || "").trim();
-  const label   = [sido, sigungu].filter(Boolean).join(" ");
+  const label   = [_selectedOptionLabel("addrSidoUnd"), _selectedOptionLabel("addrSigunguUnd")]
+    .filter(Boolean)
+    .join(" ");
   let query = "";
   if (sigungu && sido) query = `${sido} ${sigungu} 호텔`;
   else if (sigungu) query = `${sigungu} 호텔`;
@@ -2250,14 +2324,15 @@ function setupAddrDropdown() {
 
   Object.keys(ADDR_DATA).forEach((d) => {
     const opt = document.createElement("option");
-    opt.value = opt.textContent = d;
+    opt.value = d;
+    opt.textContent = _areaDisplayLabel(d);
     sido.appendChild(opt);
   });
 
   sido.addEventListener("change", () => {
     const districts = ADDR_DATA[sido.value] || [];
     sigungu.innerHTML = `<option value="">-- 選択 --</option>` +
-      districts.map((d) => `<option value="${d}">${d}</option>`).join("");
+      districts.map((d) => `<option value="${_escapeAttr(d)}">${escHtml(_areaDisplayLabel(d))}</option>`).join("");
     sigungu.disabled = !sido.value;
     _syncAccomDisplay();
   });
@@ -2292,6 +2367,9 @@ function _buildFullAccomAddress() {
 
 function _syncAccomDisplay() {
   const full = _buildFullAccomAddress();
+  const displayBase = _buildAccomDisplayBase();
+  const displayDetail = _stripAccomBase(full, _buildAccomBase());
+  const displayFull = [displayBase || _buildAccomBase(), displayDetail].filter(Boolean).join(" ");
   if ($("accomAddress")) $("accomAddress").value = full;
 
   const name   = ($("accomName")?.value || "").trim();
@@ -2303,7 +2381,7 @@ function _syncAccomDisplay() {
     const nameEl = $("accomSelectedName");
     const addrEl = $("accomSelectedAddr");
     if (nameEl) nameEl.textContent = name || "選択済み住所";
-    if (addrEl) addrEl.textContent = full || _buildAccomBase();
+    if (addrEl) addrEl.textContent = displayFull;
   } else {
     infoEl.style.display = "none";
   }
@@ -2405,7 +2483,7 @@ function setupAccomSearch() {
       if (resultsEl) {
         resultsEl.style.display = "block";
         resultsEl.innerHTML =
-          '<p class="accom-search-msg">道・市・区を選んでから検索するか、施設名を入力してください。</p>';
+          '<p class="accom-search-msg">広域エリア・宿泊エリアを選んでから検索するか、施設名を入力してください。</p>';
       }
       return;
     }
@@ -2451,7 +2529,7 @@ function setupAccomDetailSearch() {
       if (resultsEl) {
         resultsEl.style.display = "block";
         resultsEl.innerHTML =
-          '<p class="accom-search-msg">道・市・区を選ぶか、詳細キーワードを入力してください。</p>';
+          '<p class="accom-search-msg">広域エリア・宿泊エリアを選ぶか、詳細キーワードを入力してください。</p>';
       }
       return;
     }
@@ -3419,12 +3497,14 @@ async function _displayPlanOutput(data) {
         ? `${stay}、${nights}泊${days}日のおすすめルート`
         : `${stay}の旅行ルート`;
     const arrivalIata = wizardData.flight?.arrival_airport || getArrivalAirportIata();
+    const departureIata = wizardData.flight?.departure_airport || getDepartureAirportIata();
     await window.PlanMapView.render(reply, placeIndexes.byUrl, {
       days: wizardData.days,
       nights: wizardData.nights,
       title,
       subtitle: "Dayタブで日程を切り替え。番号順にルートを表示します。",
       arrivalAirport: arrivalIata,
+      departureAirport: departureIata,
       accommodation: wizardData.accommodation || null,
       regions: wizardData.regions || [],
       regionCities: wizardData.regionCities || wizardData.regionCitiesOther || "",

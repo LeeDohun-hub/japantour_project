@@ -2761,8 +2761,22 @@ img.plan-place-card__img.plan-place-card__img--fallback {
 }
 
 @media print {
-  body { background: #fff !important; }
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
   .top-nav,
+  .wizard-progress-bar,
+  .wizard-steps-row,
   .wizard-nav-bar,
   .plan-actions,
   .plan-map-shell,
@@ -2770,6 +2784,33 @@ img.plan-place-card__img.plan-place-card__img--fallback {
   .btn {
     display: none !important;
   }
+
+  .layout,
+  .page-wizard,
+  .wizard-container,
+  .wizard-stage,
+  .container,
+  .home-container,
+  .wizard-shell,
+  .wiz-card,
+  .wiz-card-inner,
+  .plan-text-details,
+  .plan-content,
+  .travel-checklist {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .page-wizard,
+  .wizard-container,
+  .wizard-stage,
+  .wiz-card,
+  .wiz-card-inner {
+    display: block !important;
+  }
+
   .container,
   .home-container,
   .wizard-shell {
@@ -2778,16 +2819,49 @@ img.plan-place-card__img.plan-place-card__img--fallback {
     margin: 0 !important;
     padding: 0 !important;
   }
+
   .wiz-card {
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
     box-shadow: none !important;
     border: none !important;
+    transition: none !important;
   }
+
+  .wiz-card:not([data-step="8"]) {
+    display: none !important;
+  }
+
+  .wiz-card[data-step="8"] {
+    display: block !important;
+    padding: 0 !important;
+  }
+
   .plan-text-details,
   .plan-content,
   .travel-checklist {
     border: none !important;
     background: #fff !important;
+    box-shadow: none !important;
+    page-break-inside: auto;
+    break-inside: auto;
   }
+
+  .plan-content {
+    padding: 0 !important;
+  }
+
+  .plan-place-card,
+  .travel-checklist__group,
+  .travel-checklist__item,
+  .ticket-preview-card {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
   .plan-text-summary { display: none; }
 }
 .plan-maps-fallback {
