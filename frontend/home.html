@@ -262,8 +262,8 @@
           </div>
           <div class="option-cards" id="accomOptions">
             <button class="option-card" data-val="decided">
-              <span class="option-icon">✅</span>
-              <strong>予約済み</strong>
+              <span class="option-icon">🏠</span>
+              <strong>宿泊先決定済み</strong>
               <small>住所・エリアを入力</small>
             </button>
             <button class="option-card" data-val="undecided">
@@ -271,15 +271,10 @@
               <strong>まだ未定</strong>
               <small>宿泊おすすめ予定</small>
             </button>
-            <button class="option-card" data-val="friend">
-              <span class="option-icon">🏠</span>
-              <strong>友人・家族の家</strong>
-              <small>おおよそのエリアのみ</small>
-            </button>
           </div>
           <p class="field-error" id="accomTypeError" style="display:none">宿泊タイプを選択してください。</p>
 
-          <!-- 住所ドロップダウン（予約済み・友人宅共通） -->
+          <!-- 住所ドロップダウン（宿泊先決定済み） -->
           <div id="accomLocationBlock" class="accom-detail" style="display:none">
             <div class="addr-selector">
               <div class="addr-row">
@@ -300,16 +295,8 @@
             <input type="hidden" id="accomAddress" />
           </div>
 
-          <!-- 施設検索（予約済み・友人宅共通） -->
+          <!-- 施設検索（宿泊先決定済み） -->
           <div id="accomDetailShared" class="accom-detail" style="display:none">
-            <div class="accom-search-block">
-              <label class="addr-label">施設名で検索 <span class="opt">任意</span></label>
-              <div class="accom-search-row">
-                <input type="text" id="accomSearchInput" placeholder="例：ロッテホテル、南大門ゲストハウス..." />
-                <button type="button" id="accomSearchBtn" class="btn btn-sm secondary">検索</button>
-              </div>
-              <div id="accomSearchResults" class="accom-search-results" style="display:none"></div>
-            </div>
             <div class="accom-search-block">
               <label class="addr-label">詳細住所で検索 <span class="opt">任意</span></label>
               <p class="accom-search-hint">広域エリア・宿泊エリアのみで検索すると道路名住所一覧（行政安全部 API）が表示されます。施設名入力時は Google Places で検索します。</p>
@@ -419,20 +406,29 @@
           </div>
           <div class="wiz-section-label" style="margin-top:1.25rem">① 広域エリア <span class="req-badge">必須</span></div>
           <div class="chip-grid" id="regionChips">
-            <button type="button" class="chip" data-val="seoul">🏙 ソウル</button>
+            <button type="button" class="chip" data-val="seoul">🏙 ソウル特別市</button>
+            <button type="button" class="chip" data-val="busan">🌉 釜山広域市</button>
+            <button type="button" class="chip" data-val="daegu">🏙 大邱広域市</button>
+            <button type="button" class="chip" data-val="incheon">✈ 仁川広域市</button>
+            <button type="button" class="chip" data-val="gwangju">🌿 光州広域市</button>
+            <button type="button" class="chip" data-val="daejeon">🚄 大田広域市</button>
+            <button type="button" class="chip" data-val="ulsan">🌊 蔚山広域市</button>
+            <button type="button" class="chip" data-val="sejong">🏛 世宗特別自治市</button>
             <button type="button" class="chip" data-val="gyeonggi">🌳 京畿道</button>
-            <button type="button" class="chip" data-val="incheon">✈ 仁川</button>
-            <button type="button" class="chip" data-val="gangwon">⛰ 江原道</button>
-            <button type="button" class="chip" data-val="chungcheong">🌾 忠清道</button>
-            <button type="button" class="chip" data-val="jeolla">🌊 全羅道</button>
-            <button type="button" class="chip" data-val="gyeongsang">🏯 慶尚道</button>
-            <button type="button" class="chip" data-val="jeju">🌺 済州島</button>
+            <button type="button" class="chip" data-val="gangwon">⛰ 江原特別自治道</button>
+            <button type="button" class="chip" data-val="chungbuk">🌾 忠清北道</button>
+            <button type="button" class="chip" data-val="chungnam">🌾 忠清南道</button>
+            <button type="button" class="chip" data-val="jeonbuk">🍃 全北特別自治道</button>
+            <button type="button" class="chip" data-val="jeonnam">🌊 全羅南道</button>
+            <button type="button" class="chip" data-val="gyeongbuk">🏯 慶尚北道</button>
+            <button type="button" class="chip" data-val="gyeongnam">🏞 慶尚南道</button>
+            <button type="button" class="chip" data-val="jeju">🌺 済州特別自治道</button>
           </div>
           <p id="regionAreaError" class="field-error" role="alert" hidden>広域エリアを1つ選んでください。</p>
 
           <div id="regionCitySection" class="region-city-section">
-            <div class="wiz-section-label" style="margin-top:1.25rem">② 市・郡・区を選択 <span class="req-badge">必須</span></div>
-            <p class="accom-search-hint">①で選んだ道・広域から、<strong>市・郡・区</strong>を1つ選んでください。</p>
+            <div class="wiz-section-label" style="margin-top:1.25rem">② 市・郡・区を選択 <span class="opt">任意</span></div>
+            <p class="accom-search-hint">行きたい市・郡・区があれば選んでください。未選択の場合は、AIが①の広域エリア内で日程に合う場所を選びます。</p>
             <p id="regionCityPlaceholder" class="region-city-placeholder">↑ まず「① 広域エリア」を1つ選ぶと、ここに市・郡・区の選択肢が表示されます。</p>
             <div id="regionCityPanels" class="region-city-panels"></div>
             <details class="region-cities-other-fold">
@@ -445,7 +441,7 @@
                 autocomplete="off"
               />
             </details>
-            <p id="regionCityError" class="field-error" role="alert" hidden>都市・区を1つだけ選んでください。</p>
+            <p id="regionCityError" class="field-error" role="alert" hidden></p>
           </div>
           <div class="wiz-section-label" style="margin-top:1.5rem">やりたいこと（複数選択可）</div>
           <div class="chip-grid" id="activityChips">

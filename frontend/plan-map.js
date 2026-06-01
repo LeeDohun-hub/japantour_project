@@ -6,7 +6,7 @@
 
   const MAPS_URL_RE = /^https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps|goo\.gl\/maps|maps\.app\.goo\.gl)\/\S+/i;
   const DAY_HEADER_RE =
-    /^(?:#{1,3}\s*)?(?:【\s*)?(?:Day\s*)?(\d+)\s*日目|^(?:#{1,3}\s*)?第\s*(\d+)\s*日|^(?:#{1,3}\s*)?Day\s*(\d+)\b|最終日|帰国日|最終\s*日|^첫날|^(\d+)\s*일째|^최종일|^마지막\s*날/i;
+    /^(?:#{1,3}\s*)?(?:【\s*)?(?:Day\s*)?(\d+)\s*日目|^(?:#{1,3}\s*)?第\s*(\d+)\s*日|^(?:#{1,3}\s*)?Day\s*(\d+)\b|最終日|帰国日|最終\s*日|^첫날|^(\d+)\s*(?:일째|일차|일\s*차)|^최종일|^마지막\s*날/i;
   const GMAPS_CALLBACK = "__planMapGmapsReady";
 
   // 한국 영토 바운딩 박스 (geocoding 결과 검증용)
@@ -40,6 +40,7 @@
   let _planDays = [];
   let _activeDay = 1;
   let _mapMeta = {};
+  const _lockedStops = new Map();
 
   function esc(s) {
     return String(s || "").replace(/[&<>"']/g, (c) =>
@@ -72,20 +73,31 @@
   }
 
   function _normStopText(s) {
-    return String(s || "").toLowerCase().replace(/\s+/g, "").trim();
+    return String(s || "")
+      .toLowerCase()
+      .replace(/^(?:おすすめ|推薦|推奨|추천|권장)\s*[:：-]?\s*/i, "")
+      .replace(/[（(][^）)]*[）)]/g, "")
+      .replace(/\s+/g, "")
+      .trim();
   }
 
   function _sameStop(a, b) {
     if (!a || !b) return false;
     if (a.isAirport && b.isAirport) return true;
     if (a.isAccommodation && b.isAccommodation) return true;
+    const aUrl = a.place?.google_maps_uri || a.place?.maps_url || a.url || "";
+    const bUrl = b.place?.google_maps_uri || b.place?.maps_url || b.url || "";
+    if (aUrl && bUrl && mapsUrlKey(aUrl) === mapsUrlKey(bUrl)) return true;
+    const an = _normStopText(a.place?.name || a.label);
+    const bn = _normStopText(b.place?.name || b.label);
+    if (an && bn && (an === bn || (an.length >= 4 && bn.includes(an)) || (bn.length >= 4 && an.includes(bn)))) {
+      return true;
+    }
     if (a.lat != null && a.lng != null && b.lat != null && b.lng != null) {
       return Math.abs(Number(a.lat) - Number(b.lat)) < 0.0005 &&
         Math.abs(Number(a.lng) - Number(b.lng)) < 0.0005;
     }
-    const an = _normStopText(a.place?.name || a.label);
-    const bn = _normStopText(b.place?.name || b.label);
-    return Boolean(an && bn && an === bn);
+    return false;
   }
 
   function buildAirportStop(iata) {
@@ -173,6 +185,15 @@
       }
     }
     const out = [...byDay.values()].sort((a, b) => a.day - b.day);
+    out.forEach((day) => {
+      const deduped = [];
+      for (const stop of day.stops || []) {
+        if (!deduped.some((existing) => _sameStop(existing, stop))) {
+          deduped.push(stop);
+        }
+      }
+      day.stops = deduped;
+    });
     ensureFallbackDays(out, fallbackDayCount);
     return out;
   }
@@ -207,7 +228,13 @@
     if (regions.some((r) => ["gangwon", "chungcheong", "jeolla", "gyeongsang", "jeju"].includes(r))) {
       return true;
     }
-    return _textHasAny(meta?.regionCities || meta?.region_cities || "", [
+    const targetText = [
+      ...(Array.isArray(regions) ? regions : [regions]),
+      meta?.regionCities,
+      meta?.region_cities,
+      meta?.title,
+    ].filter(Boolean).join(" ");
+    return _textHasAny(targetText, [
       "부산", "釜山", "busan",
       "광주", "光州", "gwangju",
       "강릉", "江陵", "gangneung",
@@ -217,6 +244,164 @@
       "전주", "全州", "jeonju",
       "여수", "麗水", "yeosu",
     ]);
+  }
+
+  function _isTransitOrAnchorLine(line) {
+    return /(?:入国|出国|チェックイン|ホテル|宿泊|空港|移動|休息|休憩|到着|出発|手荷物|審査|税関|AREX|乗換|下車|徒歩|タクシー|リムジン|コンビニ|軽食)/i.test(line || "");
+  }
+
+  function _isRecommendationLine(line) {
+    return /^(?:おすすめ|推薦|推奨|추천|권장)\s*[:：-]?/i.test(String(line || "").trim());
+  }
+
+  function _isPlanNoiseLine(line) {
+    const t = String(line || "").trim();
+    if (!t) return true;
+    if (/^(?:外観写真|写真|地図|経路|ルート|지도|통로|Map|Directions)$/i.test(t)) return true;
+    if (/^【(?:予算|旅行|全体|注意|参考|移動|ポイント|チェックリスト)/.test(t)) return true;
+    if (/^\[(?:予算|旅行|全体|注意|参考|移動|ポイント)/.test(t)) return true;
+    if (/^(?:예산|여행의\s*포인트|전체\s*포인트|주의|참고)\b/.test(t)) return true;
+    if (/^★\s*\d/.test(t) || /^(?:営業中|営業終了|영업\s*중|영업\s*종료|¥+|₩+)/.test(t)) return true;
+    if (/(?:Google|グーグル|평점|評価|口コミ|件|메뉴|メニュー)/i.test(t)) return true;
+    if (/(?:この日|이 날|当日).*(?:候補|動線|移動経路|식사|동선|경로)/.test(t)) return true;
+    if (/(?:外観|写真|カード|本文で引用|본문에서 인용)/.test(t)) return true;
+    if (/(?:食事候補リスト|식사\s*후보|レストラン情報がありません|現地で|현지에서|探す|찾으|利用してください|이용해)/i.test(t)) return true;
+    if (/^(?:午前|午後|昼食|夕食|朝食|夜|ランチ|ディナー|朝|昼|食事|오전|오후|점심|저녁|아침)\s*$/.test(t)) return true;
+    return false;
+  }
+
+  function _candidateVenueTexts(line) {
+    const t = String(line || "").trim();
+    if (!t) return [];
+    const out = [];
+    const add = (s) => {
+      s = String(s || "")
+        .replace(/^[-・*①②③④⑤⑥⑦⑧⑨⑩]\s*/, "")
+        .replace(/^\[[^\]]+\]\s*/, "")
+        .replace(/^【[^】]+】\s*/, "")
+        .replace(/^(?:午前|午後|昼食|夕食|朝食|夜|ランチ|ディナー|朝|昼|食事)[:：\s]+/, "")
+        .replace(/[（(][^）)]*[）)]/g, " ")
+        .trim();
+      if (s && !out.includes(s)) out.push(s);
+    };
+
+    add(t);
+    for (const part of t.split(/[·・]/)) add(part);
+    const quoteHead = t.split(/[「『'“"<]/)[0];
+    if (quoteHead !== t) add(quoteHead);
+    const venueTail = t.match(/(?:\d{4}[-./]\d{1,2}[-./]\d{1,2}[^·・]*[·・]\s*)(.+)$/);
+    if (venueTail) add(venueTail[1]);
+    return out;
+  }
+
+  function _explicitPlaceFromLine(line, placeIndex) {
+    if (!placeIndex?.byName) return null;
+    if (_isTransitOrAnchorLine(line)) return null;
+    if (_isRecommendationLine(line) || _isPlanNoiseLine(line)) return null;
+    for (const text of _candidateVenueTexts(line)) {
+      if (
+        !text ||
+        text.length > 54 ||
+        /[。.!?！？]/.test(text) ||
+        /(?:おすすめ|人気|地元|現地|代表|確認|利用|楽し|撮影|散策|移動|候補|動線|経路|전망|시가지|현지|추천|인기|대표|확인|이용|즐기|후보|동선|경로|없습니다|찾)/i.test(text)
+      ) {
+        continue;
+      }
+      const norm = _normStopText(text);
+      if (!norm) continue;
+      if (placeIndex.byName[norm]) return placeIndex.byName[norm];
+      for (const [key, p] of Object.entries(placeIndex.byName)) {
+        if (!key || key.length < 4) continue;
+        if (norm === key) return p;
+        if (norm.startsWith(key)) {
+          const original = text.replace(/\s+/g, "");
+          const keyLenApprox = (p?.name || "").replace(/\s+/g, "").length || key.length;
+          const next = original.slice(keyLenApprox, keyLenApprox + 1);
+          if (!next || /[\s'’"“”「」『』<＜(（·・:：-]/.test(next)) return p;
+        }
+      }
+    }
+    return null;
+  }
+
+  function _isRouteTailSection(line) {
+    const t = String(line || "").trim();
+    if (!t) return false;
+    return /^(?:旅行チェックリスト|旅のチェックリスト|여행\s*체크리스트|チェックリスト|체크리스트)$/i.test(t) ||
+      /^🔗/.test(t) ||
+      /^🎫/.test(t) ||
+      /(?:参照データ|Reference Data|지역\s*주변\s*명소|旅行地周辺|旅行地\s*周辺|スポーツ・イベント・観光|チケット・公演)/i.test(t);
+  }
+
+  function _routeRelevantText(reply) {
+    const lines = String(reply || "").split(/\r?\n/);
+    const startIdx = lines.findIndex((line) =>
+      /(?:テキスト詳細計画|텍스트\s*상세\s*계획|詳細計画|상세\s*계획)/i.test(line)
+    );
+    const start = startIdx >= 0 ? startIdx + 1 : 0;
+    const out = [];
+    for (let i = start; i < lines.length; i++) {
+      if (_isRouteTailSection(lines[i])) break;
+      out.push(lines[i]);
+    }
+    return out.join("\n");
+  }
+
+  function _allowedStopKeysFromReply(reply, placeIndex) {
+    const text = _routeRelevantText(reply);
+    const lines = text.split(/\r?\n/);
+    const allowed = new Set();
+    const byUrl = placeIndex?.byUrl || placeIndex || {};
+    const byName = placeIndex?.byName || {};
+
+    const addPlace = (place, fallbackLabel) => {
+      if (!place && !fallbackLabel) return;
+      const uri = place?.google_maps_uri || place?.maps_url || "";
+      if (uri) allowed.add(`url:${mapsUrlKey(uri)}`);
+      const name = _normStopText(place?.name || fallbackLabel || "");
+      if (name) allowed.add(`name:${name}`);
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const t = lines[i].trim();
+      if (!t) continue;
+      if (MAPS_URL_RE.test(t)) {
+        const url = t.split(/\s/)[0];
+        const place = byUrl[mapsUrlKey(url)] || null;
+        addPlace(place, labelBeforeUrl(lines, url));
+        continue;
+      }
+      if (_isRecommendationLine(t) || _isPlanNoiseLine(t) || _isTransitOrAnchorLine(t)) {
+        continue;
+      }
+      const cleaned = t
+        .replace(/^[-・*①②③④⑤⑥⑦⑧⑨⑩]\s*/, "")
+        .replace(/^\[[^\]]+\]\s*/, "")
+        .replace(/^【[^】]+】\s*/, "")
+        .replace(/^(?:午前|午後|昼食|夕食|朝食|夜|ランチ|ディナー|朝|昼|食事)[:：\s]+/, "")
+        .replace(/[（(][^）)]*[）)]/g, " ")
+        .trim();
+      if (
+        !cleaned ||
+        cleaned.length > 36 ||
+        /[。.!?！？]/.test(cleaned) ||
+        /(?:おすすめ|人気|地元|現地|代表|確認|利用|楽し|撮影|散策|移動|候補|動線|経路|전망|시가지|현지|추천|인기|대표|확인|이용|즐기|후보|동선|경로|없습니다|찾)/i.test(cleaned)
+      ) {
+        continue;
+      }
+      const place = byName[_normStopText(cleaned)] || _explicitPlaceFromLine(t, placeIndex);
+      if (place) addPlace(place, cleaned);
+    }
+    return allowed;
+  }
+
+  function _stopAllowedByReply(stop, allowedKeys) {
+    if (stop?.isAirport || stop?.isAccommodation) return true;
+    if (!allowedKeys?.size) return true;
+    const uri = stop?.place?.google_maps_uri || stop?.place?.maps_url || stop?.url || "";
+    if (uri && allowedKeys.has(`url:${mapsUrlKey(uri)}`)) return true;
+    const name = _normStopText(stop?.place?.name || stop?.label || "");
+    return Boolean(name && allowedKeys.has(`name:${name}`));
   }
 
   function addRouteAnchors(days, meta) {
@@ -283,6 +468,42 @@
     return m ? `cid:${m[1]}` : String(url).split("&g_mp=")[0].split("&")[0];
   }
 
+  function stopLockKey(stop, dayNum) {
+    const p = stop?.place || {};
+    const uri = p.google_maps_uri || p.maps_url || stop?.url || "";
+    if (uri) return `url:${mapsUrlKey(uri)}`;
+    const name = _normStopText(p.name || stop?.label);
+    const coords = stop?.lat != null && stop?.lng != null
+      ? `${Number(stop.lat).toFixed(5)},${Number(stop.lng).toFixed(5)}`
+      : "";
+    return `day:${dayNum}|name:${name}|coords:${coords}`;
+  }
+
+  function stopLockPayload(stop, dayNum) {
+    const p = stop?.place || {};
+    return {
+      key: stopLockKey(stop, dayNum),
+      day: dayNum,
+      name: p.name || stop?.label || "",
+      category: stop?.isAirport
+        ? "空港"
+        : stop?.isAccommodation
+        ? "宿泊先"
+        : p.primary_type || p.types?.[0] || "スポット",
+      address: p.address || "",
+      url: p.google_maps_uri || p.maps_url || stop?.url || "",
+      note: stop?.line && !MAPS_URL_RE.test(stop.line) ? stop.line : "",
+    };
+  }
+
+  function getLockedItems() {
+    return [..._lockedStops.values()].filter((it) => it?.name);
+  }
+
+  function clearLocks() {
+    _lockedStops.clear();
+  }
+
   function buildPlaceIndex(apiPlaces) {
     const idx = {};
     for (const p of apiPlaces || []) {
@@ -298,6 +519,7 @@
     for (let j = i - 1; j >= 0; j--) {
       const t = lines[j].trim();
       if (!t || MAPS_URL_RE.test(t) || t.startsWith("http")) continue;
+      if (_isPlanNoiseLine(t) || _isRecommendationLine(t)) continue;
       if (DAY_HEADER_RE.test(t)) return "";
       return t
         .replace(/^\[[\d:〜~\-]+\]\s*/, "")
@@ -312,13 +534,29 @@
     const t = line.trim();
     if (/最終日|帰国日|最終\s*日|최종일|마지막\s*날/.test(t)) return -1;
     if (/^첫날/.test(t)) return 1;
-    const m = t.match(/(\d+)\s*日目|第\s*(\d+)\s*日|Day\s*(\d+)|(\d+)\s*일째/i);
+    const m = t.match(/(\d+)\s*日目|第\s*(\d+)\s*日|Day\s*(\d+)|(\d+)\s*(?:일째|일차|일\s*차)/i);
     if (m) return parseInt(m[1] || m[2] || m[3] || m[4], 10);
     return null;
   }
 
+  function findPlaceForLine(line, placeIndex) {
+    return _explicitPlaceFromLine(line, placeIndex);
+  }
+
+  function placeToStop(place, line) {
+    if (!place) return null;
+    return {
+      url: place.google_maps_uri || place.maps_url || "",
+      place,
+      label: place.name || line || "スポット",
+      line: line || place.name || "",
+      lat: place.latitude != null ? Number(place.latitude) : null,
+      lng: place.longitude != null ? Number(place.longitude) : null,
+    };
+  }
+
   function parsePlanDays(reply, placeIndex, fallbackDayCount) {
-    const lines = reply.split(/\r?\n/);
+    const lines = _routeRelevantText(reply).split(/\r?\n/);
     const days = [];
     let current = null;
     let orphanStops = [];
@@ -326,7 +564,7 @@
     const pushStop = (dayObj, url, lineIdx) => {
       const trimmed = lines[lineIdx].trim();
       const urlOnly = trimmed.split(/\s/)[0];
-      const place = placeIndex[mapsUrlKey(urlOnly)] || null;
+      const place = (placeIndex.byUrl || placeIndex || {})[mapsUrlKey(urlOnly)] || null;
       const label = labelBeforeUrl(lines, urlOnly) || place?.name || "スポット";
       const rec = {
         url: urlOnly,
@@ -336,7 +574,9 @@
         lat: place?.latitude != null ? Number(place.latitude) : null,
         lng: place?.longitude != null ? Number(place.longitude) : null,
       };
-      if (dayObj) dayObj.stops.push(rec);
+      if (dayObj) {
+        if (!dayObj.stops.some((s) => _sameStop(s, rec))) dayObj.stops.push(rec);
+      }
       else orphanStops.push(rec);
     };
 
@@ -346,7 +586,7 @@
       const dayNum = parseDayNumber(t);
       if (
         dayNum !== null &&
-        (/日目|Day\s*\d|第\s*\d+\s*日|最終日|帰国日|일째|첫날|최종일|마지막/i.test(t) || /^【\s*\d+/.test(t))
+        (/日目|Day\s*\d|第\s*\d+\s*日|最終日|帰国日|일째|일차|일\s*차|첫날|최종일|마지막/i.test(t) || /^【\s*\d+/.test(t))
       ) {
         const num = dayNum === -1 ? (fallbackDayCount || days.length + 1 || 99) : dayNum;
         current = { day: num, title: t.replace(/^#+\s*/, ""), stops: [] };
@@ -357,6 +597,18 @@
         const url = t.split(/\s/)[0];
         if (current) pushStop(current, url, i);
         else pushStop(null, url, i);
+        continue;
+      }
+      if (current) {
+        if (_isRecommendationLine(t) || _isPlanNoiseLine(t)) continue;
+        // Keep the map route aligned with the detailed plan: only explicit
+        // Google Maps URLs or standalone place-name lines in the plan body
+        // create stops. Reference-data/prose matches are intentionally ignored.
+        const place = findPlaceForLine(t, placeIndex);
+        const rec = placeToStop(place, t);
+        if (rec && !current.stops.some((s) => _sameStop(s, rec))) {
+          current.stops.push(rec);
+        }
       }
     }
 
@@ -563,6 +815,12 @@
         const hasCoords = stop.lat != null && stop.lng != null;
         const p = stop.place || {};
         const name = esc(p.name || stop.label);
+        const lockable = !stop.isAirport && !stop.isAccommodation;
+        const lockKey = stopLockKey(stop, day.day);
+        const isLocked = _lockedStops.has(lockKey);
+        const lockBtn = lockable
+          ? `<button type="button" class="plan-day-stop__lock${isLocked ? " is-locked" : ""}" data-lock-key="${esc(lockKey)}" aria-pressed="${isLocked ? "true" : "false"}">${isLocked ? "固定中" : "固定"}</button>`
+          : "";
         const cat = stop.isAirport
           ? "空港"
           : stop.isAccommodation
@@ -584,7 +842,10 @@
             <span class="plan-day-stop__num" style="background:${color}">${mapNum}</span>
             <a class="plan-day-stop__thumb" href="${mapsUri}" target="_blank" rel="noopener">${thumb}</a>
             <div class="plan-day-stop__body">
-              <h4 class="plan-day-stop__name">${name}</h4>
+              <div class="plan-day-stop__head">
+                <h4 class="plan-day-stop__name">${name}</h4>
+                ${lockBtn}
+              </div>
               <p class="plan-day-stop__meta">${cat}</p>
               ${tip ? `<p class="plan-day-stop__tip"><span class="plan-day-stop__rec">おすすめ</span> ${tip}</p>` : ""}
             </div>
@@ -595,13 +856,29 @@
             <span class="plan-day-stop__num" style="background:#bbb;font-size:.7rem">—</span>
             <span class="plan-day-stop__thumb">${thumb}</span>
             <div class="plan-day-stop__body">
-              <h4 class="plan-day-stop__name">${name}</h4>
+              <div class="plan-day-stop__head">
+                <h4 class="plan-day-stop__name">${name}</h4>
+                ${lockBtn}
+              </div>
               <p class="plan-day-stop__meta" style="color:#e57373">地図未登録</p>
             </div>
           </article>`;
         }
       })
       .join("");
+    el.querySelectorAll(".plan-day-stop__lock").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const key = btn.dataset.lockKey || "";
+        const stop = (day.stops || []).find((s) => stopLockKey(s, day.day) === key);
+        if (!stop) return;
+        if (_lockedStops.has(key)) {
+          _lockedStops.delete(key);
+        } else {
+          _lockedStops.set(key, stopLockPayload(stop, day.day));
+        }
+        renderDayStops(day);
+      });
+    });
   }
 
   async function geocodeMissingStops(days) {
@@ -687,11 +964,15 @@
     if (!shell) return;
 
     _mapMeta = meta || {};
-    _planDays = parsePlanDays(reply, placeIndex, meta?.days || meta?.nights + 1);
+    const fullPlaceIndex = meta?.placeIndex || { byUrl: placeIndex || {} };
+    const allowedStopKeys = _allowedStopKeysFromReply(reply, fullPlaceIndex);
+    _planDays = parsePlanDays(reply, fullPlaceIndex, meta?.days || meta?.nights + 1);
 
     // 일본 지명이 포함된 LLM 환각 stop 제거 (신오쿠보, 신주쿠 등)
     _planDays.forEach((d) => {
-      d.stops = d.stops.filter((s) => !_isJpLocation(s.label));
+      d.stops = d.stops.filter(
+        (s) => !_isJpLocation(s.label) && _stopAllowedByReply(s, allowedStopKeys)
+      );
     });
     _planDays = normalizePlanDays(_planDays, meta?.days || meta?.nights + 1);
 
@@ -794,6 +1075,8 @@
       refreshMapLayout,
       buildPlaceIndex,
       parsePlanDays,
+      getLockedItems,
+      clearLocks,
     };
   }
 })(typeof window !== "undefined" ? window : globalThis);

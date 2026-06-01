@@ -16,9 +16,25 @@ REGION_CITY_ID_TO_ITINERARY_AREA: dict[str, str] = {
     "seoul:gangnam": "강남",
     "seoul:seongdong": "성수동",
     "seoul:yongsan": "이태원",
+    "seoul:gwangjin": "광진",
     "seoul:dongdaemun": "동대문",
+    "seoul:jungnang": "중랑",
+    "seoul:seongbuk": "성북",
+    "seoul:gangbuk": "강북",
+    "seoul:dobong": "도봉",
+    "seoul:nowon": "노원",
+    "seoul:eunpyeong": "은평",
+    "seoul:seodaemun": "서대문",
+    "seoul:yangcheon": "양천",
+    "seoul:gangseo": "강서",
+    "seoul:guro": "구로",
+    "seoul:geumcheon": "금천",
     "seoul:songpa": "잠실",
     "seoul:yeongdeungpo": "여의도",
+    "seoul:dongjak": "동작",
+    "seoul:gwanak": "관악",
+    "seoul:seocho": "서초",
+    "seoul:gangdong": "강동",
     "gyeonggi:goyang": "고양",
     "gyeonggi:suwon": "수원",
     "gyeonggi:seongnam": "성남",
@@ -26,8 +42,24 @@ REGION_CITY_ID_TO_ITINERARY_AREA: dict[str, str] = {
     "gyeonggi:bucheon": "부천",
     "gyeonggi:anyang": "안양",
     "gyeonggi:paju": "파주",
+    "gyeonggi:gimpo": "김포",
+    "gyeonggi:gwangmyeong": "광명",
     "gyeonggi:gwangju_si": "경기광주",
+    "gyeonggi:gunpo": "군포",
+    "gyeonggi:osan": "오산",
+    "gyeonggi:icheon": "이천",
+    "gyeonggi:anseong": "안성",
+    "gyeonggi:guri": "구리",
+    "gyeonggi:uiwang": "의왕",
+    "gyeonggi:hanam": "하남",
+    "gyeonggi:pocheon": "포천",
+    "gyeonggi:yangju": "양주",
+    "gyeonggi:dongducheon": "동두천",
+    "gyeonggi:gwacheon": "과천",
+    "gyeonggi:yeoju": "여주",
     "gyeonggi:gapyeong": "가평",
+    "gyeonggi:yangpyeong": "양평",
+    "gyeonggi:yeoncheon": "연천",
     "gyeonggi:hwaseong": "화성",
     "gyeonggi:ansan": "안산",
     "gyeonggi:ansan_danwon": "안산",
@@ -35,16 +67,32 @@ REGION_CITY_ID_TO_ITINERARY_AREA: dict[str, str] = {
     "gyeonggi:siheung": "시흥",
     "gyeonggi:namyangju": "남양주",
     "gyeonggi:pyeongtaek": "평택",
+    "gyeonggi:uijeongbu": "의정부",
     "incheon:michuhol": "인천",
     "incheon:yeonsu": "송도",
     "incheon:bupyeong": "인천",
     "incheon:jung": "인천",
     "incheon:namdong": "인천",
+    "incheon:gyeyang": "인천",
     "incheon:seogu": "인천",
+    "incheon:dong": "인천",
+    "incheon:geomdan": "검단",
+    "incheon:ganghwa": "강화",
+    "incheon:ongjin": "옹진",
     "gangwon:gangneung": "강릉",
     "gangwon:sokcho": "속초",
     "gangwon:chuncheon": "춘천",
+    "gangwon:donghae": "동해",
+    "gangwon:taebaek": "태백",
+    "gangwon:samcheok": "삼척",
     "gangwon:pyeongchang": "평창",
+    "gangwon:hoengseong": "횡성",
+    "gangwon:yeongwol": "영월",
+    "gangwon:jeongseon": "정선",
+    "gangwon:cheorwon": "철원",
+    "gangwon:hwacheon": "화천",
+    "gangwon:yanggu": "양구",
+    "gangwon:inje": "인제",
     "gangwon:yangyang": "양양",
     "gangwon:goseong": "고성",
     "gangwon:wonju": "원주",
@@ -58,6 +106,20 @@ REGION_CITY_ID_TO_ITINERARY_AREA: dict[str, str] = {
     "chungcheong:chungju": "충주",
     "chungcheong:cheongju": "청주",
     "chungcheong:sejong": "세종",
+    "jeonbuk:jeonju": "전주",
+    "jeonbuk:gunsan": "군산",
+    "jeonbuk:iksan": "익산",
+    "jeonbuk:jeongeup": "정읍",
+    "jeonbuk:namwon": "남원",
+    "jeonbuk:gimje": "김제",
+    "jeonbuk:wanju": "완주",
+    "jeonbuk:jinan": "진안",
+    "jeonbuk:muju": "무주",
+    "jeonbuk:jangsu": "장수",
+    "jeonbuk:imsil": "임실",
+    "jeonbuk:sunchang": "순창",
+    "jeonbuk:gochang": "고창",
+    "jeonbuk:buan": "부안",
     "jeolla:jeonju": "전주",
     "jeolla:yeosu": "여수",
     "jeolla:mokpo": "목포",
@@ -65,6 +127,7 @@ REGION_CITY_ID_TO_ITINERARY_AREA: dict[str, str] = {
     "jeolla:damyang": "담양",
     "jeolla:gunsan": "군산",
     "jeolla:gwangju": "광주",
+    "gyeongsang:busan": "부산",
     "gyeongsang:busan_haeundae": "해운대",
     "gyeongsang:busan_jung": "부산",
     "gyeongsang:gyeongju": "경주",
@@ -83,18 +146,36 @@ REGION_CITY_ID_TO_ITINERARY_AREA: dict[str, str] = {
 REGION_ADDR_KEYWORDS: dict[str, tuple[str, ...]] = {
     "gangwon": (
         "강원", "gangwon", "강릉", "속초", "평창", "고성군", "춘천", "원주", "정선", "태백", "동해",
+        "삼척", "홍천", "횡성", "영월", "철원", "화천", "양구", "인제", "양양",
         "gangneung", "sokcho", "chuncheon", "wonju", "pyeongchang", "goseong",
+        "donghae", "taebaek", "samcheok", "hongcheon", "hoengseong", "yeongwol",
+        "jeongseon", "cheorwon", "hwacheon", "yanggu", "inje", "yangyang",
     ),
     "busan": ("부산", "busan", "해운대", "기장", "사하", "사상", "dongnae", "haeundae"),
     "jeju": ("제주", "jeju", "seogwipo", "서귀포"),
     "gyeonggi": (
         "경기", "gyeonggi", "고양", "수원", "성남", "용인", "안양", "과천", "의정부", "파주",
         "부천", "시흥", "안산", "대부도", "단원구", "상록구", "화성", "광주시", "경기도 광주", "곤지암", "남한산성",
+        "남양주", "평택", "김포", "광명", "군포", "오산", "이천", "안성", "구리", "의왕",
+        "하남", "포천", "양주", "동두천", "여주", "가평", "양평", "연천",
         "goyang", "suwon", "seongnam", "yongin", "anyang", "bucheon", "paju", "ilsan",
         "namyangju", "hwaseong", "ansan", "daebudo", "danwon", "sangnok", "gwangju-si",
+        "pyeongtaek", "uijeongbu", "gimpo", "gwangmyeong", "gunpo", "osan", "icheon",
+        "anseong", "guri", "uiwang", "hanam", "pocheon", "yangju", "dongducheon",
+        "gwacheon", "yeoju", "gapyeong", "yangpyeong", "yeoncheon",
     ),
-    "seoul": ("서울", "seoul", "mapo", "gangnam", "myeongdong", "jongno", "hongdae"),
-    "incheon": ("인천", "incheon", "영종", "영종도", "songdo", "yeongjong", "yeongjongdo"),
+    "seoul": (
+        "서울", "seoul", "mapo", "gangnam", "myeongdong", "jongno", "hongdae",
+        "중구", "용산", "성동", "광진", "동대문", "중랑", "성북", "강북", "도봉", "노원",
+        "은평", "서대문", "양천", "강서", "구로", "금천", "영등포", "동작", "관악",
+        "서초", "송파", "강동",
+    ),
+    "incheon": (
+        "인천", "incheon", "영종", "영종도", "songdo", "yeongjong", "yeongjongdo",
+        "연수", "남동", "미추홀", "부평", "계양", "서구", "중구", "동구", "검단",
+        "강화", "옹진", "yeonsu", "namdong", "michuhol", "bupyeong", "gyeyang",
+        "geomdan", "ganghwa", "ongjin",
+    ),
     "chungcheong": (
         "충청", "chungcheong", "대전", "청주", "충주", "천안", "공주", "세종", "충북", "충남",
         "daejeon", "cheongju", "cheonan", "sejong", "chungju",
@@ -181,11 +262,38 @@ def region_city_ids_from_profile(profile: dict[str, Any] | None) -> list[str]:
     return out
 
 
+def _region_city_meta_by_key(profile: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    if not profile:
+        return out
+    for meta in profile.get("regionCityMeta") or profile.get("region_city_meta") or []:
+        if not isinstance(meta, dict):
+            continue
+        key = str(meta.get("key") or "").strip().lower()
+        if not key and meta.get("region") and meta.get("id"):
+            key = f"{str(meta.get('region')).lower()}:{str(meta.get('id')).lower()}"
+        if key:
+            out[key] = meta
+    return out
+
+
+def _area_from_city_id(profile: dict[str, Any] | None, key: str) -> str:
+    area = REGION_CITY_ID_TO_ITINERARY_AREA.get(key, "")
+    if area:
+        return area
+    meta = _region_city_meta_by_key(profile).get(key) or {}
+    query = str(meta.get("query") or "").strip()
+    if query:
+        return query
+    label = str(meta.get("label") or "").strip()
+    return label
+
+
 def areas_from_region_city_ids(profile: dict[str, Any] | None) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for key in region_city_ids_from_profile(profile):
-        area = REGION_CITY_ID_TO_ITINERARY_AREA.get(key)
+        area = _area_from_city_id(profile, key)
         if area and area not in seen:
             seen.add(area)
             out.append(area)
@@ -223,7 +331,7 @@ def selected_destination_context(profile: dict[str, Any] | None) -> str:
         return ""
     lines = ["=== Selected destination IDs ==="]
     for key in ids:
-        canonical = REGION_CITY_ID_TO_ITINERARY_AREA.get(key, "")
+        canonical = _area_from_city_id(profile, key)
         if canonical:
             lines.append(f"- {key} => canonical itinerary area: {canonical}")
     if len(lines) == 1:

@@ -511,9 +511,9 @@ Restaurants / cafes:
   - Lunch AND dinner are BOTH required every regular day (Day 2+): assign a DIFFERENT candidate to each.
   - Each lunch/dinner: ONE shop name from 「食事候補」+ google_maps_uri on the very next line (copy exactly).
   - google_maps_uri must be copied verbatim from the candidate list — never omit or shorten it.
-  - NEVER use generic meal lines (禁止: 「한식店」「現地のレストラン」「韓국料理店で」「別の韓国料理店」).
-  - If 「食事候補」is absent/empty for that day → write one generic line per slot: 「その日の観光エリア近郊で食事（店名は記載しない）」.
-  - If lunch already used the only remaining candidate for that area → dinner is also 「その日の観光エリア近郊で食事（店名は記載しない）」(no duplication, no invention).
+  - NEVER use generic meal lines (禁止: 「近郊で食事」「店名は記載しない」「한식店」「現地のレストラン」「韓国料理店で」「別の韓国料理店」).
+  - If that day's 「食事候補」 is short, choose another verified restaurant from the same/nearest destination area. Use 「帰還日・宿泊エリア」 ONLY after an explicit return-to-accommodation block on the return day.
+  - Do not duplicate the same restaurant/chain unless the whole Reference Data has only one verified restaurant.
   - No food preference selected → pick freely and diversely from the candidate list (any genre is fine).
 
 Major malls / department stores (Lotte World Mall, Times Square, Starfield, Shinsegae, Hyundai):
@@ -540,10 +540,8 @@ Area names:
 - Reply in Japanese only. Headings: 「1日目」「2日目」…「最終日」.
 - Do NOT mention Reference Data, datasets, APIs, "not listed", "unavailable", or "omitted" in the user-facing itinerary.
 - Do NOT invent restaurant/cafe/attraction names or URLs.
-- Do NOT use generic meals (禁止: 한식점, 現地の店, 韓国料理店で, 別の店).
-- Day 2+ regular days: BOTH lunch AND dinner lines are required (not just one).
-  昼食: 「○○エリア近郊で昼食（店名は現地で選択）」
-  夕食: 「○○エリア近郊で夕食（店名は現地で選択）」
+- Do NOT use generic meals (禁止: 近郊で食事, 店名は現地で選択, 한식점, 現地の店, 韓国料理店で, 別の店).
+- If verified meal venues are unavailable, write a short data-shortage note instead of a fake or generic meal slot.
 - Describe areas and activities only; transport from flight constraints in Reference Data.
 """
     else:
@@ -677,6 +675,15 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "  最終日は元の宿泊先/空港圏から空港へ向かう。\n"
             "- 複数エリア（例: 京畿＋仁川＋江原）を扱う場合も、\n"
             "  **同一圏内の行程は連続日でまとめ**、遠方エリアを日替わりで行き来しない。\n"
+            "- 宿泊先の市区と希望観光エリアが異なる場合は、2日目冒頭または該当日の冒頭に\n"
+            "  片道移動時間の目安を1行で明記し、その日の観光地は同一方面にまとめる。\n"
+            "  例: 高陽宿泊で仁川観光なら、中区の日・松島の日・文鶴/球場の日を分け、\n"
+            "  松島日程の途中に江華島など離れた候補を混ぜない。\n"
+            "- 2日目に宿泊先から遠方観光地へ移動する場合、2日目の最初のブロックは必ず\n"
+            "  「宿泊先→目的地エリアの主要駅/最初の観光地」への移動にする。\n"
+            "  例: 高陽宿泊→光州観光なら「宿泊先→ソウル駅/KTX→光州松汀駅→最初の目的地」を明記し、\n"
+            "  その後に昼食・観光・夕食を置く。宿泊先から目的地への移動を省略しない。\n"
+            "- 移動負担が大きい場合は、観光地数を減らすか宿泊地変更を提案する。\n"
             "- もし日数制約で物理的に無理なら、遠方側は「次回候補」として箇条書きで別枠に回し、\n"
             "  日程ブロックに無理やり入れない。\n"
             "\n"
@@ -708,6 +715,9 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "  Reference Dataにカフェ候補が1件でもあれば必ず具体的なカフェ名＋google_maps_uriを書く。\n"
             "- 各スポットはカードUIで「外観写真・評価・住所・地図・経路」を表示するため、\n"
             "  本文では必ずカード化できる場所名とURLを出す。URLなしの観光/買い物/カフェ項目は禁止。\n"
+            "- 本文に「外観写真」「評価」「営業中」「住所」「地図」「経路」「지도」「통로」\n"
+            "  「この日の動線上の候補」等のカードUI文言を書かない。場所名の直後は\n"
+            "  google_maps_uri だけを書く（カード表示はシステム側で生成する）。\n"
             "- 悪い例: 「明洞メインストリートでショッピング」「カフェタイム」「伝統雑貨ショッピング」。\n"
             "  良い例: 「명동거리」改行 google_maps_uri、「쌈지길」改行 google_maps_uri、\n"
             "  「경복궁」改行 google_maps_uri のように、必ず1つの実在地点へ落とし込む。\n"
@@ -720,6 +730,9 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "\n"
             "【2日目以降 — 構成ルール】\n"
             "- ①②③ または 午前・昼食・午後・夕食 の順序ラベル。各日末尾に【予算の目安】【旅行のポイント】を付記。\n"
+            "- 通常観光日は、観光/体験2〜3件＋昼食＋夕食を基本上限にする。\n"
+            "  同一市内・車移動でも、駐車・待ち時間・食事時間を考慮し、4件以上の観光/イベントを詰め込まない。\n"
+            "  イベント/スポーツ観戦日は観光を1〜2件に減らす。\n"
             "- traveler_profile.additional.travelStyles（好みの旅行スタイル）を反映してスポット選定の優先度を変える。\n"
             "- activities に vacation がある場合はプールヴィラ・ペンション・リゾート滞在を意識する。\n"
             "\n"
@@ -753,8 +766,8 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "         夕食\n"
             "         店名B\n"
             "         https://maps.google.com/...\n"
-            "  ② 候補リストに未使用の店が1件のみ → 昼食に使い、夕食は「近郊で夕食（店名は記載しない）」\n"
-            "  ③ 候補が完全に空 → 昼食「近郊で昼食（店名は記載しない）」・夕食「近郊で夕食（店名は記載しない）」を両方書く\n"
+            "  ② 該当日の未使用店が1件のみ → もう一方は同一エリア/近接エリアの検証済み候補から選ぶ（帰還日・宿泊エリアは帰還後の夕食だけ）\n"
+            "  ③ 候補が完全に空 → 食事枠だけを抽象化せず、Reference Data内の最も近い検証済み食事候補を使う\n"
             "  ▶ 食事メニュー未選択の場合: 候補リストの中から多様なジャンルの店を自由に選んでよい。\n"
             "- **朝食**: 「朝食対応」「朝食・カフェ候補」タグが付いた候補があり、かつ is_open_now が\n"
             "  「営業中」か「営業時間未確認」の店のみ朝食欄に記載する。「時間外の可能性」の店は朝食に使わない。\n"
@@ -765,10 +778,10 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "- 昼食・夕食それぞれ **最大1店舗**（候補から1件のみ）。\n"
             "  複数店羅列・「おすすめ店5選」形式は禁止。\n"
             "- **同一店名・同一チェーン店の再利用禁止**: プラン全体で同じ店名/チェーン名は1回のみ使用。\n"
-            "  ただし候補リストに選択肢が1店しかない場合は「近郊で食事（店名は記載しない）」で代替する\n"
-            "  （同じ店を2回使うことと、リスト外を創作することは両方禁止）。\n"
+            "  候補リストに選択肢が少ない場合は、同一エリア/近接エリアの検証済み候補で補う。帰還日・宿泊エリアの候補は帰還後だけ使用可。\n"
+            "  「近郊で食事（店名は記載しない）」で代替することは禁止。\n"
             "- **同一スポット再利用禁止**: 観光スポット・カフェ・ショップもプラン全体で同じ場所名を2回使わない。\n"
-            "  候補が足りない日は宿泊エリア候補または移動・休息ブロックに切り替える。\n"
+            "  候補が足りない日は目的エリア内の移動・休息ブロックに切り替える。遠方滞在中に宿泊エリア候補へ逃げない。\n"
             "- 選んだ店は「店名」の直後に **google_maps_uri を1行だけ** 記載。google_maps_uriは必ず\n"
             "  食事候補リストの値をそのままコピーすること（URL省略・改変禁止）。\n"
             "- 本文に ★評価・(○○件)・営業中・¥・住所・「地図」「経路」「지도」「통로」は **書かない**\n"
@@ -997,15 +1010,20 @@ def _rag_areas_from_profile(
             areas.append(area)
 
     if traveler_profile:
-        for reg in traveler_profile.get("regions") or []:
-            prof = _REGION_PROFILE.get(reg)
-            if prof and prof.get("rag_area"):
-                add(prof["rag_area"])
         cities = _region_cities_text(traveler_profile)
         if cities:
             add(_infer_area_filter(cities))
             for token in _parse_region_city_tokens(cities):
                 add(_infer_area_filter(token))
+        if not areas:
+            for key in _region_area_keys(traveler_profile):
+                for area in _REGION_AREA_KEY_TO_AREAS.get(key, [])[:2]:
+                    add(_infer_area_filter(area))
+        if not areas:
+            for reg in traveler_profile.get("regions") or []:
+                prof = _REGION_PROFILE.get(reg)
+                if prof and prof.get("rag_area"):
+                    add(prof["rag_area"])
         accom = traveler_profile.get("accommodation") or {}
         accom_blob = " ".join(
             str(accom.get(k) or "")
@@ -2046,9 +2064,10 @@ def _fmt_penultimate_day_return_rule(
         f"【최종일 전날 귀환 규칙 — 필수】\n"
         f"관광지({dest_str})와 숙소(수도권) 간 거리가 멀어 당일 복귀가 어렵습니다{transit_line}.\n"
         f"▶ 2일目 이후 원거리 일정은 매일 수도권 숙소에서 출발하지 말고, {dest_str} 현지에 머무르는 전제로 연속 배치.\n"
-        f"▶ 최종일 전날(penultimate day) 오후 일정: {dest_str} 관광 마무리 후 KTX·고속버스로 수도권 귀환 이동 블록 필수 배치.\n"
+        f"▶ 최종일 전날(penultimate day) 오전~점심: {dest_str} 현지에서 구체 관광지 1곳과 구체 식당 1곳을 배치한 뒤, 오후에 KTX·고속버스로 수도권 귀환 이동 블록 필수 배치.\n"
         f"▶ 귀환 이동 예: 오후 3~5시 출발 → 숙소 오후 6~8시 도착.\n"
-        f"▶ 귀환 당일 저녁: 숙소 근처 저녁 식사 1건만 포함, 추가 관광 배치 금지.\n"
+        f"▶ 귀환 당일 저녁: 숙소 근처 검증済み 식당 1건만 포함, 추가 관광 배치 금지.\n"
+        f"▶ 귀환일을 '휴식/주변에서 식사' 같은 추상 문장만으로 끝내지 말 것.\n"
         f"▶ 최종일(마지막 날): {dest_str} 재방문 없이 숙소 주변 또는 공항 방면 일정으로 마무리."
     )
 
@@ -2065,17 +2084,62 @@ _REGION_CHIP_TO_AREAS: dict[str, list[str]] = {
     "gyeongsang": ["경주", "부산", "대구", "거제", "통영", "안동", "포항", "남해"],
 }
 
+_REGION_AREA_KEY_TO_AREAS: dict[str, list[str]] = {
+    "seoul": _REGION_CHIP_TO_AREAS["seoul"],
+    "busan": ["부산", "해운대", "광안리", "영도", "서면"],
+    "daegu": ["대구", "동성로", "수성못"],
+    "incheon": _REGION_CHIP_TO_AREAS["incheon"],
+    "gwangju": ["광주", "동명동", "양림동", "무등산"],
+    "daejeon": ["대전", "유성", "둔산", "성심당"],
+    "ulsan": ["울산", "태화강", "장생포", "간절곶"],
+    "sejong": ["세종"],
+    "gyeonggi": _REGION_CHIP_TO_AREAS["gyeonggi"],
+    "gangwon": _REGION_CHIP_TO_AREAS["gangwon"],
+    "chungbuk": ["청주", "충주", "제천", "단양"],
+    "chungnam": ["천안", "공주", "부여", "보령", "태안", "아산"],
+    "jeonbuk": ["전주", "군산", "익산", "남원", "완주"],
+    "jeonnam": ["여수", "목포", "순천", "담양", "보성", "광양"],
+    "gyeongbuk": ["경주", "안동", "포항", "문경", "영주"],
+    "gyeongnam": ["창원", "진주", "통영", "거제", "남해", "김해"],
+    "jeju": _REGION_CHIP_TO_AREAS["jeju"],
+}
+
 _REGION_CHIP_LABELS_JA: dict[str, str] = {
     "seoul": "ソウル",
     "gyeonggi": "京畿道（高陽・一山）",
     "incheon": "仁川",
-    "busan": "釜山",
     "jeju": "済州島",
     "gangwon": "江原道",
     "chungcheong": "忠清道",
     "jeolla": "全羅道",
     "gyeongsang": "慶尚道",
+    "busan": "釜山広域市",
+    "daegu": "大邱広域市",
+    "gwangju": "光州広域市",
+    "daejeon": "大田広域市",
+    "ulsan": "蔚山広域市",
+    "sejong": "世宗特別自治市",
+    "chungbuk": "忠清北道",
+    "chungnam": "忠清南道",
+    "jeonbuk": "全北特別自治道",
+    "jeonnam": "全羅南道",
+    "gyeongbuk": "慶尚北道",
+    "gyeongnam": "慶尚南道",
 }
+
+
+def _region_area_keys(traveler_profile: dict | None) -> list[str]:
+    if not traveler_profile:
+        return []
+    raw = traveler_profile.get("regionAreaKeys") or traveler_profile.get("region_area_keys") or []
+    if isinstance(raw, str):
+        raw = [raw]
+    out: list[str] = []
+    for item in raw:
+        key = str(item or "").strip().lower()
+        if key and key not in out:
+            out.append(key)
+    return out
 
 
 def _tourism_search_areas(traveler_profile: dict | None) -> list[str]:
@@ -2093,6 +2157,12 @@ def _tourism_search_areas(traveler_profile: dict | None) -> list[str]:
 
     for a in _areas_from_region_city_ids(traveler_profile):
         add(a)
+    if out:
+        return out[:_MAX_ITINERARY_AREAS]
+
+    for key in _region_area_keys(traveler_profile):
+        for area in _REGION_AREA_KEY_TO_AREAS.get(key, []):
+            add(area)
     if out:
         return out[:_MAX_ITINERARY_AREAS]
 
@@ -2156,6 +2226,9 @@ def _expanded_tourism_areas_for_plan(
     if not traveler_profile:
         return areas
     regs = {str(r).lower() for r in (traveler_profile.get("regions") or [])}
+    area_keys = set(_region_area_keys(traveler_profile))
+    if area_keys and not regs.intersection({"seoul", "gyeonggi", "incheon"}):
+        return areas[:max(1, _MAX_ITINERARY_AREAS)]
     if "seoul" in regs and len(areas) < min_count:
         for area in _REGION_CHIP_TO_AREAS.get("seoul", _REGION_DEFAULT_AREAS.get("seoul", [])):
             if area not in areas:
@@ -2293,7 +2366,9 @@ def _fmt_itinerary_daily_area_binding(traveler_profile: dict | None) -> str:
     """LLM向け: 🗺希望エリアを日別に割当（宿泊先の市区だけで決めない）."""
     if not traveler_profile:
         return ""
-    region_order = [str(r).lower() for r in (traveler_profile.get("regions") or [])]
+    region_order = _region_area_keys(traveler_profile) or [
+        str(r).lower() for r in (traveler_profile.get("regions") or [])
+    ]
     if not region_order:
         return ""
 
@@ -2320,6 +2395,65 @@ def _fmt_itinerary_daily_area_binding(traveler_profile: dict | None) -> str:
         "1日目: 空港到着・入国・宿泊先へ移動・チェックイン・休息。"
         "観光スポット・レストラン名は原則書かない（深夜到着はコンビニ・軽食のみ）。"
     )
+    selected_city_areas = _areas_from_region_city_ids(traveler_profile)
+    total_days = int(traveler_profile.get("days") or 0) if traveler_profile else 0
+    if selected_city_areas:
+        city_label = "・".join(selected_city_areas[:3])
+        last_regular_day = max(2, total_days - 1) if total_days else 4
+        lines.extend(
+            [
+                f"【選択都市固定】ユーザーは下位地域として {city_label} を選択済み。"
+                "広域名から他都市へ拡張せず、観光・食事はこの選択都市を中心に組む。",
+                f"2日目: 宿泊先から {city_label} へ移動し、到着後は {city_label} 内の具体スポット・昼食・夕食を配置する。",
+            ]
+        )
+        if last_regular_day > 3:
+            lines.append(
+                f"3日目〜{last_regular_day - 1}日目: {city_label} 内でエリアを分けて観光・食事。"
+                "同じ店・同じスポットの再利用は禁止。"
+            )
+        lines.append(
+            f"{last_regular_day}日目: 午前〜昼食までは {city_label} 内で具体スポット1件＋具体昼食1件を配置し、"
+            "午後に宿泊先へ戻る移動ブロックを置く。帰還日を抽象的な休息だけで終わらせない。"
+        )
+        lines.append(
+            "※ 選択都市が1つだけの場合、県内の他都市（例: 群山・益山・南原など）へ勝手に広げない。"
+            "候補不足時も、まず同じ選択都市内で再検索・代替する。"
+        )
+        return "\n".join(lines) + "\n"
+
+    travel_areas = _tourism_search_areas(traveler_profile)
+    non_sudo_targets = [a for a in travel_areas if a in _NON_SUDOGWON_AREAS]
+    if non_sudo_targets and _accom_is_sudogwon(traveler_profile):
+        dest_label = "・".join(non_sudo_targets[:4])
+        last_regular_day = max(2, total_days - 1) if total_days else 4
+        lines.extend(
+            [
+                f"【遠方目的地滞在固定】ユーザーは {dest_label} を観光目的地に選択済み。",
+                "2日目に宿泊先から目的地エリアへ移動した後、帰還日午後までは目的地側に滞在している前提で組む。",
+                "この滞在期間中の観光・昼食・夕食は目的地エリア候補のみ。ソウル・京畿・宿泊エリア候補は絶対に混ぜない。",
+                f"2日目: 宿泊先→{non_sudo_targets[0]} への広域移動を最初に置き、到着後は {non_sudo_targets[0]} 周辺の具体スポット・昼食・夕食。",
+            ]
+        )
+        middle_days = list(range(3, last_regular_day))
+        for offset, d in enumerate(middle_days):
+            area = non_sudo_targets[min(offset + 1, len(non_sudo_targets) - 1)]
+            lines.append(
+                f"{d}日目: {area} 周辺に滞在。朝に首都圏宿泊先へ戻らず、"
+                f"{area} 周辺の具体スポット・昼食・夕食だけで構成する。"
+            )
+        if last_regular_day >= 3:
+            return_area = non_sudo_targets[min(len(middle_days) + 1, len(non_sudo_targets) - 1)]
+            lines.append(
+                f"{last_regular_day}日目: 午前〜昼食は {return_area} 周辺で具体スポット1件＋具体昼食1件。"
+                "午後に首都圏宿泊先または空港圏へ戻る移動ブロックを置き、帰還後の夕食だけ宿泊エリア候補を使用可。"
+            )
+        lines.append(
+            "※ 遠方滞在中に「宿泊先周辺」「帰還日・宿泊エリア」「ソウル/京畿の店」を挿入するのは禁止。"
+            "候補不足時も目的地エリア内で件数を減らすか、移動・休息に置き換える。"
+        )
+        return "\n".join(lines) + "\n"
+
     day = 2
     for reg in region_order:
         if reg == "incheon":
@@ -4003,6 +4137,48 @@ def _fmt_place_line(i: int, p: NearbyPlace) -> str:
     return line
 
 
+_MAPS_URL_IN_TEXT_RE = re.compile(
+    r"https?://(?:maps\.google\.com|www\.google\.com/maps|goo\.gl/maps|maps\.app\.goo\.gl)/\S+",
+    re.I,
+)
+
+
+def _norm_plan_place_name(text: str | None) -> str:
+    return re.sub(r"\s+", "", str(text or "").strip().lower().strip("「」『』\"'`"))
+
+
+def _repair_itinerary_place_urls(reply: str, places: list[NearbyPlace]) -> str:
+    """LLM이 장소명은 썼지만 maps URL을 누락한 경우, 검증済み 후보 URL을 복구한다.
+
+    프론트 지도/카드가 본문과 어긋나는 것을 막기 위한 최후 안전망이다.
+    """
+    if not reply or not places:
+        return reply
+    by_name: dict[str, NearbyPlace] = {}
+    for p in places:
+        uri = p.google_maps_uri or ""
+        key = _norm_plan_place_name(p.name)
+        if uri and key and key not in by_name:
+            by_name[key] = p
+    if not by_name:
+        return reply
+
+    out: list[str] = []
+    lines = reply.splitlines()
+    for idx, line in enumerate(lines):
+        out.append(line)
+        stripped = line.strip()
+        key = _norm_plan_place_name(stripped)
+        place = by_name.get(key)
+        if not place:
+            continue
+        lookahead = "\n".join(lines[idx + 1: idx + 4])
+        if _MAPS_URL_IN_TEXT_RE.search(lookahead):
+            continue
+        out.append(place.google_maps_uri or "")
+    return "\n".join(out)
+
+
 # ─── Visit Korea (관광공사 API) ─────────────────────────────────────────
 _LEGACY_AREA_CODE_HINTS: dict[str, str] = {
     "경기광주": "31", "경기도 광주": "31", "광주시": "31", "gwangju-si": "31",
@@ -4065,6 +4241,9 @@ def _area_codes_from_profile(
     if traveler_profile:
         for area in _areas_from_region_city_ids(traveler_profile):
             add(_infer_legacy_area_code(area))
+        for key in _region_area_keys(traveler_profile):
+            for area in _REGION_AREA_KEY_TO_AREAS.get(key, [])[:1]:
+                add(_infer_legacy_area_code(area))
         for reg in traveler_profile.get("regions") or []:
             add(_REGION_CHIP_AREA.get(str(reg).lower(), ""))
         cities = (
@@ -4393,12 +4572,17 @@ def _wizard_plan_keyword(
 ) -> str:
     parts: list[str] = []
     if traveler_profile:
-        for reg in traveler_profile.get("regions") or []:
-            prof = _REGION_PROFILE.get(str(reg).lower(), {})
-            parts.append(prof.get("rag_area") or str(reg))
         cities = _region_cities_text(traveler_profile)
         if cities:
-            parts.append(cities.split(",")[0].strip())
+            parts.append(cities.split(",")[0].split("・")[0].strip())
+        if not parts:
+            for key in _region_area_keys(traveler_profile):
+                area = (_REGION_AREA_KEY_TO_AREAS.get(key) or [key])[0]
+                parts.append(area)
+        if not parts:
+            for reg in traveler_profile.get("regions") or []:
+                prof = _REGION_PROFILE.get(str(reg).lower(), {})
+                parts.append(prof.get("rag_area") or str(reg))
         n, d = traveler_profile.get("nights"), traveler_profile.get("days")
         if n and d:
             parts.append(f"{n}泊{d}日")
@@ -5186,7 +5370,7 @@ def route_and_answer(
                 + "※ 昼食・夕食は各1店（異なる店）。店名の直後の行に google_maps_uri を必ずコピー。\n"
                 + "※ 2日目以降の通常観光日は昼食・夕食を必ず両方書く。\n"
                 + "※ 名洞・弘大など日別見出しに具体エリアがある日は、ソウル詳細エリアの該当店を昼食・夕食に必ず使用。候補があるのに「店名は記載しない」は禁止。\n"
-                + "※ 同日に昼食で使い切り夕食用の別店がない場合のみ夕食を「近郊で食事（店名は記載しない）」とする。\n"
+                + "※ 該当日の候補が足りない場合は、同一エリア/近接エリアの検証済み候補から選ぶ。帰還日・宿泊エリア候補は帰還後の夕食だけ使用可。「近郊で食事」「店名は記載しない」は禁止。\n"
                 + "※ 食事メニュー未選択の場合: リスト内の店を自由に選んでよい（ジャンル・順序は任意）。\n"
                 + "※ 朝食: 「朝食対応」「朝食・カフェ候補」タグ付きの店のうち「時間外の可能性」以外のみ使用可。\n"
             )
@@ -5197,16 +5381,14 @@ def route_and_answer(
                         _dedup_food_by_chain(stay_food_places[:8], max_per_chain=1, seen={}),
                         group_by_area=True,
                     )
-                    + "\n※ 遠方観光から宿泊先へ戻った日・予備日は、この宿泊エリア候補から昼食または夕食を1店使う。候補があるのに「店名は記載しない」は禁止。\n"
+                    + "\n※ この候補は遠方観光から宿泊先へ戻った後の夕食、または最終日の空港移動前だけ使用可。遠方滞在中の昼食・夕食には使わない。候補があるのに「店名は記載しない」は禁止。\n"
                 )
         else:
             ctx_parts.append(
                 "=== 食事候補 — 取得不可 ===\n"
                 "Places APIで検証済みの飲食店リストがありません。\n"
-                "【厳守】昼食・夕食に店名・「한식」「現地のレストラン」「別の韓国料理店」を書かない。\n"
-                "2日目以降の通常観光日は昼食・夕食の両方を必ず書くこと（どちらか一方だけは不可）。\n"
-                "  昼食: 「その日の観光エリア近郊で食事（店名は記載しない）」\n"
-                "  夕食: 「その日の観光エリア近郊で夕食（店名は記載しない）」\n"
+                "【厳守】店名創作は禁止。検証済み食事候補がない場合は、その日は食事店名を作らず、\n"
+                "候補不足のため周辺候補を再検索する必要がある旨を短く明記する。\n"
             )
         if attr_places:
             ctx_parts.append(
@@ -5233,7 +5415,11 @@ def route_and_answer(
                 "- 見出しは「1日目」「2日目」…「最終日」。■1일째・Day1英語のみは不可。\n"
                 "- 各ブロックは ①②③ または 午前・昼食・午後・夕食。\n"
                 "- 食事候補に載った店のみ店名可。載っていなければ店名禁止。\n"
-                "- 食事候補が1件でもある通常観光日は、昼食か夕食の少なくとも一方では必ず具体店名＋google_maps_uriを使う。\n"
+                "- 通常観光日は昼食・夕食とも具体店名＋google_maps_uriを使う。「近郊で食事」「店名は記載しない」は禁止。\n"
+                "- 場所を書く形式は必ず2行: 1行目=候補リストと完全一致する場所名、2行目=その候補のgoogle_maps_uri。説明文や評価はその後に1文だけ。\n"
+                "- 「外観写真」「評価」「営業中」「住所」「地図」「経路」「지도」「통로」等のカードUI文言は本文に書かない。\n"
+                "- 同じ場所名を同じ日や別日に再利用しない。候補が足りない場合は、その日のスポット数を減らして移動・休憩に回す。\n"
+                "- Reference Data不足、食事候補リスト不足、現地で探す、当日確認、店名未記載という説明を本文に出さない。\n"
             )
     if sports_events:
         ctx_parts.append(
@@ -5403,6 +5589,8 @@ def route_and_answer(
             temperature=answer_temperature,
         )
         reply = _strip_internal_data_disclosure(completion.choices[0].message.content or "")
+        if category == "itinerary":
+            reply = _repair_itinerary_place_urls(reply, api_places)
     except Exception as _ans_exc:
         logger.error("Answer generation failed (model=%s): %s", _model, _ans_exc)
         raise

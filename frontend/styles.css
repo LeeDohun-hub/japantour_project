@@ -1435,6 +1435,10 @@ a.btn {
 .option-icon { font-size: 1.65rem; }
 .option-card strong { font-size: .82rem; font-weight: 600; color: var(--text); }
 .option-card small  { font-size: .7rem; color: var(--text-muted); }
+#accomOptions {
+  grid-template-columns: repeat(2, minmax(9.5rem, 12rem));
+  justify-content: center;
+}
 
 .accom-detail { margin-top: .5rem; }
 .accom-detail label { font-size: .78rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: .35rem; }
@@ -1631,11 +1635,39 @@ a.btn {
   font-size: 1.5rem;
 }
 .plan-day-stop__body { flex: 1; min-width: 0; }
+.plan-day-stop__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
 .plan-day-stop__name {
   margin: 0 0 0.2rem;
   font-size: 0.95rem;
   font-weight: 700;
   color: var(--text);
+}
+.plan-day-stop__lock {
+  flex-shrink: 0;
+  min-width: 3.5rem;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.plan-day-stop__lock:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.plan-day-stop__lock.is-locked {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 .plan-day-stop__meta {
   margin: 0;
@@ -1941,6 +1973,7 @@ a.btn {
   .travel-checklist__grid { grid-template-columns: 1fr; }
   .auth-inline-fields { grid-template-columns: 1fr; }
   .option-cards       { grid-template-columns: 1fr; }
+  #accomOptions       { grid-template-columns: minmax(0, 12rem); }
   .flight-dates       { grid-template-columns: 1fr 1fr; }
   .wiz-dot-label      { display: none; }
   .wizard-nav-bar     { padding: .7rem 1rem; }
@@ -2580,6 +2613,34 @@ a.place-card:hover .place-maps-hint {
 .plan-ev-source { font-size: .65rem; background: rgba(201,168,76,.15); color: var(--gold, #c9a84c); border-radius: 3px; padding: .05em .3em; margin-left: .25em; }
 .plan-place-grid, .plan-sport-grid {
   display: flex; flex-direction: column; gap: .5rem;
+}
+.plan-sport-groups {
+  display: flex;
+  flex-direction: column;
+  gap: .95rem;
+}
+.sport-league-group {
+  padding: .7rem .8rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.025);
+}
+.sport-league-title {
+  margin: 0 0 .55rem;
+  font-size: .92rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.sport-date-group + .sport-date-group {
+  margin-top: .7rem;
+  padding-top: .65rem;
+  border-top: 1px dashed rgba(255,255,255,.12);
+}
+.sport-date-title {
+  margin: 0 0 .45rem;
+  font-size: .78rem;
+  font-weight: 700;
+  color: var(--muted);
 }
 .plan-place-card-wide.place-card,
 .plan-place-card-wide {

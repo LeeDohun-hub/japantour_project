@@ -161,6 +161,7 @@ function setupNavigation() {
 
   $("btnRestart")?.addEventListener("click", () => {
     if (window.PlanMapView?.destroy) window.PlanMapView.destroy();
+    if (window.PlanMapView?.clearLocks) window.PlanMapView.clearLocks();
     wizardData = {};
     _selectedAccomPlace = null;
     const otherIn = $("regionCitiesOther");
@@ -248,15 +249,7 @@ function validate(step) {
     }
     if (areaErr) areaErr.hidden = true;
 
-    const cityCount = document.querySelectorAll("#regionCityPanels .chip.selected").length;
-    const cityOtherCount = _regionCityOtherTokens().length;
     const cityErr = $("regionCityError");
-    if (cityCount + cityOtherCount !== 1) {
-      if (cityErr) cityErr.textContent = "都市・区は1つだけ選んでください。";
-      if (cityErr) cityErr.hidden = false;
-      $("regionCitySection")?.scrollIntoView({ behavior: "smooth", block: "center" });
-      return false;
-    }
     if (cityErr) cityErr.hidden = true;
   }
   return true;
@@ -322,9 +315,11 @@ function collect(step) {
       wizardData.transport = chips("transportChips");
       break;
     case 5: {
-      wizardData.regions = chips("regionChips").slice(0, 1);
-      wizardData.regionCityIds = getSelectedRegionCityIds().slice(0, 1);
-      wizardData.regionCityMeta = getSelectedRegionCityMeta().slice(0, 1);
+      const selectedAreaKeys = chips("regionChips").slice(0, 1);
+      wizardData.regionAreaKeys = selectedAreaKeys;
+      wizardData.regions = _regionBucketKeys(selectedAreaKeys);
+      wizardData.regionCityIds = getSelectedRegionCityIds();
+      wizardData.regionCityMeta = getSelectedRegionCityMeta();
       const built = buildRegionCitiesString();
       if (built) wizardData.regionCities = built;
       else delete wizardData.regionCities;
@@ -1115,7 +1110,7 @@ function setupStep3() {
       .forEach((c) => c.classList.remove("selected"));
     card.classList.add("selected");
     const val = card.dataset.val;
-    const showLoc = val === "decided" || val === "friend";
+    const showLoc = val === "decided";
     $("accomLocationBlock").style.display   = showLoc ? "block" : "none";
     $("accomDetailShared").style.display    = showLoc ? "block" : "none";
     $("accomDetailUndecided").style.display = val === "undecided" ? "block" : "none";
@@ -1173,9 +1168,6 @@ function setupRegionCityPicker() {
   panels.addEventListener("click", (e) => {
     const chip = e.target.closest(".chip");
     if (!chip?.dataset?.val) return;
-    panels.querySelectorAll(".chip").forEach((c) => {
-      if (c !== chip) c.classList.remove("selected");
-    });
     chip.classList.toggle("selected");
     if (chip.classList.contains("selected")) {
       const otherIn = $("regionCitiesOther");
@@ -1198,14 +1190,36 @@ function setupRegionCityPicker() {
 
 const _REGION_ICONS = {
   seoul: "🏙",
+  busan: "🌉",
+  daegu: "🏙",
   gyeonggi: "🌳",
   incheon: "✈",
+  gwangju: "🌿",
+  daejeon: "🚄",
+  ulsan: "🌊",
+  sejong: "🏛",
   gangwon: "⛰",
+  chungbuk: "🌾",
+  chungnam: "🌾",
   chungcheong: "🌾",
+  jeonbuk: "🍃",
+  jeonnam: "🌊",
   jeolla: "🌊",
+  gyeongbuk: "🏯",
+  gyeongnam: "🏞",
   gyeongsang: "🏯",
   jeju: "🌺",
 };
+
+function _regionBucketKeys(areaKeys) {
+  const bucketMap = window.REGION_BUCKET_BY_AREA || {};
+  return [...new Set((areaKeys || []).map((r) => bucketMap[r] || r).filter(Boolean))];
+}
+
+function _regionAreaLabels(areaKeys) {
+  const labels = window.REGION_AREA_LABELS || {};
+  return (areaKeys || []).map((r) => labels[r] || r).filter(Boolean);
+}
 
 function syncRegionCityPanels() {
   const selected = chips("regionChips");
@@ -1295,12 +1309,11 @@ function buildRegionCitiesString() {
 }
 
 function restoreRegionCityStep() {
-  const regions = (wizardData.regions || []).slice(0, 1);
-  wizardData.regions = regions;
-  wizardData.regionCityIds = (wizardData.regionCityIds || []).slice(0, 1);
-  wizardData.regionCityMeta = (wizardData.regionCityMeta || []).slice(0, 1);
+  const regionAreaKeys = (wizardData.regionAreaKeys || wizardData.regions || []).slice(0, 1);
+  wizardData.regionAreaKeys = regionAreaKeys;
+  wizardData.regions = _regionBucketKeys(regionAreaKeys);
   document.querySelectorAll("#regionChips .chip").forEach((c) => {
-    c.classList.toggle("selected", regions.includes(c.dataset.val));
+    c.classList.toggle("selected", regionAreaKeys.includes(c.dataset.val));
   });
   syncRegionCityPanels();
 
@@ -1480,6 +1493,13 @@ function _collectPlanPlaceNames(reply, places) {
   return [...names].slice(0, 30);
 }
 
+function _collectLockedPlanItems() {
+  if (!window.PlanMapView?.getLockedItems) return [];
+  return window.PlanMapView.getLockedItems()
+    .filter((it) => it?.name)
+    .slice(0, 20);
+}
+
 function _buildPlanAutoDefaults(d) {
   const days = Math.max(1, Number(d.days || 3));
   const seedText = [
@@ -1533,6 +1553,7 @@ async function generatePlan(isReroll = false) {
   $("planErrorArea").style.display   = "none";
   wizardData.planShareUrl = "";
   _syncPlanShareActions();
+  if (!isReroll && window.PlanMapView?.clearLocks) window.PlanMapView.clearLocks();
   if (window.PlanMapView?.destroy) window.PlanMapView.destroy();
 
   let progress = 0;
@@ -1582,6 +1603,7 @@ async function generatePlan(isReroll = false) {
     plan_mode: true,
     arrival_airport: wizardData.flight?.arrival_airport || getArrivalAirportIata(),
     departure_airport: wizardData.flight?.departure_airport || getDepartureAirportIata(),
+    locked_plan_items: _collectLockedPlanItems(),
   };
 
   try {
@@ -1655,9 +1677,7 @@ async function generatePlan(isReroll = false) {
 
 async function _savePlanSnapshot(profilePayload, reply, metaData) {
   if (!reply?.trim()) return;
-  const rMap = { seoul:"ソウル", gyeonggi:"京畿道", incheon:"仁川", gangwon:"江原道",
-                 chungcheong:"忠清道", jeolla:"全羅道", gyeongsang:"慶尚道", jeju:"済州島" };
-  const regions = (profilePayload.regions || []).map((r) => rMap[r] || r).filter(Boolean);
+  const regions = _regionAreaLabels(profilePayload.regionAreaKeys || profilePayload.regions || []);
   const city = profilePayload.regionCities || profilePayload.regionCitiesOther || "";
   const days = profilePayload.days ? `${profilePayload.days}日` : "";
   const title = [regions[0], city, days].filter(Boolean).join(" · ") || "韓国旅行プラン";
@@ -1704,9 +1724,8 @@ function buildPrompt(isReroll = false) {
       : autoDefaults.additional.travelStyles,
   };
   const promptBudget = d.budget?.total ? d.budget : autoDefaults.budget;
+  const lockedItems = _collectLockedPlanItems();
   const sym = d.budget?.currency === "KRW" ? "₩" : "¥";
-  const rMap = { seoul:"ソウル", gyeonggi:"京畿道", incheon:"仁川", gangwon:"江原道",
-                 chungcheong:"忠清道", jeolla:"全羅道", gyeongsang:"慶尚道", jeju:"済州島" };
   const aMap = { food:"グルメ", shopping:"ショッピング", nightview:"夜景", tradition:"伝統文化",
                  hallyu:"韓流・K-pop", drama:"ドラマ", kpop:"K-pop", cafe:"カフェ巡り",
                  nature:"自然", photo:"フォトスポット", sports:"スポーツ観戦", vacation:"バカンス" };
@@ -1769,7 +1788,7 @@ function buildPrompt(isReroll = false) {
   if (d.nights) lines.push(`【日程】${d.nights}泊${d.days}日`);
 
   if (d.accommodation?.type) {
-    const typeMap = { decided:"予約済み", undecided:"未定（候補あり）", friend:"友人・家族宅" };
+    const typeMap = { decided:"宿泊先決定済み", undecided:"未定（候補あり）", friend:"宿泊先決定済み" };
     let accomStr = typeMap[d.accommodation.type] || "";
     if (d.accommodation.name)    accomStr += ` 施設名:${d.accommodation.name}`;
     if (d.accommodation.address) accomStr += ` 住所:${d.accommodation.address}`;
@@ -1802,8 +1821,9 @@ function buildPrompt(isReroll = false) {
       );
     }
   }
-  if (d.regions?.length)
-    lines.push(`【希望エリア】${d.regions.map((r)=>rMap[r]||r).join("・")}`);
+  const selectedAreaLabels = _regionAreaLabels(d.regionAreaKeys?.length ? d.regionAreaKeys : d.regions);
+  if (selectedAreaLabels.length)
+    lines.push(`【希望エリア】${selectedAreaLabels.join("・")}`);
   if (d.regionCityIds?.length && window.REGION_CITY_OPTIONS) {
     const cityLabels = [];
     for (const id of d.regionCityIds) {
@@ -1812,11 +1832,13 @@ function buildPrompt(isReroll = false) {
       if (opt) cityLabels.push(opt.label);
     }
     if (cityLabels.length) {
-      lines.push(`【訪問したい市・郡・区】${cityLabels.join("・")}（各日の中心にする）`);
+      lines.push(`【訪問したい市・郡・区】${cityLabels.join("・")}（ユーザーが明示選択した下位地域。広域名から他都市へ勝手に広げず、この市・郡・区を旅行の中心にする。旅行日数と動線に合う範囲で優先）`);
     }
   }
   if (d.regionCities)
     lines.push(`【検索・Places用キーワード】${d.regionCities}`);
+  else if (selectedAreaLabels.length)
+    lines.push("【市・郡・区の扱い】ユーザーは下位地域を指定していないため、希望エリア内で旅行日数・移動動線・食事/観光候補に合う市・郡・区をAIが選定する。");
   const spMap = { soccer:"サッカー観戦", baseball:"野球観戦", basketball:"バスケ観戦", volleyball:"バレー観戦", sports:"スポーツ観戦（全競技）" };
   const legacyHallyu = (d.additional?.hallyu || []).filter((h) => h !== "traditional");
   const actMerged = [...(d.activities || [])];
@@ -1892,7 +1914,10 @@ function buildPrompt(isReroll = false) {
   if (d.regions?.length) {
     lines.push(
       "【到着日】1日目は入国・移動・チェックイン・休息のみ。観光・食事は【希望エリア】の順で2日目以降に配置（宿泊先の市区だけで観光エリアを決めない）。",
-      "【遠方観光地の扱い】宿泊先と希望エリアが遠い場合（例: ソウル/仁川/京畿の宿泊先から釜山・光州・江原・済州など）は、毎日宿泊先から日帰り往復させない。2日目に遠方エリアへ移動し、そのエリア側で滞在する前提で連続日程を組み、出国前日に元の宿泊先または出国空港圏へ戻る移動ブロックを入れる。最終日は元の宿泊先/空港圏から出国する。"
+      "【宿泊先と観光エリアの距離】宿泊先の市区と希望エリアが異なる場合は、2日目冒頭に片道移動時間の目安を1行で明記し、その日の観光地は同一方面にまとめる。毎日同じ遠方エリアへ往復する日程は禁止。移動負担が大きい場合は、観光地数を減らすか宿泊地変更を提案する。",
+      "【遠方移動日の地図】2日目に宿泊先から遠方観光地へ移動する場合、2日目の最初のブロックは必ず「宿泊先→目的地エリアの主要駅/最初の観光地」への移動にし、本文にも経路を明記する。地図ルート上でも宿泊先を出発点として扱える構成にする。",
+      "【帰還日の構成】遠方エリアから宿泊先へ戻る日は、午前〜昼食までは目的地エリア内で具体スポット1件＋具体昼食1件を入れ、午後に宿泊先へ戻る。帰還日を「移動」「休息」「周辺で食事」だけで終わらせない。",
+      "【遠方観光地の扱い】宿泊先と希望エリアが遠い場合（例: ソウル/仁川/京畿の宿泊先から釜山・光州・江原・済州など）は、毎日宿泊先から日帰り往復させない。2日目に遠方エリアへ移動した後は、その地域に滞在している前提で連続日程を組む。3日目以降に「元の宿泊先から遠方へ出発」と書くことは禁止。出国前日に元の宿泊先または出国空港圏へ戻る移動ブロックを1回だけ入れる。最終日は元の宿泊先/空港圏から出国する。"
     );
   }
   if (isReroll) {
@@ -1904,11 +1929,26 @@ function buildPrompt(isReroll = false) {
         : "【前回使用した店・スポット】直前プランに出た店名・施設名はできるだけ避け、別の候補を選ぶ。",
     );
   }
+  if (lockedItems.length) {
+    lines.push(
+      "【固定スポット — 最優先】ユーザーが固定した以下の場所は必ず同じ日程内に残す。前回スポットの除外対象にしない。固定スポット以外だけ差し替えてよい。",
+      ...lockedItems.map((it, idx) => {
+        const parts = [`${idx + 1}. Day ${it.day || "?"}`, it.name];
+        if (it.category) parts.push(`種別:${it.category}`);
+        if (it.address) parts.push(`住所:${it.address}`);
+        if (it.url) parts.push(`URL:${it.url}`);
+        if (it.note) parts.push(`メモ:${it.note}`);
+        return parts.join(" / ");
+      })
+    );
+  }
   lines.push(
     "\n地図アプリへの検索依頼は禁止。",
     "【言語】本文は必ず日本語。韓国語の説明文（■1일째、한식점で 等）は禁止。店名の韓国語表記のみ可。",
     "【表示形式】時刻レンジ（例:[10:00〜11:00]）は書かない。各日は「1日目」「2日目」見出し＋「①②③」または「午前」「昼食」「午後」「夕食」。",
-    "【食事 — 厳守】Reference Dataの「食事候補」リストの実在店のみ。店名の次の行に google_maps_uri をコピー。リストが空なら店名禁止（「近郊で食事」の1行のみ）。「한식店」「現地のレストラン」「別の韓国料理店」は絶対禁止。",
+    "【日程密度】通常観光日は、観光/体験2〜3件＋昼食＋夕食を基本上限にする。車移動でも同一市内という理由だけで観光地・イベント・食事を詰め込みすぎない。イベント/スポーツ観戦日は観光を1〜2件に減らす。",
+    "【カード表示用ノイズ禁止】本文に「外観写真」「評価」「営業中」「住所」「地図」「経路」「지도」「통로」「この日の動線上の候補」「予算の目安」を場所名の直前直後に書かない。場所名の直後は google_maps_uri だけを書く。",
+    "【食事 — 厳守】Reference Dataの「食事候補」リストの実在店のみ。昼食・夕食は必ず店名＋次行に google_maps_uri を書く。「近郊で食事」「店名は記載しない」「한식店」「現地のレストラン」「別の韓国料理店」は禁止。該当日の候補が足りない場合は、同一エリアまたは近接する目的地エリアの検証済み候補から選ぶ。帰還日・宿泊エリア候補は帰還後の夕食だけ使用可。",
     "【観光】「観光スポット候補」リストの施設名＋URLのみ。リスト外の創作禁止。",
     "【スポーツ】Sports Schedule Resultsの試合またはオフシーズン案内をそのまま記載。ジム・ストリートへの置き換え禁止。",
     "営業時間・料金・チケットは文末で一言のみ。"
@@ -2648,6 +2688,35 @@ function _isJpAddress(place) {
   return _JP_ADDR_MARKERS.some((m) => addr.includes(m.toLowerCase()));
 }
 
+const _REGION_PLACE_ADDRESS_MARKERS = {
+  seoul: ["seoul", "서울"],
+  busan: ["busan", "부산"],
+  daegu: ["daegu", "대구"],
+  incheon: ["incheon", "인천"],
+  gwangju: ["gwangju", "광주광역", "광주"],
+  daejeon: ["daejeon", "대전"],
+  ulsan: ["ulsan", "울산"],
+  sejong: ["sejong", "세종"],
+  gyeonggi: ["gyeonggi", "경기", "고양", "수원", "성남", "용인", "부천", "안산", "안양"],
+  gangwon: ["gangwon", "강원", "강릉", "속초", "양양", "춘천", "원주", "평창", "정선", "동해", "삼척", "고성"],
+  chungbuk: ["chungcheongbuk", "chungbuk", "충청북", "충북", "청주", "충주", "제천", "단양"],
+  chungnam: ["chungcheongnam", "chungnam", "충청남", "충남", "천안", "아산", "공주", "부여", "보령", "태안"],
+  jeonbuk: ["jeonbuk", "jeollabuk", "전북", "전라북", "전주", "군산", "익산", "남원", "고창"],
+  jeonnam: ["jeonnam", "jeollanam", "전남", "전라남", "여수", "목포", "순천", "담양", "보성", "해남"],
+  gyeongbuk: ["gyeongbuk", "gyeongsangbuk", "경북", "경상북", "경주", "포항", "안동", "영주"],
+  gyeongnam: ["gyeongnam", "gyeongsangnam", "경남", "경상남", "창원", "통영", "거제", "진주", "남해"],
+  jeju: ["jeju", "제주", "서귀포"],
+};
+
+function _placeMatchesSelectedArea(place) {
+  const selected = wizardData.regionAreaKeys?.length ? wizardData.regionAreaKeys : [];
+  if (!selected.length) return true;
+  const addr = `${place?.address || ""} ${place?.name || ""}`.toLowerCase();
+  return selected.some((key) =>
+    (_REGION_PLACE_ADDRESS_MARKERS[key] || []).some((m) => addr.includes(m.toLowerCase()))
+  );
+}
+
 function _buildPlaceIndexes(apiPlaces) {
   const byUrl = {};
   const byName = {};
@@ -2747,6 +2816,24 @@ function _nameKeysFromLine(line) {
   );
   if (bare) keys.push(_normalizePlaceName(bare[1]));
   return keys.filter(Boolean);
+}
+
+function _candidatePlaceNamesFromPlanLine(line) {
+  let t = _normalizeQueryLabelForEnrich(line);
+  if (!t || _isEchoCardLine(t)) return [];
+  t = t.replace(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*/, "");
+  if (
+    /(?:入国|出国|チェックイン|ホテル|宿泊|空港|移動|休息|休憩|到着|出発|手荷物|審査|税関|AREX|乗換|下車|徒歩|タクシー|リムジン|コンビニ|軽食)/i.test(t)
+  ) return [];
+  const parts = t.split(/[、。・]|→|⇒/).map((p) => p.trim()).filter(Boolean);
+  const out = [];
+  for (const part of parts.length ? parts : [t]) {
+    let name = part.replace(/^(?:昼食|午後|午前|夕食|朝食|夜|ランチ|ディナー|朝|昼|食事)[:：\s]*/, "").trim();
+    name = name.replace(/^(?:観光|散策|訪問|見学|ショッピング|カフェ|食事)\s*[:：-]?\s*/, "").trim();
+    name = name.replace(/\s+(?:周辺|近く|エリア).*$/u, "").trim();
+    if (name.length >= 2 && name.length <= 36 && !_ATTR_FOOD_SKIP_RE.test(name)) out.push(name);
+  }
+  return [...new Set(out)].slice(0, 3);
 }
 
 const _PLAN_SLOT_PREFIX_RE =
@@ -2921,15 +3008,19 @@ function _formatPlanTextLine(line) {
   return _escapeHtml(_stripPlanClocks(line)).replace(/【(.*?)】/g, "<strong>【$1】</strong>");
 }
 
-function _tryRenderPlaceCard(indexes, rendered, url) {
+function _tryRenderPlaceCard(indexes, rendered, url, renderedScope) {
   const key = _mapsUrlKey(url);
   if (rendered.has(key)) return false;
+  if (renderedScope?.has(key)) return false;
   const place = _lookupPlace(indexes, url);
   if (!place) return false;
   const pk = _placeRenderKey(place);
   if (pk && rendered.has(pk)) return false;
+  if (pk && renderedScope?.has(pk)) return false;
   rendered.add(key);
   if (pk) rendered.add(pk);
+  renderedScope?.add(key);
+  if (pk) renderedScope?.add(pk);
   return true;
 }
 
@@ -2967,6 +3058,7 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
 
   const ticketIdx = ticketEventIndex || {};
   const LP = window.LinkPreview;
+  let renderedDayPlaces = new Set();
 
   const _ticketCardsForUrls = (urls) => {
     if (!LP) {
@@ -3043,7 +3135,7 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
       const cardParts = [];
       for (const url of urls) {
         const place = _lookupPlace(placeIndexes, url);
-        if (place && _tryRenderPlaceCard(placeIndexes, rendered, url)) {
+        if (place && _tryRenderPlaceCard(placeIndexes, rendered, url, renderedDayPlaces)) {
           cardParts.push(emitCard(place));
         } else if (!rendered.has(_mapsUrlKey(url))) {
           rendered.add(_mapsUrlKey(url));
@@ -3072,7 +3164,7 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
         return;
       }
       const place = _lookupPlace(placeIndexes, url);
-      if (place && _tryRenderPlaceCard(placeIndexes, rendered, url)) {
+      if (place && _tryRenderPlaceCard(placeIndexes, rendered, url, renderedDayPlaces)) {
         pushStep(emitCard(place));
       } else if (!rendered.has(_mapsUrlKey(url))) {
         rendered.add(_mapsUrlKey(url));
@@ -3087,7 +3179,7 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
       const place = placeIndexes.byName[nk];
       if (!place) continue;
       const uri = place.google_maps_uri || place.maps_url;
-      if (uri && _tryRenderPlaceCard(placeIndexes, rendered, uri)) {
+      if (uri && _tryRenderPlaceCard(placeIndexes, rendered, uri, renderedDayPlaces)) {
         pushStep(emitCard(place));
         return;
       }
@@ -3123,6 +3215,7 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
     }
 
     if (_isPlanDayHeader(trimmed)) {
+      renderedDayPlaces = new Set();
       openTimeline(`<h3 class="plan-day-heading">${_formatPlanTextLine(trimmed)}</h3>`);
       continue;
     }
@@ -3326,15 +3419,46 @@ function _renderTravelChecklist(meta = {}) {
 // 식당/카페 키워드가 포함된 이름은 제외 (food 카드에서 이미 처리)
 const _ATTR_PAREN_RE = /([가-힣A-Za-z][가-힣A-Za-z0-9\s]{1,25})\(([가-힣A-Za-z][가-힣A-Za-z0-9\s]{1,25})\)/gu;
 const _ATTR_BOLD_RE = /\*{1,2}([가-힣][가-힣A-Za-z0-9\s·]{2,24})\*{1,2}/gu;
-const _ATTR_FOOD_SKIP_RE = /식당|레스토랑|맛집|카페|커피|치킨|갈비|국밥|냉면|삼겹|restaurant|cafe/i;
+const _ATTR_FOOD_SKIP_RE = /식당|레스토랑|맛집|카페|커피|치킨|갈비|국밥|냉면|삼겹|보쌈|보섬|족발|식사|음식|restaurant|cafe|lunch|dinner/i;
 const _MAPS_URL_LINE_RE = /https?:\/\/(?:maps\.google\.com|goo\.gl)/;
 // 단어 1~2개짜리 에리어 이름(홍대, 강남 등)은 건너뜀 — 너무 범용적
 const _ATTR_AREA_SKIP_RE = /^(홍대|명동|강남|인사동|동대문|이태원|한강|성수|압구정|광장시장|여의도|해운대|부산|제주|대전|전주|경주|속초|강릉)$/;
+const _ATTR_PROSE_SKIP_RE =
+  /(?:おすすめ|推奨|人気|有名|地元|現地|代表|確認|利用|楽し|撮影|散策|移動|候補|動線|経路|満点|愛され|できます|できる|です|ます|합니다|있습니다|추천|인기|현지|대표|확인|이용|즐길|사랑|평판|후보|동선|경로|만점|좋습니다|입니다|있다)/i;
+
+function _looksLikeStandalonePlaceName(name) {
+  const t = String(name || "").trim();
+  if (!t || t.length < 2 || t.length > 32) return false;
+  if (_ATTR_FOOD_SKIP_RE.test(t) || _ATTR_PROSE_SKIP_RE.test(t)) return false;
+  if (/[。.!?！？]/.test(t)) return false;
+  if (/\s/.test(t) && t.length > 18) return false;
+  return true;
+}
+
+function _planDetailTextOnly(text) {
+  const lines = String(text || "").split(/\r?\n/);
+  const startIdx = lines.findIndex((line) =>
+    /(?:テキスト詳細計画|텍스트\s*상세\s*계획|詳細計画|상세\s*계획)/i.test(line)
+  );
+  const start = startIdx >= 0 ? startIdx + 1 : 0;
+  const out = [];
+  for (let i = start; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (
+      /^(?:旅行チェックリスト|旅のチェックリスト|여행\s*체크리스트|チェックリスト|체크리스트)$/i.test(t) ||
+      /^🔗/.test(t) ||
+      /^🎫/.test(t) ||
+      /(?:参照データ|Reference Data|지역\s*주변\s*명소|旅行地周辺|旅行地\s*周辺|スポーツ・イベント・観光|チケット・公演)/i.test(t)
+    ) break;
+    out.push(lines[i]);
+  }
+  return out.join("\n");
+}
 
 function _extractUnlinkedAttrNames(text, placeIndexes) {
   const results = new Map(); // name → normalizedKey
   const urlLines = new Set();
-  const lines = text.split(/\r?\n/);
+  const lines = _planDetailTextOnly(text).split(/\r?\n/);
 
   // 먼저 URL이 있는 라인 바로 윗줄(장소 이름 줄)을 마킹 — 해당 줄은 건너뜀
   for (let i = 0; i < lines.length; i++) {
@@ -3347,6 +3471,7 @@ function _extractUnlinkedAttrNames(text, placeIndexes) {
   const tryAdd = (name, force = false) => {
     name = name.trim();
     if (name.length < 3) return;
+    if (!_looksLikeStandalonePlaceName(name)) return;
     if (!force && (_ATTR_FOOD_SKIP_RE.test(name) || _ATTR_AREA_SKIP_RE.test(name))) return;
     const nk = _normalizePlaceName(name);
     if (!nk || placeIndexes.byName[nk]) return;
@@ -3357,6 +3482,9 @@ function _extractUnlinkedAttrNames(text, placeIndexes) {
     if (urlLines.has(i)) continue;
     const line = lines[i];
     for (const q of _autoPlaceQueriesFromLine(line)) {
+      tryAdd(q, true);
+    }
+    for (const q of _candidatePlaceNamesFromPlanLine(line)) {
       tryAdd(q, true);
     }
     // 괄호형: 더현대서울(더현대서울)
@@ -3371,12 +3499,12 @@ function _extractUnlinkedAttrNames(text, placeIndexes) {
       tryAdd(m[1]);
     }
   }
-  return [...results.keys()].slice(0, 8);
+  return [...results.keys()].slice(0, 16);
 }
 
 async function _enrichUnlinkedAttractions(names, placeIndexes) {
   if (!names.length) return;
-  const regionHint = (wizardData.regions || []).join(" ") + " " +
+  const regionHint = _regionAreaLabels(wizardData.regionAreaKeys?.length ? wizardData.regionAreaKeys : wizardData.regions).join(" ") + " " +
     (wizardData.regionCities || wizardData.regionCitiesOther || "");
   await Promise.allSettled(names.map(async (name) => {
     try {
@@ -3387,7 +3515,7 @@ async function _enrichUnlinkedAttractions(names, placeIndexes) {
       if (!res.ok) return;
       const body = await res.json();
       const p = (body.places || [])[0];
-      if (!p || !p.maps_url || _isJpAddress(p)) return;
+      if (!p || !p.maps_url || _isJpAddress(p) || !_placeMatchesSelectedArea(p)) return;
       const enriched = { ...p, google_maps_uri: p.maps_url };
       const nk = _normalizePlaceName(p.name || name);
       const queryKey = _normalizePlaceName(name);
@@ -3410,7 +3538,7 @@ async function _enrichTicketVenuePlaces(events, placeIndexes) {
       if (!res.ok) return;
       const body = await res.json();
       const p = (body.places || [])[0];
-      if (!p || !p.maps_url || _isJpAddress(p)) return;
+      if (!p || !p.maps_url || _isJpAddress(p) || !_placeMatchesSelectedArea(p)) return;
       const enriched = { ...p, google_maps_uri: p.maps_url };
       ev.venue_place = enriched;
       const nk = _normalizePlaceName(p.name || ev.venue);
@@ -3484,11 +3612,7 @@ async function _displayPlanOutput(data) {
   }
 
   if (window.PlanMapView) {
-    const rMap = {
-      seoul: "ソウル", gyeonggi: "京畿", incheon: "仁川", gangwon: "江原",
-      chungcheong: "忠清", jeolla: "全羅", gyeongsang: "慶尚", jeju: "済州",
-    };
-    const regions = (wizardData.regions || []).map((r) => rMap[r] || r).filter(Boolean);
+    const regions = _regionAreaLabels(wizardData.regionAreaKeys?.length ? wizardData.regionAreaKeys : wizardData.regions);
     const stay = regions.length ? regions.join("·") : "韓国";
     const nights = wizardData.nights || "";
     const days = wizardData.days || "";
@@ -3499,6 +3623,7 @@ async function _displayPlanOutput(data) {
     const arrivalIata = wizardData.flight?.arrival_airport || getArrivalAirportIata();
     const departureIata = wizardData.flight?.departure_airport || getDepartureAirportIata();
     await window.PlanMapView.render(reply, placeIndexes.byUrl, {
+      placeIndex: placeIndexes,
       days: wizardData.days,
       nights: wizardData.nights,
       title,
@@ -3631,7 +3756,14 @@ function _renderPlanEventsCards(events) {
 
 function _renderPlanSportsCards(events) {
   if (!events.length) return "";
-  const cards = events.map((ev) => {
+  const leagueOrder = ["kbo", "kleague", "kleague2", "kbl", "kovo", "lck"];
+  const byLeague = new Map();
+  for (const ev of events) {
+    const key = ev.league || "other";
+    if (!byLeague.has(key)) byLeague.set(key, []);
+    byLeague.get(key).push(ev);
+  }
+  const renderCard = (ev) => {
     const lg = _LEAGUE_LABELS[ev.league] || ev.league || "";
     const isNotice = ev.status === "off_season_notice";
     const time = ev.time ? ` ${ev.time}` : "";
@@ -3654,9 +3786,40 @@ function _renderPlanSportsCards(events) {
       <div class="sport-match">${_escapeHtml(teams)}</div>
       ${venue}${url}
     </div>`;
-  });
+  };
+  const renderDateGroup = (date, items) => {
+    const label = date || "日程未定";
+    return `<div class="sport-date-group">
+      <h5 class="sport-date-title">${_escapeHtml(label)}</h5>
+      <div class="plan-sport-grid">${items.map(renderCard).join("")}</div>
+    </div>`;
+  };
+  const sections = [...byLeague.entries()]
+    .sort(([a], [b]) => {
+      const ai = leagueOrder.indexOf(a);
+      const bi = leagueOrder.indexOf(b);
+      if (ai !== -1 || bi !== -1) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+      return String(a).localeCompare(String(b), "ja");
+    })
+    .map(([league, items]) => {
+      const leagueLabel = _LEAGUE_LABELS[league] || league || "スポーツ";
+      const byDate = new Map();
+      const sorted = [...items].sort((a, b) =>
+        String(a.date || "").localeCompare(String(b.date || "")) ||
+        String(a.time || "").localeCompare(String(b.time || ""))
+      );
+      for (const ev of sorted) {
+        const dateKey = ev.status === "off_season_notice" ? "お知らせ" : (ev.date || "日程未定");
+        if (!byDate.has(dateKey)) byDate.set(dateKey, []);
+        byDate.get(dateKey).push(ev);
+      }
+      return `<section class="sport-league-group">
+        <h4 class="sport-league-title">${_escapeHtml(leagueLabel)}</h4>
+        ${[...byDate.entries()].map(([date, dayItems]) => renderDateGroup(date, dayItems)).join("")}
+      </section>`;
+    });
   return `<div class="plan-refs-section"><h3 class="plan-refs-title">⚽ 試合日程（宿泊先近郊・公式データ参照）</h3>
-    <div class="plan-sport-grid">${cards.join("")}</div>
+    <div class="plan-sport-groups">${sections.join("")}</div>
     <p class="plan-refs-note">※ 宿泊先近くで開催される試合のみ表示。最新日程・チケットは各公式サイトでご確認ください。</p></div>`;
 }
 
