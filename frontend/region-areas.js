@@ -66,7 +66,7 @@ window.REGION_CITY_OPTIONS = {
     { id: "cheonan", label: "天安市", query: "천안시" },
     { id: "gongju", label: "公州市", query: "공주시" },
     { id: "buyeo", label: "扶余郡", query: "부여군" },
-    { id: "boryeong", label: "瑞山市", query: "보령시" },
+    { id: "boryeong", label: "保寧市", query: "보령시" },
     { id: "chungju", label: "忠州市", query: "충주시" },
     { id: "cheongju", label: "清州市", query: "청주시" },
     { id: "sejong", label: "世宗特別市", query: "세종특별자치시" },

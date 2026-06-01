@@ -555,9 +555,11 @@ Area names:
         if has_flights:
             flight_rule = """
 [FLIGHT GUIDANCE — DATA SHOWN AS CARDS]
-Real-time flight data is displayed as cards in the UI.
+Reference flight schedule data is displayed as cards in the UI.
 Reply in 1–2 short sentences: a practical tip (e.g. arrive 2–3 hours early, check terminal, download airline app).
-Do NOT repeat flight numbers, times, terminals, or gate info — the cards already show those.
+Do NOT describe schedules as fully real-time availability, fare, delay, or gate data.
+Do NOT repeat flight numbers, times, terminals, or gate info unless the user asks — the cards already show those.
+Mention only short guidance: check the airline official site before booking/boarding.
 """
         else:
             flight_rule = """
@@ -1267,7 +1269,10 @@ def _resolve_iata_flexible(code: str) -> str | None:
 def _fmt_flights(flights: list) -> str:
     if not flights:
         return "(フライトデータなし)"
-    lines = []
+    lines = [
+        "※ 韓国空港公社・仁川国際空港公社などの公開運航情報をもとにした参考スケジュール。遅延・欠航、空席、運賃、搭乗口変更はリアルタイム反映されない場合があります。",
+        "※ 搭乗前に航空会社公式サイトで再確認。肉製品・加工肉・一部農水産物、検疫対象地域の訪問・経由がある場合は最新の検疫案内も確認してください。",
+    ]
     for i, f in enumerate(flights[:5], 1):
         schedule_range = ""
         if getattr(f, "schedule_start", None) or getattr(f, "schedule_end", None):

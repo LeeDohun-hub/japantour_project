@@ -1211,6 +1211,93 @@ a.btn {
   color: var(--text); font: inherit; font-size: .86rem;
 }
 
+.flight-reference-note {
+  margin-top: .85rem;
+  padding: .68rem .82rem .72rem;
+  border: 1px solid rgba(28, 48, 88, 0.10);
+  border-left: 2px solid rgba(190, 142, 0, 0.75);
+  border-radius: 8px;
+  background: rgba(255,255,255,.55);
+  color: var(--text-muted);
+}
+.flight-reference-note strong {
+  display: block;
+  margin-bottom: .18rem;
+  color: var(--text);
+  font-size: .76rem;
+  font-weight: 700;
+}
+.flight-reference-note p {
+  margin: 0;
+  font-size: .73rem;
+  line-height: 1.55;
+}
+.flight-quarantine-tip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  border-bottom: 1px dotted rgba(190, 142, 0, 0.75);
+  color: #8a6500;
+  font-weight: 600;
+  cursor: help;
+  outline: none;
+}
+.flight-quarantine-tip::after {
+  content: "i";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: .25rem;
+  border-radius: 50%;
+  background: rgba(190, 142, 0, 0.12);
+  color: #8a6500;
+  font-size: .6rem;
+  font-weight: 700;
+}
+.flight-quarantine-tooltip {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 9px);
+  z-index: 20;
+  width: min(360px, 78vw);
+  padding: .68rem .75rem;
+  border: 1px solid rgba(28, 48, 88, 0.12);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(28, 48, 88, 0.16);
+  color: var(--text);
+  font-size: .72rem;
+  font-weight: 500;
+  line-height: 1.55;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(4px);
+  transition: opacity .14s ease, transform .14s ease, visibility .14s ease;
+}
+.flight-quarantine-tooltip span {
+  display: block;
+}
+.flight-quarantine-tooltip span + span {
+  margin-top: .38rem;
+}
+.flight-quarantine-tooltip::after {
+  content: "";
+  position: absolute;
+  left: 18px;
+  top: 100%;
+  border: 7px solid transparent;
+  border-top-color: #fff;
+}
+.flight-quarantine-tip:hover .flight-quarantine-tooltip,
+.flight-quarantine-tip:focus .flight-quarantine-tooltip,
+.flight-quarantine-tip:focus-within .flight-quarantine-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
 .aviation-notice {
   margin-top: .9rem; padding: .6rem .85rem; border-radius: var(--radius-sm);
   background: rgba(232,90,107,.07); border: 1px solid rgba(232,90,107,.2);
@@ -2403,6 +2490,22 @@ a.place-card:hover .place-maps-hint {
 .hotel-sel-clear-btn {
   align-self: flex-start; margin-top: .4rem;
   font-size: .75rem; padding: .3rem .65rem;
+}
+.hotel-recommend-note {
+  margin: .85rem 0 0;
+  padding: .58rem .72rem;
+  border: 1px solid rgba(28, 48, 88, 0.10);
+  border-radius: 8px;
+  background: rgba(255,255,255,.45);
+  color: var(--text-muted);
+  font-size: .74rem;
+  line-height: 1.5;
+}
+.hotel-recommend-note span {
+  display: block;
+}
+.hotel-recommend-note span + span {
+  margin-top: .18rem;
 }
 .hotel-name {
   font-size: .92rem; font-weight: 700; color: var(--text);
