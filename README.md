@@ -19,8 +19,10 @@ pip install -r requirements.txt
    - **PowerShell:** `Copy-Item .env.example .env`
    - **bash:** `cp .env.example .env`
 2. Edit `.env` and set at least **`OPENAI_API_KEY`** for the Streamlit chatbot (`streamlit run app_japan_tour.py`).
-3. Set **`GOOGLE_MAPS_API_KEY`** to use current-location nearby tourist spot and cafe recommendations through Google Places API.
-4. Optional: `AIHUB_APIKEY` for AI Hub downloads (`DATA_SETUP.md`). Other keys in `.env.example` are for optional `src/` experiments.
+3. Set **`NAVER_MAPS_CLIENT_ID`** for the browser map. Set **`NAVER_MAPS_CLIENT_SECRET`** too if you want server-side geocoding.
+   Set **`NAVER_SEARCH_CLIENT_ID`** and **`NAVER_SEARCH_CLIENT_SECRET`** to score place candidates with official Naver Local/Blog Search signals.
+4. Google Places is disabled by default. Only set `ENABLE_GOOGLE_PLACES=1` when you intentionally want to call Google Places APIs.
+5. Optional: `AIHUB_APIKEY` for AI Hub downloads (`DATA_SETUP.md`). Other keys in `.env.example` are for optional `src/` experiments.
 
 ## 3) Restore `data` directory
 

@@ -10,8 +10,14 @@ from src.api.region_resolver import (
 )
 
 try:
-    from src.chain.router import _detect_itinerary_areas
+    from src.api.google_places_client import NearbyPlace
+    from src.chain.router import (
+        _combine_itinerary_place_candidates,
+        _detect_itinerary_areas,
+    )
 except ModuleNotFoundError as exc:
+    NearbyPlace = None
+    _combine_itinerary_place_candidates = None
     _detect_itinerary_areas = None
     _ROUTER_IMPORT_ERROR = exc
 else:
@@ -134,6 +140,51 @@ class RouterRegionDetectionTests(unittest.TestCase):
 
         self.assertIn("광주", areas)
         self.assertNotIn("경기광주", areas)
+
+
+class RouterItineraryPlaceBalanceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        if _combine_itinerary_place_candidates is None or NearbyPlace is None:
+            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
+
+    def _place(self, name: str, category: str) -> NearbyPlace:
+        return NearbyPlace(
+            name=name,
+            category=category,
+            address=f"Seoul {name}",
+            latitude=37.5,
+            longitude=127.0,
+            rating=4.5,
+            user_rating_count=100,
+            google_maps_uri=f"https://maps.example/{name}",
+            is_open_now=None,
+            distance_meters=None,
+        )
+
+    def test_itinerary_candidates_put_attractions_before_food(self) -> None:
+        food = [self._place(f"restaurant-{i}", "restaurant") for i in range(4)]
+        attrs = [self._place(f"attraction-{i}", "tourist_attraction") for i in range(3)]
+
+        combined = _combine_itinerary_place_candidates(
+            food,
+            attrs,
+            traveler_profile={"days": 2},
+            max_total=10,
+        )
+
+        self.assertEqual([p.name for p in combined[:3]], [p.name for p in attrs])
+
+    def test_itinerary_candidates_cap_food_by_trip_length(self) -> None:
+        food = [self._place(f"restaurant-{i}", "restaurant") for i in range(20)]
+
+        combined = _combine_itinerary_place_candidates(
+            food,
+            [],
+            traveler_profile={"days": 2},
+            max_total=50,
+        )
+
+        self.assertEqual(len(combined), 8)
 
 
 if __name__ == "__main__":

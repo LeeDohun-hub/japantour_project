@@ -35,6 +35,18 @@ from tour_api.models import TravelPlanSnapshot
 
 _FRONTEND: Path = settings.FRONTEND_DIR
 
+
+def _env_flag(name: str, default: str = "0") -> bool:
+    return (os.getenv(name, default) or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _google_places_enabled() -> bool:
+    return False
+
+
+def _places_provider() -> str:
+    return (os.getenv("PLACES_PROVIDER") or os.getenv("MAPS_PROVIDER") or "").strip().lower()
+
 # ── Rate limiting (캐시 기반, 멀티워커 환경에서도 동작) ──────────────────────
 _CHAT_RATE_PER_MIN: int = int(os.environ.get("CHAT_RATE_PER_MIN", "30"))
 _CHAT_RATE_PER_DAY: int = int(os.environ.get("CHAT_RATE_PER_DAY", "300"))
@@ -121,6 +133,8 @@ def api_places_search(request):
 
     from src.api.google_places_client import GooglePlacesClient, KR_LOCATION_RESTRICTION
     from src.api.hotel_area_filter import build_hotel_search_query, filter_hotel_places
+    from src.api.naver_maps_client import NaverMapsClient, naver_map_search_url
+    from src.api.naver_search_client import NaverSearchClient
 
     sido = request.GET.get("sido", "").strip()
     sigungu = request.GET.get("sigungu", "").strip()
@@ -136,6 +150,124 @@ def api_places_search(request):
         limit = 5
     place_type = request.GET.get("type", "").strip().lower()
     included_type = "hotel" if place_type == "hotel" or sido or sigungu else ""
+    provider = _places_provider()
+    if provider in ("naver", "naver_maps") or not _google_places_enabled():
+        try:
+            sclient = NaverSearchClient()
+            if sclient.is_configured:
+                area_hint = " ".join(x for x in (sido, sigungu) if x).strip()
+                scored = sclient.search_places(query, display=limit, area_hint=area_hint)
+                places = [
+                    {
+                        "name": p.name,
+                        "address": p.address or "",
+                        "maps_url": p.google_maps_uri or p.naver_place_url or "",
+                        "google_maps_uri": p.google_maps_uri or p.naver_place_url or "",
+                        "rating": None,
+                        "user_rating_count": None,
+                        "price_level": None,
+                        "photo_name": None,
+                        "latitude": p.latitude,
+                        "longitude": p.longitude,
+                        "category": p.category,
+                        "source": p.source,
+                        "naver_score": p.naver_score,
+                        "naver_place_url": p.naver_place_url,
+                        "naver_local_link": p.naver_local_link,
+                        "blog_review_count": p.blog_review_count,
+                        "review_keywords": p.review_keywords or [],
+                        "quality_reason": p.quality_reason or "",
+                        "photo_url": _naver_place_photo_proxy(
+                            p.name, p.latitude, p.longitude,
+                            p.mapx or "", p.mapy or "",
+                            p.naver_local_link or "", p.naver_place_url or "",
+                        ),
+                        "mapx": p.mapx or "",
+                        "mapy": p.mapy or "",
+                    }
+                    for p in scored
+                ]
+                if not any(p.get("latitude") is not None and p.get("longitude") is not None for p in places):
+                    nclient = NaverMapsClient()
+                    geo_query = query
+                    if places and places[0].get("address"):
+                        geo_query = str(places[0]["address"])
+                    geocoded = nclient.geocode(geo_query, limit=1)
+                    if geocoded:
+                        g = geocoded[0]
+                        if places:
+                            places[0]["latitude"] = g.latitude
+                            places[0]["longitude"] = g.longitude
+                            places[0]["maps_url"] = places[0].get("maps_url") or g.maps_url
+                            places[0]["google_maps_uri"] = places[0].get("google_maps_uri") or g.maps_url
+                            places[0]["source"] = places[0].get("source") or "naver_search_geocoded"
+                        else:
+                            places = [{
+                                "name": query,
+                                "address": g.address or "",
+                                "maps_url": g.maps_url,
+                                "google_maps_uri": g.maps_url,
+                                "rating": None,
+                                "user_rating_count": None,
+                                "price_level": None,
+                                "photo_name": None,
+                                "latitude": g.latitude,
+                                "longitude": g.longitude,
+                                "source": "naver_maps_geocode",
+                                "photo_url": f"/api/naver-photo/?url={urllib.parse.quote(g.maps_url)}",
+                            }]
+                return JsonResponse({
+                    "places": places,
+                    "total": len(places),
+                    "total_before_filter": len(places),
+                    "filtered_out": 0,
+                    "provider": "naver_search",
+                    "note": "Naver quality score uses official Local and Blog Search signals.",
+                })
+
+            nclient = NaverMapsClient()
+            results = nclient.geocode(query, limit=limit)
+            places = [
+                {
+                    "name": p.name,
+                    "address": p.address or "",
+                    "maps_url": p.maps_url or naver_map_search_url(query, p.latitude, p.longitude),
+                    "rating": None,
+                    "user_rating_count": None,
+                    "price_level": None,
+                    "photo_name": None,
+                    "latitude": p.latitude,
+                    "longitude": p.longitude,
+                    "source": "naver_maps_geocode",
+                    "photo_url": f"/api/naver-photo/?url={urllib.parse.quote(p.maps_url or naver_map_search_url(query, p.latitude, p.longitude))}",
+                }
+                for p in results
+            ]
+            if not places and nclient.is_configured:
+                places = [{
+                    "name": query,
+                    "address": "",
+                    "maps_url": naver_map_search_url(query),
+                    "rating": None,
+                    "user_rating_count": None,
+                    "price_level": None,
+                    "photo_name": None,
+                    "latitude": None,
+                    "longitude": None,
+                    "source": "naver_maps_search_url",
+                    "photo_url": f"/api/naver-photo/?url={urllib.parse.quote(naver_map_search_url(query))}",
+                }]
+            return JsonResponse({
+                "places": places,
+                "total": len(places),
+                "total_before_filter": len(places),
+                "filtered_out": 0,
+                "provider": "naver_maps",
+                "note": "Naver Maps Geocoding is not a full POI/ratings replacement for Google Places.",
+            })
+        except Exception as exc:
+            logger.warning("api_places_search naver error: %s", exc)
+            return JsonResponse({"places": [], "error": str(exc), "provider": "naver_maps"})
     try:
         pclient = GooglePlacesClient()
         if not pclient.is_configured:
@@ -198,6 +330,46 @@ def api_places_search(request):
         return JsonResponse({"places": [], "error": str(exc)})
 
 
+@require_GET
+def api_places_geocode(request):
+    """Geocode a raw address/place query with Naver Maps only."""
+    import sys
+    from pathlib import Path as _P
+
+    _root = _P(settings.BASE_DIR).parent
+    if str(_root / "src") not in sys.path:
+        sys.path.insert(0, str(_root / "src"))
+
+    from src.api.naver_maps_client import NaverMapsClient, naver_map_search_url
+
+    query = request.GET.get("q", "").strip()
+    if not query:
+        return JsonResponse({"places": []})
+    try:
+        limit = min(max(int(request.GET.get("limit", 1)), 1), 5)
+    except (TypeError, ValueError):
+        limit = 1
+    try:
+        nclient = NaverMapsClient()
+        results = nclient.geocode(query, limit=limit)
+        places = [
+            {
+                "name": p.name or query,
+                "address": p.address or "",
+                "maps_url": p.maps_url or naver_map_search_url(query, p.latitude, p.longitude),
+                "google_maps_uri": p.maps_url or naver_map_search_url(query, p.latitude, p.longitude),
+                "latitude": p.latitude,
+                "longitude": p.longitude,
+                "source": "naver_maps_geocode",
+            }
+            for p in results
+        ]
+        return JsonResponse({"places": places, "total": len(places), "provider": "naver_maps"})
+    except Exception as exc:
+        logger.warning("api_places_geocode error [%r]: %s", query[:80], exc)
+        return JsonResponse({"places": [], "error": str(exc), "provider": "naver_maps"})
+
+
 @require_POST
 def api_places_enrich(request):
     """プラン本文の Google Maps URL を Places 詳細（写真・評価等）に変換."""
@@ -209,6 +381,8 @@ def api_places_enrich(request):
         sys.path.insert(0, str(_root / "src"))
 
     from src.api.google_places_client import GooglePlacesClient, normalize_plan_query_label
+    from src.api.naver_maps_client import NaverMapsClient, naver_map_search_url
+    from src.api.naver_search_client import NaverSearchClient
     from src.api.region_resolver import address_matches_destination
 
     try:
@@ -238,6 +412,98 @@ def api_places_enrich(request):
             region_city_ids=region_city_ids,
             dest_regions=dest_regions,
         )
+
+    if _places_provider() in ("naver", "naver_maps") or not _google_places_enabled():
+        sclient = NaverSearchClient()
+        nclient = NaverMapsClient()
+        enriched: dict[str, dict] = {}
+        for raw in items:
+            if not isinstance(raw, dict):
+                continue
+            url = str(raw.get("url") or "").strip()
+            query = normalize_plan_query_label(str(raw.get("query") or ""))
+            if not url or not query:
+                continue
+            scored = sclient.search_places(query, display=1, area_hint=region_cities) if sclient.is_configured else []
+            if scored:
+                p = scored[0]
+                enriched[url] = {
+                    "name": p.name,
+                    "category": p.category,
+                    "address": p.address,
+                    "latitude": p.latitude,
+                    "longitude": p.longitude,
+                    "rating": None,
+                    "user_rating_count": None,
+                    "google_maps_uri": p.google_maps_uri or p.naver_place_url,
+                    "maps_url": p.google_maps_uri or p.naver_place_url,
+                    "is_open_now": None,
+                    "distance_meters": None,
+                    "place_id": None,
+                    "price_level": None,
+                    "photo_name": None,
+                    "search_area": region_cities,
+                    "source": p.source,
+                    "naver_score": p.naver_score,
+                    "naver_place_url": p.naver_place_url,
+                    "naver_local_link": p.naver_local_link,
+                    "blog_review_count": p.blog_review_count,
+                    "review_keywords": p.review_keywords or [],
+                    "quality_reason": p.quality_reason or "",
+                    "photo_url": _naver_place_photo_proxy(
+                        p.name, p.latitude, p.longitude,
+                        p.mapx or "", p.mapy or "",
+                        p.naver_local_link or "", p.naver_place_url or "",
+                    ),
+                    "mapx": p.mapx or "",
+                    "mapy": p.mapy or "",
+                }
+                continue
+
+            found = nclient.geocode(query, limit=1)
+            if found:
+                p = found[0]
+                enriched[url] = {
+                    "name": query,
+                    "category": "",
+                    "address": p.address,
+                    "latitude": p.latitude,
+                    "longitude": p.longitude,
+                    "rating": None,
+                    "user_rating_count": None,
+                    "google_maps_uri": p.maps_url,
+                    "maps_url": p.maps_url,
+                    "is_open_now": None,
+                    "distance_meters": None,
+                    "place_id": None,
+                    "price_level": None,
+                    "photo_name": None,
+                    "search_area": "",
+                    "source": "naver_maps_geocode",
+                    "photo_url": f"/api/naver-photo/?url={urllib.parse.quote(p.maps_url)}",
+                }
+            elif nclient.is_configured:
+                maps_url = naver_map_search_url(query)
+                enriched[url] = {
+                    "name": query,
+                    "category": "",
+                    "address": "",
+                    "latitude": None,
+                    "longitude": None,
+                    "rating": None,
+                    "user_rating_count": None,
+                    "google_maps_uri": maps_url,
+                    "maps_url": maps_url,
+                    "is_open_now": None,
+                    "distance_meters": None,
+                    "place_id": None,
+                    "price_level": None,
+                    "photo_name": None,
+                    "search_area": "",
+                    "source": "naver_maps_search_url",
+                    "photo_url": f"/api/naver-photo/?url={urllib.parse.quote(maps_url)}",
+                }
+        return JsonResponse({"places": enriched, "provider": "naver_maps"})
 
     try:
         pclient = GooglePlacesClient()
@@ -339,6 +605,18 @@ def api_places_debug(request):
 @require_GET
 def api_maps_config(request):
     """Google Maps JavaScript API 用キー（ブラウザ — HTTPリファラー制限必須）."""
+    from src.api.naver_maps_client import naver_maps_client_id
+
+    naver_key = naver_maps_client_id()
+    if naver_key and (_places_provider() in ("", "naver", "naver_maps") or not _google_places_enabled()):
+        return JsonResponse({
+            "enabled": True,
+            "provider": "naver",
+            "api_key": naver_key,
+            "source": "NAVER_MAPS_CLIENT_ID",
+            "browser_note": "Naver Maps JavaScript API key.",
+        })
+
     maps_key = (os.getenv("GOOGLE_MAPS_API_KEY") or "").strip()
     hotels_key = (os.getenv("GOOGLE_HOTELS_API_KEY") or "").strip()
     # ブラウザ地図は GOOGLE_MAPS_API_KEY 専用を推奨（HOTELS はサーバーIP制限のことが多い）
@@ -350,6 +628,7 @@ def api_maps_config(request):
         api_key, source = "", ""
     return JsonResponse({
         "enabled": bool(api_key),
+        "provider": "google",
         "api_key": api_key,
         "source": source,
         "browser_note": (
@@ -359,9 +638,303 @@ def api_maps_config(request):
     })
 
 
+_NAVER_PHOTO_ALLOWED_DOMAINS = frozenset({
+    "map.naver.com",
+    "m.place.naver.com",
+    "pcmap.place.naver.com",
+    "search.pstatic.net",
+    "ldb-phinf.pstatic.net",
+    "apis.naver.com",
+})
+_NAVER_DIRECT_PHOTO_DOMAINS = frozenset({
+    "search.pstatic.net",
+    "ldb-phinf.pstatic.net",
+    "apis.naver.com",
+})
+_NAVER_PLACE_ID_RE = re.compile(r"/place/(\d+)")
+_NAVER_FETCH_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
+    "Referer": "https://map.naver.com/",
+}
+NAVER_IMAGE_SEARCH_URL = "https://openapi.naver.com/v1/search/image"
+
+
+def _is_probable_naver_place_photo(url: str) -> bool:
+    lower = (url or "").lower()
+    if not lower.startswith("http"):
+        return False
+    if any(x in lower for x in ("favicon", "/assets/", "sp_map", "logo", "marker", "sprite")):
+        return False
+    return any(
+        x in lower
+        for x in (
+            "ldb-phinf",
+            "search.pstatic.net/common",
+            "apis.naver.com/place/panorama/thumbnail",
+            "postfiles.pstatic",
+            "blogthumb",
+        )
+    )
+
+
+def _normalize_direct_naver_photo_url(url: str) -> str:
+    """Return a direct/proxy Naver photo URL, decoding search.pstatic src= when useful."""
+    raw = html.unescape(str(url or "").strip()).replace("\\/", "/")
+    parsed = urllib.parse.urlparse(raw)
+    if parsed.netloc.lower() == "search.pstatic.net":
+        src = urllib.parse.parse_qs(parsed.query).get("src", [""])[0]
+        decoded = urllib.parse.unquote(src).strip()
+        if "apis.naver.com/place/panorama/thumbnail" in decoded.lower():
+            return raw
+        if _is_probable_naver_place_photo(decoded):
+            return decoded
+    return raw
+
+
+def _parse_naver_place_photo(raw_html: str) -> str | None:
+    """Extract a place exterior photo URL from Naver HTML using multiple strategies."""
+    text = html.unescape(urllib.parse.unquote(raw_html))
+
+    # Strategy 1: og:image (set server-side, most reliable)
+    for pat in (
+        r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
+    ):
+        m = re.search(pat, text, re.I)
+        if m:
+            candidate = html.unescape(m.group(1)).strip()
+            if _is_probable_naver_place_photo(candidate):
+                return candidate
+
+    # Strategy 2: search.pstatic.net/common proxy — decode src= param → ldb-phinf direct URL
+    # (appears in pcmap list-page thumbnails: <img src="https://search.pstatic.net/common/?...src=ldb-phinf...">)
+    _first_proxy: str | None = None
+    for m in re.finditer(r"https://search\.pstatic\.net/common/\?[^\s\"'<>]+", text):
+        proxy_url = m.group(0)
+        if _first_proxy is None:
+            _first_proxy = proxy_url
+        src_m = re.search(r"[?&]src=([^&\s\"'<>]+)", proxy_url)
+        if src_m:
+            decoded = urllib.parse.unquote(src_m.group(1))
+            if "apis.naver.com/place/panorama/thumbnail" in decoded.lower():
+                return proxy_url
+            if _is_probable_naver_place_photo(decoded):
+                return decoded  # direct ldb-phinf URL (higher quality)
+    if _first_proxy:
+        return _first_proxy  # proxy URL as fallback if src= decode failed
+
+    # Strategy 3: direct ldb-phinf.pstatic.net URLs
+    m = re.search(r"(https://ldb-phinf\.pstatic\.net/[^\s\"'<>\\]+\.(?:jpg|jpeg|png|webp))", text, re.I)
+    if m:
+        return m.group(1)
+
+    # Strategy 4: broad pstatic/naver image scan (original fallback)
+    candidates: list[str] = []
+    for pat in (
+        r"https?://[^\s\"'\\<>]+pstatic[^\s\"'\\<>]+\.(?:jpg|jpeg|png|webp)",
+        r"https?%3A%2F%2F[^\s\"'\\<>]+pstatic[^\s\"'\\<>]+?\.(?:jpg|jpeg|png|webp)",
+    ):
+        candidates += re.findall(pat, raw_html, re.I)
+    for cand in candidates:
+        img = urllib.parse.unquote(html.unescape(cand)).replace("\\/", "/")
+        img = img.split("&quot;")[0].split("\\u0026")[0]
+        if not _is_probable_naver_place_photo(img):
+            continue
+        return img
+
+    return None
+
+
+def _naver_search_headers() -> dict[str, str] | None:
+    client_id = (os.getenv("NAVER_SEARCH_CLIENT_ID") or os.getenv("NAVER_CLIENT_ID") or "").strip()
+    client_secret = (os.getenv("NAVER_SEARCH_CLIENT_SECRET") or os.getenv("NAVER_CLIENT_SECRET") or "").strip()
+    if not client_id or not client_secret:
+        return None
+    return {
+        "X-Naver-Client-Id": client_id,
+        "X-Naver-Client-Secret": client_secret,
+        "Accept": "application/json",
+    }
+
+
+def _fetch_naver_image_search_photo(query: str) -> str | None:
+    headers = _naver_search_headers()
+    if not headers or not query:
+        return None
+    try:
+        resp = http_requests.get(
+            NAVER_IMAGE_SEARCH_URL,
+            params={"query": query, "display": 5, "sort": "sim", "filter": "all"},
+            headers=headers,
+            timeout=8,
+        )
+        resp.raise_for_status()
+        items = resp.json().get("items") or []
+    except (http_requests.RequestException, ValueError) as exc:
+        logger.warning("Naver image search failed [%r]: %s", query[:80], exc)
+        return None
+    for item in items:
+        for key in ("thumbnail", "link"):
+            candidate = html.unescape(str(item.get(key) or "")).strip()
+            if candidate.startswith("http") and not any(x in candidate.lower() for x in ("favicon", "logo", "sprite")):
+                return candidate
+    return None
+
+
+def _naver_place_photo_proxy(
+    name: str,
+    lat,
+    lng,
+    mapx: str = "",
+    mapy: str = "",
+    local_link: str = "",
+    place_url: str = "",
+) -> str:
+    """Build /api/naver-photo/ URL for a NaverPlace result.
+
+    Prefers a pcmap list-page URL (confirmed SSR thumbnails) when name+coords
+    are available; falls back to naver_local_link (has place ID) otherwise.
+    """
+    _lat, _lng = lat, lng
+    if _lat is None or _lng is None:
+        try:
+            rx, ry = float(mapx or 0), float(mapy or 0)
+            if rx > 10_000 and ry > 10_000:
+                _lng, _lat = rx / 1e7, ry / 1e7
+        except (TypeError, ValueError):
+            pass
+    if name and _lat is not None and _lng is not None:
+        pcmap = (
+            f"https://pcmap.place.naver.com/place/list"
+            f"?query={urllib.parse.quote(name)}"
+            f"&x={_lng:.7f}&y={_lat:.7f}&display=3"
+        )
+        return f"/api/naver-photo/?url={urllib.parse.quote(pcmap)}"
+    src = local_link or place_url or ""
+    return f"/api/naver-photo/?url={urllib.parse.quote(src)}" if src else ""
+
+
+@require_GET
+def api_naver_photo(request):
+    """Best-effort Naver Map place-photo proxy.
+
+    Accepts pcmap.place.naver.com list URLs (SSR, search.pstatic.net thumbnails)
+    and map.naver.com place URLs (og:image strategy). Falls back gracefully to 404.
+    """
+    raw_url = (request.GET.get("url") or "").strip()
+    query = (request.GET.get("q") or request.GET.get("name") or "").strip()
+    allow_image_fallback = str(request.GET.get("image_fallback") or "").lower() in ("1", "true", "yes")
+    lat = lng = None
+    try:
+        lat = float(request.GET.get("lat") or "")
+        lng = float(request.GET.get("lng") or "")
+    except (TypeError, ValueError):
+        lat = lng = None
+    if not raw_url and query:
+        raw_url = "https://pcmap.place.naver.com/place/list?query=" + urllib.parse.quote(query)
+        if lat is not None and lng is not None:
+            raw_url += f"&x={lng:.7f}&y={lat:.7f}&display=5"
+        else:
+            raw_url += "&display=5"
+    if not raw_url:
+        return JsonResponse({"detail": "url or q required"}, status=400)
+    parsed = urllib.parse.urlparse(raw_url)
+    netloc = parsed.netloc.lower()
+    if parsed.scheme not in ("http", "https") or netloc not in _NAVER_PHOTO_ALLOWED_DOMAINS:
+        return JsonResponse({"detail": "only Naver map URLs are allowed"}, status=400)
+    if not query and "/p/search/" in parsed.path:
+        query = urllib.parse.unquote(parsed.path.split("/p/search/", 1)[1].split("/", 1)[0]).strip()
+
+    stable_key = (
+        "naver_photo_url5:"
+        + ("img1:" if allow_image_fallback else "strict:")
+        + re.sub(r"\W+", "_", raw_url)[:180]
+    )
+    cached = cache.get(stable_key)
+    if cached:
+        return redirect(cached)
+
+    photo_url: str | None = None
+
+    if netloc in _NAVER_DIRECT_PHOTO_DOMAINS and _is_probable_naver_place_photo(raw_url):
+        photo_url = _normalize_direct_naver_photo_url(raw_url)
+        cache.set(stable_key, photo_url, timeout=86400)
+        return redirect(photo_url)
+
+    if netloc == "pcmap.place.naver.com":
+        # pcmap list/place page — fetch directly; Strategy 2 parses search.pstatic.net thumbnails
+        try:
+            resp = http_requests.get(raw_url, headers=_NAVER_FETCH_HEADERS, timeout=8)
+            resp.raise_for_status()
+            photo_url = _parse_naver_place_photo(resp.text)
+        except http_requests.RequestException as exc:
+            logger.warning("Naver photo pcmap fetch failed [%s]: %s", raw_url[:120], exc)
+    else:
+        # map.naver.com — try pcmap individual page via place ID first (og:image strategy)
+        place_id_m = _NAVER_PLACE_ID_RE.search(raw_url)
+        if not place_id_m and query:
+            pcmap = "https://pcmap.place.naver.com/place/list?query=" + urllib.parse.quote(query)
+            if lat is not None and lng is not None:
+                pcmap += f"&x={lng:.7f}&y={lat:.7f}&display=5"
+            else:
+                pcmap += "&display=5"
+            try:
+                resp = http_requests.get(pcmap, headers=_NAVER_FETCH_HEADERS, timeout=8)
+                resp.raise_for_status()
+                photo_url = _parse_naver_place_photo(resp.text)
+            except http_requests.RequestException as exc:
+                logger.warning("Naver photo pcmap search failed [%s]: %s", pcmap[:120], exc)
+        if place_id_m:
+            place_id = place_id_m.group(1)
+            for fetch_url in (
+                f"https://pcmap.place.naver.com/place/{place_id}/home",
+                f"https://map.naver.com/p/entry/place/{place_id}",
+            ):
+                try:
+                    resp = http_requests.get(fetch_url, headers=_NAVER_FETCH_HEADERS, timeout=8)
+                    resp.raise_for_status()
+                    photo_url = _parse_naver_place_photo(resp.text)
+                    if photo_url:
+                        break
+                except http_requests.RequestException:
+                    continue
+
+        # Fallback: original URL with placePath=/photo
+        if not photo_url:
+            fallback = raw_url
+            if "placePath=/photo" not in fallback:
+                joiner = "&" if "?" in fallback else "?"
+                fallback = f"{fallback}{joiner}placePath=/photo"
+            try:
+                resp = http_requests.get(fallback, headers=_NAVER_FETCH_HEADERS, timeout=8)
+                resp.raise_for_status()
+                photo_url = _parse_naver_place_photo(resp.text)
+            except http_requests.RequestException as exc:
+                logger.warning("Naver photo fetch failed [%s]: %s", raw_url[:120], exc)
+
+    if not photo_url and allow_image_fallback:
+        if query:
+            photo_url = _fetch_naver_image_search_photo(query)
+
+    if not photo_url:
+        logger.debug("Naver photo: no photo found for %s", raw_url[:120])
+        return JsonResponse({"detail": "no naver photo found"}, status=404)
+
+    cache.set(stable_key, photo_url, timeout=86400)
+    return redirect(photo_url)
+
+
 @require_GET
 def api_photo(request):
     """Google Places 사진 프록시 — API 키를 서버에서 처리해 클라이언트에 노출 방지."""
+    if not _google_places_enabled():
+        return JsonResponse({"detail": "Google Places photos disabled"}, status=404)
+
     name = request.GET.get("name", "").strip()
     if not name or not name.startswith("places/"):
         return JsonResponse({"detail": "invalid name"}, status=400)

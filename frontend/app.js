@@ -239,7 +239,18 @@ function renderPlaceCards(places, category, keyword, lang) {
       ? `<span class="place-badge price-badge">${escapeHtml(p.price_level)}</span>`
       : "";
 
-    const thumb = p.photo_name
+    const naverQuery = [p.name, p.address].filter(Boolean).join(" ");
+    const naverCoord = p.latitude != null && p.longitude != null
+      ? `&lat=${encodeURIComponent(p.latitude)}&lng=${encodeURIComponent(p.longitude)}`
+      : "";
+    const naverPhotoUrl = p.photo_url || p.naver_photo_url
+      || ((p.maps_url || p.google_maps_uri || "").includes("map.naver.com")
+        ? `/api/naver-photo/?url=${encodeURIComponent(p.maps_url || p.google_maps_uri)}`
+        : "")
+      || (naverQuery ? `/api/naver-photo/?q=${encodeURIComponent(naverQuery)}${naverCoord}` : "");
+    const thumb = naverPhotoUrl
+      ? `<img class="place-thumb" src="${escapeHtml(naverPhotoUrl)}" alt="" loading="lazy" onerror="this.classList.add('place-thumb--fallback')" />`
+      : p.photo_name
       ? `<img class="place-thumb" src="/api/photo/?name=${encodeURIComponent(p.photo_name)}" alt="" loading="lazy" onerror="this.classList.add('place-thumb--fallback')" />`
       : `<span class="place-thumb place-thumb--fallback" aria-hidden="true">🏨</span>`;
 

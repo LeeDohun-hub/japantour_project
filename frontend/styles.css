@@ -1590,6 +1590,96 @@ a.btn {
   flex-direction: column;
   gap: 0.65rem;
 }
+.plan-day-edit-hint {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 0.15rem 0 0.25rem;
+}
+.plan-transfer-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.95), rgba(255, 255, 255, 0.98));
+  box-shadow: 0 3px 12px rgba(37, 99, 235, 0.08);
+}
+.plan-transfer-card__icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 800;
+}
+.plan-transfer-card__body {
+  flex: 1;
+  min-width: 0;
+}
+.plan-transfer-card__title {
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: #1d4ed8;
+  margin-bottom: 0.18rem;
+}
+.plan-transfer-card__route {
+  display: flex;
+  align-items: center;
+  gap: 0.38rem;
+  min-width: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.plan-transfer-card__route span:not(.plan-transfer-card__arrow) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plan-transfer-card__arrow {
+  flex-shrink: 0;
+  color: #2563eb;
+}
+.plan-transfer-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+.plan-transfer-card__actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0.35rem 0.68rem;
+  border-radius: 999px;
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  background: #fff;
+  color: #1d4ed8;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+.plan-transfer-card__actions a:hover {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+@media (max-width: 560px) {
+  .plan-transfer-card {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .plan-transfer-card__actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
 .plan-day-stop {
   display: flex;
   align-items: flex-start;
@@ -1599,6 +1689,22 @@ a.btn {
   border: 1px solid var(--border);
   background: var(--surface-input);
   box-shadow: 0 2px 8px rgba(28, 48, 88, 0.05);
+  cursor: grab;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease, transform 0.15s ease;
+}
+.plan-day-stop:active { cursor: grabbing; }
+.plan-day-stop--fixed {
+  cursor: default;
+  background: #fbfcff;
+}
+.plan-day-stop--fixed:active { cursor: default; }
+.plan-day-stop.is-dragging {
+  opacity: 0.55;
+  transform: scale(0.99);
+}
+.plan-day-stop.is-drop-target {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 10px 24px rgba(28, 48, 88, 0.1);
 }
 .plan-day-stop__num {
   flex-shrink: 0;
@@ -1611,6 +1717,19 @@ a.btn {
   font-size: 0.78rem;
   font-weight: 700;
   color: #fff;
+}
+.plan-day-stop__drag {
+  width: 18px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 28px;
+  text-align: center;
+  user-select: none;
+}
+.plan-day-stop__drag--fixed {
+  color: #c5ccda;
+  cursor: default;
 }
 .plan-day-stop__thumb {
   flex-shrink: 0;

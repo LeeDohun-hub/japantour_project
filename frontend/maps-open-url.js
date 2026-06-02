@@ -95,6 +95,16 @@
     return parts.join(" ");
   }
 
+  function naverSearchUrl(query) {
+    const q = String(query || "").trim();
+    return q ? `https://map.naver.com/p/search/${encodeURIComponent(q)}` : "https://map.naver.com/";
+  }
+
+  function naverCoordUrl(name, lat, lng) {
+    const q = encodeURIComponent(String(name || `${lat},${lng}`).trim());
+    return `https://map.naver.com/p/search/${q}?c=${lng},${lat},16,0,0,0,dh`;
+  }
+
   /**
    * @param {object} place — name, address, latitude, place_id, google_maps_uri …
    * @param {object} [opts] — url, label, regions, regionCities
@@ -113,6 +123,20 @@
         : null;
 
     const pid = extractPlaceId(place, raw);
+    if (/map\.naver\.com/i.test(raw)) return raw;
+
+    const preferNaver =
+      opts?.provider === "naver" ||
+      place?.source === "naver_maps_geocode" ||
+      place?.source === "naver_maps_search_url";
+    if (preferNaver) {
+      if (lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng) && isKoreanCoords(lat, lng)) {
+        return naverCoordUrl(name, lat, lng);
+      }
+      const q = disambiguatedSearchQuery(name, place, opts);
+      return naverSearchUrl(q);
+    }
+
     if (pid) {
       const q = disambiguatedSearchQuery(name || "place", place, opts);
       return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}&query_place_id=${encodeURIComponent(pid)}`;
