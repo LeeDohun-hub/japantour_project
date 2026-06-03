@@ -41,6 +41,42 @@ function formatReplyWithTicketPreviews(text) {
   return html;
 }
 
+function formatTextSegmentWithTicketPreviews(text) {
+  const LP = window.LinkPreview;
+  if (!text) return "";
+  if (LP && LP.extractTicketUrls(text).length) return formatReplyWithTicketPreviews(text);
+  return linkifyGenericUrls(text);
+}
+
+const GENERIC_URL_RE = /https?:\/\/[^\s\]<")]+/gi;
+
+function linkifyGenericUrls(text) {
+  const raw = String(text || "");
+  let html = "";
+  let last = 0;
+  let match;
+  const re = new RegExp(GENERIC_URL_RE.source, "gi");
+  while ((match = re.exec(raw)) !== null) {
+    const url = match[0];
+    html += escapeHtml(raw.slice(last, match.index));
+    html += `<a class="chat-inline-link" href="${escapeHtml(url)}" target="_blank" rel="noopener">${genericUrlLabel(url)}</a>`;
+    last = match.index + url.length;
+  }
+  html += escapeHtml(raw.slice(last));
+  return html;
+}
+
+function genericUrlLabel(url) {
+  const host = String(url || "").replace(/^https?:\/\//i, "").split(/[/?#]/)[0];
+  if (/arex\.or\.kr/i.test(host)) return "AREX 공식";
+  if (/klimousine\.com/i.test(host)) return "리무진 공식";
+  if (/airport\.kr/i.test(host)) return "인천공항 버스";
+  if (/kakaomobility\.com/i.test(host)) return "Kakao T";
+  if (/seoul\.go\.kr/i.test(host)) return "택시요금 안내";
+  if (/map\.kakao\.com/i.test(host)) return "경로맵";
+  return host || "링크 열기";
+}
+
 function renderTicketPlatformCards(events, lang) {
   const LP = window.LinkPreview;
   if (!LP || !events || !events.length) return "";
@@ -187,6 +223,222 @@ function parseLodgingKeyword(keyword) {
   return { area: tokens[0], amenity: tokens.slice(1).join(" ") };
 }
 
+const CHAT_MAPS_URL_EXTRACT =
+  /https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps|goo\.gl\/maps|maps\.app\.goo\.gl|map\.naver\.com|naver\.me)\/[^\s\]<")]+/gi;
+
+function mapsUrlKey(url) {
+  if (/map\.naver\.com|naver\.me/i.test(String(url || ""))) {
+    return String(url).split("?")[0].replace(/\/$/, "");
+  }
+  const m = String(url || "").match(/[?&]cid=(\d+)/);
+  return m ? `cid:${m[1]}` : String(url || "").split("&g_mp=")[0].split("&")[0];
+}
+
+function normalizePlaceName(s) {
+  return String(s || "")
+    .replace(/[『』「」'"`\u2018\u2019\u201C\u201D]/g, "")
+    .replace(/\s+/g, "")
+    .toLowerCase();
+}
+
+function placeRenderKey(place) {
+  const uri = place?.google_maps_uri || place?.maps_url;
+  return uri ? mapsUrlKey(uri) : normalizePlaceName(place?.name);
+}
+
+function buildPlaceIndexes(places) {
+  const byUrl = {};
+  const byName = {};
+  for (const p of places || []) {
+    const uri = p.google_maps_uri || p.maps_url;
+    if (uri) byUrl[mapsUrlKey(uri)] = p;
+    const nk = normalizePlaceName(p.name);
+    if (nk && !byName[nk]) byName[nk] = p;
+  }
+  return { byUrl, byName };
+}
+
+function mapOpenUrl(p) {
+  if (window.MapsOpenUrl?.build) return MapsOpenUrl.build(p || {}, {});
+  const raw = p?.maps_url || p?.google_maps_uri || "";
+  if (raw) return raw;
+  const q = encodeURIComponent(p?.name || p?.address || "");
+  return q ? `https://map.naver.com/p/search/${q}` : "#";
+}
+
+function directionsUrl(p) {
+  const raw = p?.maps_url || p?.google_maps_uri || "";
+  if (/map\.naver\.com|naver\.me/i.test(raw)) return raw;
+  if (p?.latitude != null && p?.longitude != null) {
+    const q = encodeURIComponent(p.name || `${p.latitude},${p.longitude}`);
+    return `https://map.naver.com/p/search/${q}?c=${p.longitude},${p.latitude},16,0,0,0,dh`;
+  }
+  const q = encodeURIComponent(p?.name || p?.address || "");
+  return q ? `https://map.naver.com/p/search/${q}` : "#";
+}
+
+function placeGuideLine(p, lang) {
+  const isJa = lang === "日本語";
+  const blob = `${p?.name || ""} ${p?.address || ""} ${p?.category || ""} ${p?.primary_type || ""}`.toLowerCase();
+  const has = (...needles) => needles.some((n) => blob.includes(String(n).toLowerCase()));
+  if (has("hotel", "호텔", "宿", "숙소")) {
+    return isJa ? "宿泊候補として位置と外観を確認できます。" : "숙박 후보로 위치와 외관을 확인할 수 있습니다.";
+  }
+  if (has("food", "restaurant", "식당", "맛집", "グルメ", "레스토랑", "카페", "cafe")) {
+    return isJa ? "食事候補として地図と写真を確認できます。" : "식사 후보로 지도와 사진을 확인할 수 있습니다.";
+  }
+  if (has("museum", "gallery", "park", "공원", "박물관", "미술관", "시장", "거리", "관광")) {
+    return isJa ? "観光スポットとして位置情報を確認できます。" : "관광지로 위치 정보를 확인할 수 있습니다.";
+  }
+  return isJa ? "参照データで確認した周辺スポットです。" : "참조 데이터로 확인한 주변 장소입니다.";
+}
+
+function naverPhotoUrlForPlace(p) {
+  const naverQuery = [p?.name, p?.address].filter(Boolean).join(" ");
+  const naverCoord = p?.latitude != null && p?.longitude != null
+    ? `&lat=${encodeURIComponent(p.latitude)}&lng=${encodeURIComponent(p.longitude)}`
+    : "";
+  const rawMapUrl = p?.maps_url || p?.google_maps_uri || "";
+  const existingPhoto = p?.naver_photo_url || p?.photo_url || "";
+  const googlePhotoLike = /\/api\/photo\/|places\.googleapis\.com/i.test(existingPhoto);
+  return (existingPhoto && !googlePhotoLike ? existingPhoto : "")
+    || (/map\.naver\.com|naver\.me/i.test(rawMapUrl)
+      ? `/api/naver-photo/?url=${encodeURIComponent(rawMapUrl)}&q=${encodeURIComponent(naverQuery)}${naverCoord}&image_fallback=1`
+      : "")
+    || (naverQuery ? `/api/naver-photo/?q=${encodeURIComponent(naverQuery)}${naverCoord}&image_fallback=1` : "");
+}
+
+function renderInlinePlaceCard(p, lang) {
+  const name = escapeHtml(p?.name || p?.address || "");
+  if (!name) return "";
+  const guide = placeGuideLine(p, lang);
+  const ratingNum = Number(p?.rating);
+  const rating = Number.isFinite(ratingNum) && ratingNum > 0 ? `★${ratingNum.toFixed(1)}` : "";
+  const reviewsNum = Number(p?.user_rating_count);
+  const reviews = Number.isFinite(reviewsNum) && reviewsNum > 0
+    ? `<span class="plan-place-card__reviews">(${reviewsNum.toLocaleString()}件)</span>`
+    : "";
+  const naverScoreNum = Number(p?.naver_score);
+  const naverScore = Number.isFinite(naverScoreNum) && naverScoreNum > 0
+    ? `Naver ${naverScoreNum.toFixed(1)}`
+    : "";
+  const blogRefsNum = Number(p?.blog_review_count);
+  const blogRefs = Number.isFinite(blogRefsNum) && blogRefsNum > 0
+    ? `<span class="plan-place-card__reviews">Blog ${blogRefsNum.toLocaleString()}</span>`
+    : "";
+  const keywordHtml = Array.isArray(p?.review_keywords) && p.review_keywords.length
+    ? `<span class="plan-place-card__price">${escapeHtml(p.review_keywords.slice(0, 2).join(" / "))}</span>`
+    : "";
+  const openBadge = p?.is_open_now === true
+    ? `<span class="plan-place-card__open">${lang === "日本語" ? "営業中" : "영업중"}</span>`
+    : "";
+  const priceLabel = p?.price_level
+    ? `<span class="plan-place-card__price">${escapeHtml(p.price_level)}</span>`
+    : "";
+  const naverPhotoUrl = naverPhotoUrlForPlace(p);
+  const fallbackThumb = '<span class="plan-place-card__img plan-place-card__img--fallback" aria-hidden="true">📍</span>';
+  const fallbackThumbAttr = fallbackThumb.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  const thumb = naverPhotoUrl
+    ? `<img class="plan-place-card__img" src="${escapeHtml(naverPhotoUrl)}" alt="" loading="lazy" onerror="this.outerHTML='${fallbackThumbAttr}'" />`
+    : p?.photo_name
+      ? `<img class="plan-place-card__img" src="/api/photo/?name=${encodeURIComponent(p.photo_name)}" alt="" loading="lazy" onerror="this.outerHTML='${fallbackThumbAttr}'" />`
+      : fallbackThumb;
+  const addr = p?.address
+    ? `<p class="plan-place-card__addr">${escapeHtml(p.address)}</p>`
+    : "";
+  const mapsUri = mapOpenUrl(p);
+  const dirUri = directionsUrl(p);
+  const meta = [
+    rating && `<span class="plan-place-card__rating">${rating}${reviews}</span>`,
+    naverScore && `<span class="plan-place-card__rating">${naverScore}${blogRefs}</span>`,
+    keywordHtml,
+    openBadge,
+    priceLabel,
+  ].filter(Boolean).join("");
+  const mapLabel = lang === "日本語" ? "地図" : "지도";
+  const routeLabel = lang === "日本語" ? "経路" : "경로";
+  const photoLabel = lang === "日本語" ? "外観写真" : "외관사진";
+  const thumbLink = mapsUri || dirUri || "#";
+  return `<div class="plan-inline-spot"><article class="plan-place-card"><a class="plan-place-card__thumb-link" href="${escapeHtml(thumbLink)}" target="_blank" rel="noopener">${thumb}<span class="plan-place-card__photo-label">${p?.photo_name || naverPhotoUrl ? photoLabel : "Naver"}</span></a><div class="plan-place-card__body"><h4 class="plan-place-card__name">${name}</h4><p class="plan-place-card__guide">${escapeHtml(guide)}</p>${meta ? `<div class="plan-place-card__meta">${meta}</div>` : ""}${addr}<div class="plan-place-card__actions">${mapsUri ? `<a href="${escapeHtml(mapsUri)}" target="_blank" rel="noopener" class="plan-place-card__btn">${mapLabel}</a>` : ""}<a href="${escapeHtml(dirUri)}" target="_blank" rel="noopener" class="plan-place-card__btn plan-place-card__btn--route">${routeLabel}</a></div></div></article></div>`;
+}
+
+function renderMapUrlFallbackCard(url, queryLabel, lang) {
+  const cleaned = String(queryLabel || "")
+    .replace(new RegExp(CHAT_MAPS_URL_EXTRACT.source, "gi"), "")
+    .replace(/^[\s:：\-・*]+|[\s:：\-・*]+$/g, "")
+    .trim();
+  const name = cleaned && cleaned.length <= 60
+    ? cleaned
+    : (lang === "日本語" ? "地図リンク" : "지도 링크");
+  return renderInlinePlaceCard({ name, maps_url: url, source: "naver_maps_search_url" }, lang);
+}
+
+function queryLabelForMapUrl(lines, lineIdx, url) {
+  const same = String(lines[lineIdx] || "");
+  const before = same.split(url)[0]
+    .replace(/(?:地図|지도|Map|URL|링크|リンク)\s*[:：]?\s*$/i, "")
+    .trim();
+  if (before.length >= 2 && before.length <= 60) return before;
+  for (let i = lineIdx - 1; i >= 0; i--) {
+    const t = String(lines[i] || "").trim();
+    if (!t) continue;
+    const containsMapUrl = new RegExp(CHAT_MAPS_URL_EXTRACT.source, "i").test(t);
+    if (containsMapUrl) continue;
+    if (/^(?:朝|午前|昼|午後|夕方|夜|朝食|昼食|夕食|아침|오전|점심|오후|저녁|밤)$/i.test(t)) continue;
+    return t.replace(/^[-・*①②③④⑤⑥⑦⑧⑨⑩]\s*/, "").trim();
+  }
+  return "";
+}
+
+function formatReplyWithLocationCards(text, places, lang) {
+  const indexes = buildPlaceIndexes(places || []);
+  const rendered = new Set();
+  const inlineKnownPlaces = !(places && places.length);
+  const lines = String(text || "").split(/\r?\n/);
+  const out = [];
+  const mapRe = new RegExp(CHAT_MAPS_URL_EXTRACT.source, "gi");
+
+  lines.forEach((line, idx) => {
+    const urls = [...String(line || "").matchAll(mapRe)].map((m) => m[0]);
+    mapRe.lastIndex = 0;
+    if (!urls.length) {
+      out.push(formatTextSegmentWithTicketPreviews(line));
+      return;
+    }
+
+    let cleaned = line;
+    const cards = [];
+    urls.forEach((url) => {
+      const key = mapsUrlKey(url);
+      const place = indexes.byUrl[key];
+      if (place && inlineKnownPlaces) {
+        const renderKey = placeRenderKey(place);
+        if (renderKey && !rendered.has(renderKey)) {
+          cards.push(renderInlinePlaceCard(place, lang));
+          rendered.add(renderKey);
+        }
+      } else if (/map\.naver\.com|naver\.me/i.test(url)) {
+        cards.push(renderMapUrlFallbackCard(url, queryLabelForMapUrl(lines, idx, url), lang));
+      } else {
+        const label = queryLabelForMapUrl(lines, idx, url);
+        if (label) {
+          cards.push(renderInlinePlaceCard({ name: label, source: "naver_maps_search_url" }, lang));
+        }
+      }
+      cleaned = cleaned.replace(url, "");
+    });
+
+    cleaned = cleaned
+      .replace(/(?:地図|지도|Map|URL|링크|リンク)\s*[:：]?\s*$/i, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+    if (cleaned) out.push(formatTextSegmentWithTicketPreviews(cleaned));
+    if (cards.length) out.push(cards.join(""));
+  });
+
+  return out.join("\n");
+}
+
 /**
  * Places API 결과를 숙소/장소 카드 HTML로 변환.
  * @param {Array}  places   - NearbyPlace dict 배열
@@ -221,51 +473,7 @@ function renderPlaceCards(places, category, keyword, lang) {
       : (isJa ? "📍 周辺スポット"   : "📍 주변 장소");
   }
 
-  const cards = places.slice(0, 5).map((p) => {
-    const name = escapeHtml(p.name || "");
-    const rating = p.rating ? `★${p.rating.toFixed(1)}` : "";
-    const reviews = p.user_rating_count
-      ? `<span class="place-reviews">(${p.user_rating_count.toLocaleString()}件)</span>`
-      : "";
-
-    let openBadge = "";
-    if (p.is_open_now === true) {
-      openBadge = `<span class="place-open">${isJa ? "営業中" : "영업중"}</span>`;
-    } else if (p.is_open_now === false) {
-      openBadge = `<span class="place-closed">${isJa ? "時間外" : "영업종료"}</span>`;
-    }
-
-    const priceLabel = p.price_level
-      ? `<span class="place-badge price-badge">${escapeHtml(p.price_level)}</span>`
-      : "";
-
-    const naverQuery = [p.name, p.address].filter(Boolean).join(" ");
-    const naverCoord = p.latitude != null && p.longitude != null
-      ? `&lat=${encodeURIComponent(p.latitude)}&lng=${encodeURIComponent(p.longitude)}`
-      : "";
-    const naverPhotoUrl = p.photo_url || p.naver_photo_url
-      || ((p.maps_url || p.google_maps_uri || "").includes("map.naver.com")
-        ? `/api/naver-photo/?url=${encodeURIComponent(p.maps_url || p.google_maps_uri)}`
-        : "")
-      || (naverQuery ? `/api/naver-photo/?q=${encodeURIComponent(naverQuery)}${naverCoord}` : "");
-    const thumb = naverPhotoUrl
-      ? `<img class="place-thumb" src="${escapeHtml(naverPhotoUrl)}" alt="" loading="lazy" onerror="this.classList.add('place-thumb--fallback')" />`
-      : p.photo_name
-      ? `<img class="place-thumb" src="/api/photo/?name=${encodeURIComponent(p.photo_name)}" alt="" loading="lazy" onerror="this.classList.add('place-thumb--fallback')" />`
-      : `<span class="place-thumb place-thumb--fallback" aria-hidden="true">🏨</span>`;
-
-    const addr = p.address ? `<div class="place-addr">${escapeHtml(p.address)}</div>` : "";
-    const mapsHint = p.google_maps_uri ? `<span class="place-maps-hint">Map →</span>` : "";
-    const meta = [rating && `<span class="place-rating">${rating} ${reviews}</span>`, openBadge, priceLabel]
-      .filter(Boolean)
-      .join("");
-
-    const inner = `<div class="place-thumb-wrap">${thumb}</div><div class="place-card-text"><div class="place-name">${name}</div>${meta ? `<div class="place-meta">${meta}</div>` : ""}${addr}${mapsHint}</div>`;
-    if (p.google_maps_uri) {
-      return `<a class="place-card" href="${escapeHtml(p.google_maps_uri)}" target="_blank" rel="noopener">${inner}</a>`;
-    }
-    return `<div class="place-card">${inner}</div>`;
-  });
+  const cards = places.slice(0, 5).map((p) => renderInlinePlaceCard(p, lang)).filter(Boolean);
 
   return `<div class="place-cards-section"><div class="place-cards-title">${headerHtml}</div>${cards.join("")}</div>`;
 }
@@ -719,10 +927,14 @@ chatForm.addEventListener("submit", async (e) => {
         } else if (payload.type === "done") {
           if (replyBodyEl) {
             replyBodyEl.classList.remove("bubble-streaming");
-            // ticket link 렌더링
+            const placesForBody = (metaData && metaData.places) || [];
             const inlineTickets = window.LinkPreview && LinkPreview.extractTicketUrls(replyText).length > 0;
+            const inlineMaps = new RegExp(CHAT_MAPS_URL_EXTRACT.source, "i").test(replyText);
+            if (inlineTickets || inlineMaps || placesForBody.length) {
+              replyBodyEl.classList.add("bubble-body--rich");
+            }
+            replyBodyEl.innerHTML = formatReplyWithLocationCards(replyText, placesForBody, replyLanguage.value);
             if (inlineTickets) {
-              replyBodyEl.innerHTML = formatReplyWithTicketPreviews(replyText);
               const ticketIdx = LinkPreview.buildEventIndex(
                 (metaData && metaData.ticket_platform_events) || []
               );

@@ -49,6 +49,8 @@ BUS_BASE  = "http://apis.data.go.kr/B551177/BusInformation"
 OP_BUS    = "getBusInfo"
 TAXI_BASE = "http://apis.data.go.kr/B551177/StatusOfTaxi"
 OP_TAXI   = "getTaxiStatus"
+RAIL_BASE = "http://apis.data.go.kr/B551177/AirportRailroadOperationInfo"
+OP_RAIL   = "getAirportRailroad"
 
 _WEEKDAY_FIELDS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 _WEEKDAY_KO     = ["월",     "화",       "수",         "목",        "금",      "토",        "일"]
@@ -206,6 +208,20 @@ class AirportTaxiStatus:
     bestVantaxistand: str
     vantaxicnt: str
     vanstandtime: str
+
+
+@dataclass(frozen=True)
+class AirportRailroadOperation:
+    operation_date: str
+    train_no: str
+    station_code: str
+    operation_serial: str
+    stop_code: str
+    arrival_scheduled: str
+    departure_scheduled: str
+    arrival_actual: str
+    departure_actual: str
+    train_class: str
 
 
 # ── 유틸리티 ───────────────────────────────────────────────────────
@@ -418,6 +434,61 @@ class IncheonAirportClient:
                 seen.add(key)
                 out.append(status)
         logger.info("ICN taxi terminals=%s → %d rows", ternos, len(out))
+        return out
+
+    def search_airport_railroad(
+        self,
+        *,
+        train_class: str | None = None,
+        operation_date: str | None = None,
+        station_code: str | None = None,
+        train_no: str | None = None,
+        operation_serial: str | None = None,
+        limit: int = 1000,
+    ) -> list[AirportRailroadOperation]:
+        """인천공항 공항철도 운행 정보.
+
+        train_class: Comm=일반, Dirc=직통
+        station_code: 010=서울역, 100=인천공항1터미널, 110=인천공항2터미널
+        operation_date: YYYYMMDD (API 제공 범위 D-3~D+3)
+        """
+        if not self.service_key:
+            raise ValueError("INCHEONTRANSPORT_API_KEY가 설정되지 않았습니다.")
+
+        drv_dt = operation_date or date.today().strftime("%Y%m%d")
+        out: list[AirportRailroadOperation] = []
+        seen: set[tuple[str, str, str, str, str]] = set()
+        page = 1
+        while len(out) < limit:
+            items = self._fetch_railroad_page(
+                page=page,
+                train_class=train_class,
+                operation_date=drv_dt,
+                station_code=station_code,
+                train_no=train_no,
+                operation_serial=operation_serial,
+            )
+            if not items:
+                break
+            for item in items:
+                op = self._normalize_railroad(item)
+                key = (
+                    op.operation_date,
+                    op.train_no,
+                    op.station_code,
+                    op.operation_serial,
+                    op.departure_scheduled,
+                )
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(op)
+                if len(out) >= limit:
+                    break
+            if len(items) < PAGE_SIZE:
+                break
+            page += 1
+        logger.info("ICN railroad class=%s date=%s station=%s → %d rows", train_class, drv_dt, station_code, len(out))
         return out
 
     # ── 실시간 운항현황 API ────────────────────────────────────────
@@ -700,6 +771,51 @@ class IncheonAirportClient:
             logger.warning("ICN taxi 요청 실패 (terno=%s): %s", terno, exc)
             return []
 
+    def _fetch_railroad_page(
+        self,
+        *,
+        page: int,
+        train_class: str | None,
+        operation_date: str | None,
+        station_code: str | None,
+        train_no: str | None,
+        operation_serial: str | None,
+    ) -> list[dict]:
+        url = f"{RAIL_BASE}/{OP_RAIL}"
+        params: dict[str, Any] = {
+            "serviceKey": self.service_key,
+            "numOfRows": str(PAGE_SIZE),
+            "pageNo": str(page),
+            "type": "json",
+        }
+        if train_class:
+            params["trainClsf"] = train_class
+        if operation_date:
+            params["drvDt"] = operation_date
+        if station_code:
+            params["stnCd"] = station_code
+        if train_no:
+            params["trnNo"] = train_no
+        if operation_serial:
+            params["drvSer"] = operation_serial
+        try:
+            r = requests.get(url, params=params, timeout=self.timeout, verify=False)
+            logger.info(
+                "ICN railroad HTTP %d — class=%s date=%s station=%s page=%d",
+                r.status_code,
+                train_class,
+                operation_date,
+                station_code,
+                page,
+            )
+            if not r.ok:
+                logger.warning("ICN railroad error: %s", r.text[:300])
+                return []
+            return _extract_items(r.json())
+        except Exception as exc:
+            logger.warning("ICN railroad 요청 실패 (date=%s station=%s): %s", operation_date, station_code, exc)
+            return []
+
     def _normalize_bus(self, item: dict) -> AirportBusInfo:
         def g(k: str) -> str:
             return str(item.get(k) or "").strip()
@@ -749,6 +865,27 @@ class IncheonAirportClient:
             bestVantaxistand=g("bestVantaxistand"),
             vantaxicnt=g("vantaxicnt"),
             vanstandtime=g("vanstandtime"),
+        )
+
+    def _normalize_railroad(self, item: dict) -> AirportRailroadOperation:
+        def g(*keys: str) -> str:
+            for key in keys:
+                val = item.get(key)
+                if val not in (None, ""):
+                    return str(val).strip()
+            return ""
+
+        return AirportRailroadOperation(
+            operation_date=g("drvDt", "operationDate", "opertnDt"),
+            train_no=g("trnNo", "trainNo"),
+            station_code=g("stnCd", "stationCode"),
+            operation_serial=g("drvSer", "operationSerial"),
+            stop_code=g("stopCd", "stpCd", "stnTmnCd", "stopCode"),
+            arrival_scheduled=g("arvPlandDt", "arrPlandDt", "arvlPlandDt", "arrivalScheduled", "arvPlanDt"),
+            departure_scheduled=g("dptPlandDt", "depPlandDt", "dprtPlandDt", "departureScheduled", "dptPlanDt"),
+            arrival_actual=g("arvActlDt", "arrActlDt", "arvlActlDt", "arrivalActual"),
+            departure_actual=g("dptActlDt", "depActlDt", "dprtActlDt", "departureActual"),
+            train_class=g("trainClsf", "trnClsf", "trainClass"),
         )
 
     # ── 공통 헬퍼 ─────────────────────────────────────────────────
