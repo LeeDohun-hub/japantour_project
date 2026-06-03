@@ -222,6 +222,97 @@ _ITINERARY_AREAS: dict[str, str] = {
     "우도": "우도", "udo": "우도", "牛島": "우도",
 }
 
+_SECONDARY_LOCAL_AREAS: tuple[str, ...] = (
+    "보은", "옥천", "영동", "증평", "진천", "괴산", "음성", "단양",
+    "서산", "논산", "계룡", "당진", "금산", "서천", "청양", "홍성", "예산",
+    "진안", "무주", "김제", "완주", "장수", "임실", "순창", "부안",
+    "나주", "광양", "곡성", "구례", "고흥", "화순", "장흥", "강진", "영암",
+    "무안", "함평", "영광", "장성", "진도",
+    "김천", "구미", "영천", "상주", "문경", "경산", "군위", "의성", "청송",
+    "영양", "영덕", "청도", "고령", "성주", "칠곡", "예천", "봉화", "울진", "울릉",
+    "사천", "김해", "밀양", "양산", "의령", "함안", "창녕", "산청", "함양", "거창",
+)
+_ITINERARY_AREAS.update({area: area for area in _SECONDARY_LOCAL_AREAS})
+
+_LOCAL_AREA_FALLBACK_GROUPS: dict[str, tuple[str, ...]] = {
+    "보은": ("옥천", "청주"),
+    "옥천": ("대전", "보은", "영동"),
+    "영동": ("옥천", "무주", "대전"),
+    "증평": ("청주", "괴산"),
+    "진천": ("청주", "음성"),
+    "괴산": ("충주", "증평", "문경"),
+    "음성": ("충주", "진천"),
+    "단양": ("제천", "영주"),
+    "서산": ("태안", "예산"),
+    "논산": ("공주", "부여"),
+    "계룡": ("대전", "공주"),
+    "당진": ("서산", "예산"),
+    "금산": ("대전", "논산"),
+    "서천": ("군산", "부여", "보령"),
+    "청양": ("공주", "부여"),
+    "홍성": ("예산", "서산"),
+    "예산": ("홍성", "공주"),
+    "진안": ("전주", "무주"),
+    "무주": ("진안", "영동"),
+    "김제": ("전주", "군산"),
+    "완주": ("전주", "진안"),
+    "장수": ("남원", "진안", "무주"),
+    "임실": ("전주", "남원", "순창"),
+    "순창": ("담양", "남원"),
+    "고창": ("장성", "담양", "정읍"),
+    "부안": ("고창", "군산", "김제"),
+    "나주": ("광주", "목포"),
+    "광양": ("순천", "여수"),
+    "곡성": ("구례", "순천", "남원"),
+    "구례": ("곡성", "순천", "하동"),
+    "고흥": ("보성", "순천", "여수"),
+    "화순": ("광주", "담양", "보성"),
+    "장흥": ("강진", "보성"),
+    "강진": ("해남", "장흥", "완도"),
+    "해남": ("완도", "강진", "진도"),
+    "영암": ("목포", "강진", "해남"),
+    "무안": ("목포", "함평"),
+    "함평": ("무안", "영광", "장성"),
+    "영광": ("함평", "장성", "고창"),
+    "장성": ("담양", "광주"),
+    "완도": ("해남", "강진"),
+    "진도": ("해남", "목포"),
+    "신안": ("목포", "무안"),
+    "김천": ("구미", "상주"),
+    "구미": ("김천", "칠곡", "대구"),
+    "영천": ("경주", "대구", "청도"),
+    "상주": ("문경", "김천"),
+    "문경": ("상주", "괴산", "충주"),
+    "경산": ("대구", "영천", "청도"),
+    "군위": ("대구", "의성"),
+    "의성": ("안동", "군위"),
+    "청송": ("안동", "영덕", "영양"),
+    "영양": ("안동", "청송", "봉화"),
+    "영덕": ("포항", "청송"),
+    "청도": ("대구", "경산", "밀양"),
+    "고령": ("대구", "성주", "합천"),
+    "성주": ("대구", "고령", "칠곡"),
+    "칠곡": ("대구", "구미", "성주"),
+    "예천": ("안동", "영주"),
+    "봉화": ("영주", "안동"),
+    "울진": ("영덕", "봉화"),
+    "울릉": ("포항",),
+    "사천": ("진주", "남해"),
+    "김해": ("부산", "창원", "양산"),
+    "밀양": ("창녕", "김해", "양산"),
+    "양산": ("부산", "김해"),
+    "의령": ("진주", "함안"),
+    "함안": ("창원", "의령"),
+    "창녕": ("밀양", "대구", "합천"),
+    "경남고성": ("통영", "사천", "창원"),
+    "산청": ("진주", "함양"),
+    "함양": ("산청", "거창", "진주"),
+    "거창": ("합천", "함양"),
+    "합천": ("거창", "고령"),
+    "하동": ("진주", "구례", "남해"),
+    "남해": ("사천", "하동", "진주"),
+}
+
 _REGION_DEFAULT_AREAS: dict[str, list[str]] = {
     "seoul": ["명동", "홍대", "동대문", "강남", "성수동", "여의도", "잠실"],
     "gyeonggi": ["가평", "고양", "수원", "경기광주", "파주", "용인", "안산", "양평", "화성", "과천"],
@@ -229,9 +320,9 @@ _REGION_DEFAULT_AREAS: dict[str, list[str]] = {
     "busan": ["부산", "해운대", "광안리", "영도", "서면"],
     "jeju": ["제주", "서귀포", "애월", "우도"],
     "gangwon": ["속초", "강릉", "양양", "춘천", "평창", "정선", "동해", "삼척"],
-    "chungcheong": ["대전", "공주", "부여", "보령", "태안", "단양", "청주", "천안"],
-    "jeolla": ["여수", "전주", "목포", "순천", "광주", "군산", "담양", "남원", "보성"],
-    "gyeongsang": ["경주", "부산", "대구", "거제", "통영", "안동", "포항", "남해"],
+    "chungcheong": ["대전", "공주", "부여", "보령", "태안", "단양", "청주", "천안", "제천", "아산", "서산", "청양"],
+    "jeolla": ["여수", "전주", "목포", "순천", "광주", "군산", "담양", "남원", "보성", "장성", "해남", "완도"],
+    "gyeongsang": ["경주", "부산", "대구", "거제", "통영", "안동", "포항", "남해", "영천", "함안", "산청", "합천"],
 }
 
 _SEOUL_DEFAULT_FOOD_AREAS = ["명동", "홍대"]
@@ -568,7 +659,7 @@ Area names:
     elif category == "itinerary":
         place_rule = """
 [ITINERARY — NO VERIFIED VENUE DATA]
-- Internal condition: no verified 「食事候補」/「観光スポット候補」with Google Maps URLs was supplied.
+- Internal condition: no verified 「食事候補」/「観光スポット候補」with map URLs was supplied.
 - Reply in Japanese only. Headings: 「1日目」「2日目」…「最終日」.
 - Do NOT mention Reference Data, datasets, APIs, "not listed", "unavailable", or "omitted" in the user-facing itinerary.
 - Do NOT invent restaurant/cafe/attraction names or URLs.
@@ -1853,6 +1944,11 @@ def _place_in_seoul_sub_area(place: NearbyPlace, area: str) -> bool:
 def _place_in_stay_zone(place: NearbyPlace, stay_areas: list[str]) -> bool:
     if not stay_areas:
         return False
+    for area in stay_areas:
+        if area in _SEOUL_SUB_AREAS and _place_in_seoul_sub_area(place, area):
+            return True
+        if area in _SUDOGWON_AREAS and area.lower() in _place_location_blob(place):
+            return True
     if "고양" in stay_areas and _place_in_goyang_zone(place):
         return True
     if "인천" in stay_areas and _place_in_incheon_zone(place):
@@ -1957,6 +2053,8 @@ _AREA_LOCATION_KEYWORDS: dict[str, tuple[str, ...]] = {
     "합천": ("합천", "hapcheon"),
     "영주": ("영주", "yeongju"),
 }
+for _area in _SECONDARY_LOCAL_AREAS:
+    _AREA_LOCATION_KEYWORDS.setdefault(_area, (_area,))
 _AREA_LOCATION_KEYWORDS["경기광주"] = (
     "경기도 광주", "광주시", "경기광주", "gwangju-si", "곤지암", "남한산성"
 )
@@ -2013,7 +2111,7 @@ _NON_SUDOGWON_AREAS: frozenset[str] = frozenset({
     "대전", "유성", "천안", "아산", "공주", "부여", "보령", "태안", "단양", "제천", "청주", "충주",
     "대구", "경주", "거제", "통영", "창원", "울산", "포항", "안동", "진주", "남해", "하동", "합천", "영주",
     "전주", "여수", "목포", "순천", "광주", "군산", "담양", "남원", "보성", "해남", "완도", "신안", "고창",
-})
+} | set(_SECONDARY_LOCAL_AREAS))
 
 
 def _place_in_area(place: NearbyPlace, area: str) -> bool:
@@ -2118,13 +2216,15 @@ def _fmt_penultimate_day_return_rule(
     ]
     transit_line = f"（{transit_hints[0]}）" if transit_hints else ""
     return (
-        f"【최종일 전날 귀환 규칙 — 필수】\n"
+        f"【최종일 전날 귀환 규칙 — 필수·엄수】\n"
         f"관광지({dest_str})와 숙소(수도권) 간 거리가 멀어 당일 복귀가 어렵습니다{transit_line}.\n"
         f"▶ 2일目 이후 원거리 일정은 매일 수도권 숙소에서 출발하지 말고, {dest_str} 현지에 머무르는 전제로 연속 배치.\n"
         f"▶ 최종일 전날(penultimate day) 오전~점심: {dest_str} 현지에서 구체 관광지 1곳과 구체 식당 1곳을 배치한 뒤, 오후에 KTX·고속버스로 수도권 귀환 이동 블록 필수 배치.\n"
         f"▶ 귀환 이동 예: 오후 3~5시 출발 → 숙소 오후 6~8시 도착.\n"
-        f"▶ 귀환 당일 저녁: 숙소 근처 검증済み 식당 1건만 포함, 추가 관광 배치 금지.\n"
-        f"▶ 귀환일을 '휴식/주변에서 식사' 같은 추상 문장만으로 끝내지 말 것.\n"
+        f"▶ 귀환 당일 저녁【절대 엄수】: {dest_str} 지역 식당 사용 완전 금지. "
+        f"반드시 「食事候補【帰還日・宿泊エリア】」 목록에서 숙소 근처(수도권) 식당 1건만 배치. "
+        f"귀환 이동 블록 이후에 {dest_str} 지역 음식점이 등장하면 오류.\n"
+        f"▶ 귀환일을 '휴식/주변에서 식사' 같은 추상 문장만으로 끝내지 말 것. 반드시 구체 식당명과 google_maps_uri를 포함.\n"
         f"▶ 최종일(마지막 날): {dest_str} 재방문 없이 숙소 주변 또는 공항 방면 일정으로 마무리."
     )
 
@@ -2136,9 +2236,9 @@ _REGION_CHIP_TO_AREAS: dict[str, list[str]] = {
     "busan": ["부산", "해운대", "광안리", "영도", "서면"],
     "jeju": ["제주", "서귀포", "애월", "우도"],
     "gangwon": ["속초", "강릉", "양양", "춘천", "평창", "정선", "동해", "삼척"],
-    "chungcheong": ["대전", "공주", "부여", "보령", "태안", "단양", "청주", "천안"],
-    "jeolla": ["여수", "전주", "목포", "순천", "광주", "군산", "담양", "남원", "보성"],
-    "gyeongsang": ["경주", "부산", "대구", "거제", "통영", "안동", "포항", "남해"],
+    "chungcheong": _REGION_DEFAULT_AREAS["chungcheong"],
+    "jeolla": _REGION_DEFAULT_AREAS["jeolla"],
+    "gyeongsang": _REGION_DEFAULT_AREAS["gyeongsang"],
 }
 
 _REGION_AREA_KEY_TO_AREAS: dict[str, list[str]] = {
@@ -2152,12 +2252,12 @@ _REGION_AREA_KEY_TO_AREAS: dict[str, list[str]] = {
     "sejong": ["세종"],
     "gyeonggi": _REGION_CHIP_TO_AREAS["gyeonggi"],
     "gangwon": _REGION_CHIP_TO_AREAS["gangwon"],
-    "chungbuk": ["청주", "충주", "제천", "단양"],
-    "chungnam": ["천안", "공주", "부여", "보령", "태안", "아산"],
-    "jeonbuk": ["전주", "군산", "익산", "남원", "완주"],
-    "jeonnam": ["여수", "목포", "순천", "담양", "보성", "광양"],
-    "gyeongbuk": ["경주", "안동", "포항", "문경", "영주"],
-    "gyeongnam": ["창원", "진주", "통영", "거제", "남해", "김해"],
+    "chungbuk": ["청주", "충주", "제천", "보은", "옥천", "영동", "증평", "진천", "괴산", "음성", "단양"],
+    "chungnam": ["천안", "공주", "부여", "보령", "태안", "아산", "서산", "논산", "계룡", "당진", "금산", "서천", "청양", "홍성", "예산"],
+    "jeonbuk": ["전주", "군산", "익산", "정읍", "남원", "김제", "완주", "진안", "무주", "장수", "임실", "순창", "고창", "부안"],
+    "jeonnam": ["여수", "목포", "순천", "나주", "광양", "담양", "곡성", "구례", "고흥", "보성", "화순", "장흥", "강진", "해남", "영암", "무안", "함평", "영광", "장성", "완도", "진도", "신안"],
+    "gyeongbuk": ["경주", "안동", "포항", "김천", "구미", "영주", "영천", "상주", "문경", "경산", "군위", "의성", "청송", "영양", "영덕", "청도", "고령", "성주", "칠곡", "예천", "봉화", "울진", "울릉"],
+    "gyeongnam": ["창원", "진주", "통영", "사천", "김해", "밀양", "거제", "양산", "의령", "함안", "창녕", "경남고성", "남해", "하동", "산청", "함양", "거창", "합천"],
     "jeju": _REGION_CHIP_TO_AREAS["jeju"],
 }
 
@@ -2240,6 +2340,49 @@ def _tourism_search_areas(traveler_profile: dict | None) -> list[str]:
     return out[:_MAX_ITINERARY_AREAS]
 
 
+def _append_local_fallback_areas(
+    areas: list[str],
+    *,
+    limit: int = _MAX_ITINERARY_AREAS,
+) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def add(area: str) -> None:
+        a = str(area or "").strip()
+        if a and a not in seen and len(out) < limit:
+            seen.add(a)
+            out.append(a)
+
+    for area in areas:
+        add(area)
+    for area in list(out):
+        for fallback in _LOCAL_AREA_FALLBACK_GROUPS.get(area, ()):
+            add(fallback)
+    return out
+
+
+def _tourism_candidate_areas_for_plan(traveler_profile: dict | None) -> list[str]:
+    """검색·후보 필터용 지역. 선택 군/시를 먼저 두고 부족분은 인접권역으로 보강."""
+    return _append_local_fallback_areas(list(_tourism_search_areas(traveler_profile)))
+
+
+def _fmt_local_area_fallback_hint(traveler_profile: dict | None) -> str:
+    selected = _tourism_search_areas(traveler_profile)
+    expanded = _tourism_candidate_areas_for_plan(traveler_profile)
+    fallback = [a for a in expanded if a not in selected]
+    if not selected or not fallback:
+        return ""
+    return (
+        "=== 小規模市郡の近接観光圏補完 ===\n"
+        f"中心目的地: {'・'.join(selected[:3])}\n"
+        f"候補不足時だけ使える近接観光圏: {'・'.join(fallback[:4])}\n"
+        "Rule: first prefer verified venues inside the center destination. "
+        "If center-only candidates are too few for meals or attractions, use the nearby tourism-zone candidates above. "
+        "Do not change the trip theme to the fallback city; describe it as a nearby support area.\n"
+    )
+
+
 def _prioritize_itinerary_areas(
     areas: list[str],
     traveler_profile: dict | None,
@@ -2279,7 +2422,7 @@ def _expanded_tourism_areas_for_plan(
     *,
     min_count: int = 3,
 ) -> list[str]:
-    areas = list(_tourism_search_areas(traveler_profile))
+    areas = _tourism_candidate_areas_for_plan(traveler_profile)
     if not traveler_profile:
         return areas
     regs = {str(r).lower() for r in (traveler_profile.get("regions") or [])}
@@ -2456,26 +2599,41 @@ def _fmt_itinerary_daily_area_binding(traveler_profile: dict | None) -> str:
     total_days = int(traveler_profile.get("days") or 0) if traveler_profile else 0
     if selected_city_areas:
         city_label = "・".join(selected_city_areas[:3])
+        fallback_areas = [
+            a for a in _tourism_candidate_areas_for_plan(traveler_profile)
+            if a not in selected_city_areas
+        ]
+        fallback_label = "・".join(fallback_areas[:4])
+        usable_scope = (
+            f"{city_label}（候補不足時のみ近接観光圏: {fallback_label}）"
+            if fallback_label else city_label
+        )
         last_regular_day = max(2, total_days - 1) if total_days else 4
         lines.extend(
             [
-                f"【選択都市固定】ユーザーは下位地域として {city_label} を選択済み。"
-                "広域名から他都市へ拡張せず、観光・食事はこの選択都市を中心に組む。",
-                f"2日目: 宿泊先から {city_label} へ移動し、到着後は {city_label} 内の具体スポット・昼食・夕食を配置する。",
+                f"【選択都市中心】ユーザーは下位地域として {city_label} を選択済み。"
+                "旅行の中心地名はこの選択都市のまま維持する。",
+                (
+                    f"候補が少ない小規模市郡のため、{city_label} 内候補を最優先し、"
+                    f"不足時だけ {fallback_label} の近接観光圏候補を補助利用可。"
+                    if fallback_label else
+                    "広域名から他都市へ拡張せず、観光・食事はこの選択都市を中心に組む。"
+                ),
+                f"2日目: 宿泊先から {city_label} へ移動し、到着後は {usable_scope} の具体スポット・昼食・夕食を配置する。",
             ]
         )
         if last_regular_day > 3:
             lines.append(
-                f"3日目〜{last_regular_day - 1}日目: {city_label} 内でエリアを分けて観光・食事。"
+                f"3日目〜{last_regular_day - 1}日目: {usable_scope} 内でエリアを分けて観光・食事。"
                 "同じ店・同じスポットの再利用は禁止。"
             )
         lines.append(
-            f"{last_regular_day}日目: 午前〜昼食までは {city_label} 内で具体スポット1件＋具体昼食1件を配置し、"
+            f"{last_regular_day}日目: 午前〜昼食までは {usable_scope} で具体スポット1件＋具体昼食1件を配置し、"
             "午後に宿泊先へ戻る移動ブロックを置く。帰還日を抽象的な休息だけで終わらせない。"
         )
         lines.append(
-            "※ 選択都市が1つだけの場合、県内の他都市（例: 群山・益山・南原など）へ勝手に広げない。"
-            "代替時も、まず同じ選択都市内で再検索・代替する。"
+            "※ 代替時も、まず選択都市内で再検索・代替する。"
+            "それでも候補が足りない場合だけ、明示された近接観光圏を使う。"
         )
         return "\n".join(lines) + "\n"
 
@@ -2669,7 +2827,7 @@ def _fmt_itinerary_food_by_day_zones(
         return ""
     region_order = [str(r).lower() for r in ((traveler_profile or {}).get("regions") or [])]
     # 목적 관광지 에리어 기반 범용 필터 — 부산 여행에 서울·파주, 고양 여행에 화성·부천 혼입 방지
-    travel_areas = _tourism_search_areas(traveler_profile)
+    travel_areas = _tourism_candidate_areas_for_plan(traveler_profile)
     if travel_areas:
         food_places = [p for p in food_places if _place_matches_travel_areas(p, travel_areas)]
     seen: set[str] = set()
@@ -3360,7 +3518,7 @@ def _food_queries_from_preferences(
         return []
     out: list[str] = []
     seen: set[str] = set()
-    tourism = _tourism_search_areas(traveler_profile)
+    tourism = _tourism_candidate_areas_for_plan(traveler_profile)
     search_areas = tourism[:2] if tourism else areas[:2]
 
     # regionCities 구 단위 토큰을 최우선 검색 에리어로 사용
@@ -4700,6 +4858,8 @@ def _repair_wizard_itinerary_rules(
 
     food_by_url: set[str] = set()
     food_names: set[str] = set()
+    food_place_by_url: dict[str, NearbyPlace] = {}
+    food_place_by_name: dict[str, NearbyPlace] = {}
     for p in places or []:
         uri = p.google_maps_uri or ""
         key = _plan_maps_url_key(uri)
@@ -4708,8 +4868,10 @@ def _repair_wizard_itinerary_rules(
         if is_food:
             if key:
                 food_by_url.add(key)
+                food_place_by_url[key] = p
             if name_key:
                 food_names.add(name_key)
+                food_place_by_name[name_key] = p
 
     lines = reply.splitlines()
     out: list[str] = []
@@ -4723,6 +4885,15 @@ def _repair_wizard_itinerary_rules(
         total_days = None
     late_arrival_blocks_meals = _late_arrival_blocks_meals(traveler_profile)
     early_departure_blocks_meals = _early_departure_blocks_meals(traveler_profile)
+    travel_areas = _tourism_search_areas(traveler_profile)
+    stay_areas = _accommodation_food_areas(traveler_profile)
+    penultimate_return_day = (
+        total_days - 1
+        if total_days
+        and total_days > 2
+        and _needs_accommodation_buffer_candidates(traveler_profile, travel_areas)
+        else None
+    )
 
     def meals_blocked_for_day(day_num: int | None) -> bool:
         if day_num == 1 and late_arrival_blocks_meals:
@@ -4730,6 +4901,22 @@ def _repair_wizard_itinerary_rules(
         if total_days and day_num == total_days and early_departure_blocks_meals:
             return True
         return False
+
+    def wrong_penultimate_dinner_place(url_key: str, name_key: str) -> bool:
+        if not penultimate_return_day or current_day != penultimate_return_day or slot != "dinner":
+            return False
+        place = food_place_by_url.get(url_key) or food_place_by_name.get(name_key)
+        if not place:
+            return False
+        if _place_in_stay_zone(place, stay_areas):
+            return False
+        if not stay_areas and _accom_is_sudogwon(traveler_profile):
+            return not (
+                _place_in_seoul_zone(place)
+                or _place_in_goyang_zone(place)
+                or _place_in_incheon_zone(place)
+            )
+        return True
 
     idx = 0
     while idx < len(lines):
@@ -4776,6 +4963,7 @@ def _repair_wizard_itinerary_rules(
                     slot not in {"lunch", "dinner"}
                     or day_food_count >= 2
                     or last_kept_place_food
+                    or wrong_penultimate_dinner_place(url_key, name_key)
                 )
             )
             if remove_food:
@@ -5506,6 +5694,9 @@ def route_and_answer(
     def _do_kto_datalab() -> tuple[str, list[str]]:
         if not _wants_visitkorea_region_data(category):
             return "", []
+        if not _env_flag("ENABLE_KTO_DATALAB", "0"):
+            logger.info("KTO DataLab enrichment disabled (set ENABLE_KTO_DATALAB=1 to enable)")
+            return "", []
         try:
             kto = KtoDataLabClient()
             if not kto.is_configured:
@@ -5652,6 +5843,8 @@ def route_and_answer(
                 "hallyu" in list(prof.get("activities") or [])
                 or "kpop" in list(prof.get("hallyu") or [])
             )
+            if not (is_kpop or _env_flag("ENABLE_EVENT_ENRICHMENT", "0")):
+                return []
 
             # 숙소 주소에서 지역 자동 감지 — wizard region 칩 미선택 보완
             accom = prof.get("accommodation") or {}
@@ -5800,6 +5993,13 @@ def route_and_answer(
 
     def _do_web_search() -> list[WebSearchResult]:
         """DuckDuckGo 검색 — 이벤트·행사 키워드 감지 시 실행."""
+        prof = traveler_profile or {}
+        wants_kpop = (
+            "hallyu" in list(prof.get("activities") or [])
+            or "kpop" in list(prof.get("hallyu") or [])
+        )
+        if category == "itinerary" and not (wants_kpop or _env_flag("ENABLE_EVENT_ENRICHMENT", "0")):
+            return []
         try:
             wsc = WebSearchClient()
             if not wsc.is_available:
@@ -5818,6 +6018,13 @@ def route_and_answer(
     def _do_ticket_platform() -> list[TicketPlatformEvent]:
         """인터파크 NOL — 장르 ProductList + 하위 키워드 검색 + SSR."""
         if category != "itinerary":
+            return []
+        prof = traveler_profile or {}
+        wants_kpop = (
+            "hallyu" in list(prof.get("activities") or [])
+            or "kpop" in list(prof.get("hallyu") or [])
+        )
+        if not (wants_kpop or _env_flag("ENABLE_EVENT_ENRICHMENT", "0")):
             return []
         try:
             return fetch_ticket_platform_events(traveler_profile, max_total=36)
@@ -5949,6 +6156,9 @@ def route_and_answer(
         dest_context = _fmt_selected_destination_context(traveler_profile)
         if dest_context:
             ctx_parts.append(dest_context)
+        local_fallback_hint = _fmt_local_area_fallback_hint(traveler_profile)
+        if local_fallback_hint:
+            ctx_parts.append(local_fallback_hint)
         area_bind = _fmt_itinerary_daily_area_binding(traveler_profile)
         if area_bind:
             ctx_parts.append(area_bind)
@@ -5973,6 +6183,7 @@ def route_and_answer(
         )
         prefs, _ = _food_preferences_from_profile(traveler_profile)
         travel_areas = _tourism_search_areas(traveler_profile)
+        candidate_areas = _tourism_candidate_areas_for_plan(traveler_profile)
         food_places = [p for p in itinerary_places if _is_meal_candidate_place(p)]
         if prefs:
             # _refine_itinerary_food_places 에서 이미 선호+소프트폴백을 처리했으므로
@@ -6003,8 +6214,8 @@ def route_and_answer(
                 p for p in attr_all_places if _place_in_stay_zone(p, stay_areas)
             ]
         attr_places = list(attr_all_places)
-        if travel_areas:
-            attr_places = [p for p in attr_places if _place_matches_travel_areas(p, travel_areas)]
+        if candidate_areas:
+            attr_places = [p for p in attr_places if _place_matches_travel_areas(p, candidate_areas)]
         # 원거리 복수 지역 선택 시 KTX·항공 안내
         multi_transport = _fmt_multi_region_transport_hint(travel_areas)
         if multi_transport:
@@ -6035,7 +6246,7 @@ def route_and_answer(
                         _dedup_food_by_chain(stay_food_places[:8], max_per_chain=1, seen={}),
                         group_by_area=True,
                     )
-                    + "\n※ この候補は遠方観光から宿泊先へ戻った後の夕食、または最終日の空港移動前だけ使用可。遠方滞在中の昼食・夕食には使わない。候補があるのに「店名は記載しない」は禁止。\n"
+                    + "\n※【厳守】この候補は遠方観光から宿泊先へ戻った後の夕食（帰還移動ブロック以降）、または最終日の空港移動前だけ使用可。遠方滞在中の昼食・夕食には絶対使わない。帰還日の夕食は必ずこのリストから選ぶ（遠方エリアの店は使用禁止）。候補があるのに「店名は記載しない」は禁止。\n"
                 )
         else:
             ctx_parts.append(

@@ -255,7 +255,7 @@ function renderPlaceCards(places, category, keyword, lang) {
       : `<span class="place-thumb place-thumb--fallback" aria-hidden="true">🏨</span>`;
 
     const addr = p.address ? `<div class="place-addr">${escapeHtml(p.address)}</div>` : "";
-    const mapsHint = p.google_maps_uri ? `<span class="place-maps-hint">Google Maps →</span>` : "";
+    const mapsHint = p.google_maps_uri ? `<span class="place-maps-hint">Map →</span>` : "";
     const meta = [rating && `<span class="place-rating">${rating} ${reviews}</span>`, openBadge, priceLabel]
       .filter(Boolean)
       .join("");
@@ -288,7 +288,7 @@ function renderVisitKoreaCards(stays, festivals, attractions, lang) {
         ? `<img class="place-thumb" src="${escapeHtml(it.first_image)}" alt="" loading="lazy" onerror="this.classList.add('place-thumb--fallback')" />`
         : `<span class="place-thumb place-thumb--fallback" aria-hidden="true">${emoji}</span>`;
       const uri = it.maps_uri || "";
-      const mapsHint = uri ? `<span class="place-maps-hint">Google Maps →</span>` : "";
+      const mapsHint = uri ? `<span class="place-maps-hint">Map →</span>` : "";
       const meta = period ? `<div class="place-meta">${period}</div>` : "";
       const inner = `<div class="place-thumb-wrap">${thumb}</div><div class="place-card-text"><div class="place-name">${name}</div>${meta}${addr}${mapsHint}</div>`;
       if (uri) {

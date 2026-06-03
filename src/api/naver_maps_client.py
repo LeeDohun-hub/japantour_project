@@ -74,8 +74,9 @@ class NaverGeocodeResult:
 
 
 class NaverMapsClient:
-    # Flipped to True on first 401 to suppress repeated auth-failure warnings.
-    _geocode_auth_failed: bool = False
+    # 401 means the key pair is invalid for the geocoding API. Do not sleep or
+    # retry in the same plan generation; just fall back to search URLs.
+    _geocode_disabled: bool = False
 
     def __init__(
         self,
@@ -93,16 +94,15 @@ class NaverMapsClient:
 
     @property
     def can_geocode(self) -> bool:
-        return bool(self.client_id and self.client_secret) and not NaverMapsClient._geocode_auth_failed
+        return bool(self.client_id and self.client_secret) and not NaverMapsClient._geocode_disabled
 
     def geocode(self, query: str, *, limit: int = 5) -> list[NaverGeocodeResult]:
         q = " ".join(str(query or "").split()).strip()
         if not q:
             return []
-        if NaverMapsClient._geocode_auth_failed:
-            return []
         if not self.can_geocode:
-            logger.info("Naver Maps geocode skipped: client secret not configured")
+            if not (self.client_id and self.client_secret):
+                logger.info("Naver Maps geocode skipped: client secret not configured")
             return []
 
         headers = {
@@ -118,13 +118,13 @@ class NaverMapsClient:
                 timeout=self.timeout,
             )
             if resp.status_code == 401:
-                NaverMapsClient._geocode_auth_failed = True
+                NaverMapsClient._geocode_disabled = True
                 id_hint = self.client_id[:6] + "…" if len(self.client_id) > 6 else repr(self.client_id)
                 sec_hint = self.client_secret[:4] + "…" if len(self.client_secret) > 4 else repr(self.client_secret)
                 logger.warning(
                     "Naver Maps geocode 401 Unauthorized — "
                     "using CLIENT_ID=%s (len=%d) CLIENT_SECRET=%s (len=%d). "
-                    "Geocoding disabled for this session.",
+                    "Geocoding disabled for this process; using Naver search URLs instead.",
                     id_hint, len(self.client_id), sec_hint, len(self.client_secret),
                 )
                 return []

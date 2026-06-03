@@ -1672,11 +1672,12 @@ async function generatePlan(isReroll = false) {
 
   let progress = 0;
   const timer = setInterval(() => {
-    if      (progress < 40) progress += Math.random() * 3 + 1;
-    else if (progress < 80) progress += Math.random() * 1.5 + 0.3;
-    else if (progress < 96) progress += 0.22;
-    else if (progress < 98) progress += 0.06;
-    progress = Math.min(progress, 98);
+    if      (progress < 45) progress += Math.random() * 5 + 2;
+    else if (progress < 78) progress += Math.random() * 2.2 + 0.8;
+    else if (progress < 92) progress += 0.55;
+    else if (progress < 97) progress += 0.18;
+    else if (progress < 99) progress += 0.04;
+    progress = Math.min(progress, 99);
     const idx = progress < 25 ? 0 : progress < 50 ? 1 : progress < 75 ? 2 : progress < 94 ? 3 : 4;
     statusEl.textContent = PLAN_MSGS[idx];
     barEl.style.width    = progress + "%";
@@ -1756,14 +1757,14 @@ async function generatePlan(isReroll = false) {
         if (msg.type === "meta") {
           metaData = msg;
           clearInterval(timer);
-          progress = Math.max(progress, 88);
+          progress = Math.max(progress, 90);
           barEl.style.width = progress + "%";
           pctEl.textContent = Math.floor(progress) + "%";
           statusEl.textContent = "プランを書いています... (0 文字)";
         } else if (msg.type === "token") {
           fullReply += msg.delta || "";
           charCount += (msg.delta || "").length;
-          const tokenProgress = Math.min(98, 88 + Math.floor(charCount / 260));
+          const tokenProgress = Math.min(99, 90 + Math.floor(charCount / 180));
           if (tokenProgress > progress) {
             progress = tokenProgress;
             barEl.style.width = progress + "%";
@@ -3079,9 +3080,11 @@ function _directionsUrl(p) {
     return p.maps_url || p.google_maps_uri || "#";
   }
   if (p.latitude != null && p.longitude != null) {
-    return `https://www.google.com/maps/dir/?api=1&destination=${p.latitude},${p.longitude}&travelmode=transit`;
+    const q = encodeURIComponent(p.name || `${p.latitude},${p.longitude}`);
+    return `https://map.naver.com/p/search/${q}?c=${p.longitude},${p.latitude},16,0,0,0,dh`;
   }
-  return p.google_maps_uri || "#";
+  const q = encodeURIComponent(p.name || p.address || "");
+  return q ? `https://map.naver.com/p/search/${q}` : "#";
 }
 
 function _placeGuideLine(p) {
@@ -3616,10 +3619,17 @@ function _looksLikeStandalonePlaceName(name) {
 
 function _planDetailTextOnly(text) {
   const lines = String(text || "").split(/\r?\n/);
-  const startIdx = lines.findIndex((line) =>
+  let start = -1;
+  const planHeadIdx = lines.findIndex((line) =>
     /(?:テキスト詳細計画|텍스트\s*상세\s*계획|詳細計画|상세\s*계획)/i.test(line)
   );
-  const start = startIdx >= 0 ? startIdx + 1 : 0;
+  if (planHeadIdx >= 0) {
+    start = planHeadIdx + 1;
+  } else {
+    const dayHeadRe = /(\d+)\s*日目|第\s*(\d+)\s*日|Day\s*(\d+)|최종일|첫날/i;
+    const firstDayIdx = lines.findIndex((line) => dayHeadRe.test(line.trim()));
+    start = firstDayIdx >= 0 ? firstDayIdx : 0;
+  }
   const out = [];
   for (let i = start; i < lines.length; i++) {
     const t = lines[i].trim();
@@ -3695,11 +3705,24 @@ async function _enrichUnlinkedAttractions(names, placeIndexes) {
       const body = await res.json();
       const p = (body.places || [])[0];
       if (!p || !p.maps_url || _isJpAddress(p) || !_placeMatchesSelectedArea(p)) return;
+      // Reject results where the place name has NO character overlap with the query.
+      // e.g. "대한민국떡방" returned for "김광석 다시그리기길 대구" → completely unrelated.
+      const qChars = _normalizePlaceName(name);
+      const pChars = _normalizePlaceName(p.name || "");
+      const hasOverlap = qChars.length >= 3 && pChars.length >= 3 && (
+        qChars.includes(pChars.slice(0, 3)) || pChars.includes(qChars.slice(0, 3))
+      );
+      if (!hasOverlap) return;
       const enriched = { ...p, google_maps_uri: p.maps_url };
       const nk = _normalizePlaceName(p.name || name);
       const queryKey = _normalizePlaceName(name);
       if (nk) placeIndexes.byName[nk] = enriched;
-      if (queryKey) placeIndexes.byName[queryKey] = enriched;
+      // Only alias the query key when the result name is clearly related to the query.
+      // Unconditional aliasing caused Naver's off-topic results (e.g., 칠암사계 returned
+      // for "감천문화마을 부산") to be indexed under the query key, producing wrong stop labels.
+      if (queryKey && queryKey !== nk && (nk.startsWith(queryKey) || queryKey.startsWith(nk))) {
+        placeIndexes.byName[queryKey] = enriched;
+      }
       if (p.maps_url) placeIndexes.byUrl[_mapsUrlKey(p.maps_url)] = enriched;
     } catch (_) { /* 무시 */ }
   }));
@@ -3723,7 +3746,9 @@ async function _enrichTicketVenuePlaces(events, placeIndexes) {
       const nk = _normalizePlaceName(p.name || ev.venue);
       const venueKey = _normalizePlaceName(ev.venue);
       if (nk) placeIndexes.byName[nk] = enriched;
-      if (venueKey) placeIndexes.byName[venueKey] = enriched;
+      if (venueKey && venueKey !== nk && (nk.startsWith(venueKey) || venueKey.startsWith(nk))) {
+        placeIndexes.byName[venueKey] = enriched;
+      }
       if (p.maps_url) placeIndexes.byUrl[_mapsUrlKey(p.maps_url)] = enriched;
     } catch (_) { /* ignore venue enrichment */ }
   }));

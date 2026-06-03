@@ -1,5 +1,5 @@
 /**
- * 旅行プラン — Google Maps + Dayタブ + スポットカード（Triple風）
+ * 旅行プラン — Naver Map + Dayタブ + スポットカード（Triple風）
  */
 (function (global) {
   "use strict";
@@ -76,39 +76,47 @@
         opts
       );
     }
-    if (p.google_maps_uri || p.maps_url || stop?.url) {
-      return p.google_maps_uri || p.maps_url || stop?.url;
+    const rawUrl = p.maps_url || p.google_maps_uri || stop?.url || "";
+    if (/map\.naver\.com/i.test(rawUrl)) {
+      return rawUrl;
     }
     if (stop?.lat != null && stop?.lng != null) {
-      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${stop.lat},${stop.lng}`)}`;
+      const q = encodeURIComponent(p.name || stop?.label || `${stop.lat},${stop.lng}`);
+      return `https://map.naver.com/p/search/${q}?c=${stop.lng},${stop.lat},16,0,0,0,dh`;
     }
     const q = p.name || stop?.label;
-    return q ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}` : "#";
+    return q ? `https://map.naver.com/p/search/${encodeURIComponent(q)}` : "#";
   }
 
   function stopPhotoUrl(stop) {
     const p = stop?.place || {};
     if (stop?.isAirport) return "";
-    if (p.photo_url || p.naver_photo_url) return p.photo_url || p.naver_photo_url;
     if (p.photo_name) return `/api/photo/?name=${encodeURIComponent(p.photo_name)}`;
-    const mapUrl = p.maps_url || p.google_maps_uri || stop?.url || "";
-    const name = String(p.name || "").trim();
-    const address = String(p.address || "").trim();
-    const label = String(stop?.label || "").trim();
-    const line = String(stop?.line || "").trim();
-    if (!name && !address && !label && !line) return "";
-    const q = [...new Set([p.name, p.address, stop?.label, stop?.line].filter(Boolean))]
-      .join(" ")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (!q) return "";
+    const stopLabel = String(stop?.label || "").trim();
+    const placeNameNorm = (p.name || "").replace(/\s+/g, "").toLowerCase();
+    const labelNorm = stopLabel.replace(/\s+/g, "").toLowerCase();
+    // Only trust p.photo_url when the place name matches the stop label —
+    // mismatched Naver results cause the wrong place's photo to appear.
+    const nameMatchesLabel = !placeNameNorm || !labelNorm ||
+      placeNameNorm === labelNorm ||
+      labelNorm.startsWith(placeNameNorm) ||
+      placeNameNorm.startsWith(labelNorm);
+    if (nameMatchesLabel && (p.photo_url || p.naver_photo_url)) return p.photo_url || p.naver_photo_url;
+    // Build photo URL from the stop's displayed label (plan text name).
+    // Strip leading circle/bullet markers that would confuse the image search.
+    const photoQuery = stopLabel
+      .replace(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*/, "")
+      .replace(/^[-・*]\s*/, "")
+      .trim() || p.address || String(p.name || "").trim();
+    if (!photoQuery) return "";
     const coord = stop?.lat != null && stop?.lng != null
       ? `&lat=${encodeURIComponent(stop.lat)}&lng=${encodeURIComponent(stop.lng)}`
       : "";
+    const mapUrl = p.maps_url || p.google_maps_uri || stop?.url || "";
     if (/map\.naver\.com/i.test(mapUrl)) {
-      return `/api/naver-photo/?url=${encodeURIComponent(mapUrl)}&q=${encodeURIComponent(q)}${coord}&image_fallback=1`;
+      return `/api/naver-photo/?url=${encodeURIComponent(mapUrl)}&q=${encodeURIComponent(photoQuery)}${coord}&image_fallback=1`;
     }
-    return `/api/naver-photo/?q=${encodeURIComponent(q)}${coord}&image_fallback=1`;
+    return `/api/naver-photo/?q=${encodeURIComponent(photoQuery)}${coord}&image_fallback=1`;
   }
 
   function stopThumbHtml(stop) {
@@ -235,6 +243,7 @@
     return String(s || "")
       .toLowerCase()
       .replace(/^(?:おすすめ|推薦|推奨|추천|권장)\s*[:：-]?\s*/i, "")
+      .replace(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*/, "")
       .replace(/[（(][^）)]*[）)]/g, "")
       .replace(/\s+/g, "")
       .trim();
@@ -409,7 +418,7 @@
   }
 
   function _isTransitOrAnchorLine(line) {
-    return /(?:入国|出国|チェックイン|ホテル|宿泊|空港|移動|休息|休憩|到着|出発|手荷物|審査|税関|AREX|乗換|下車|徒歩|タクシー|リムジン|コンビニ|軽食)/i.test(line || "");
+    return /(?:入国|出国|チェックイン|ホテル|宿泊|空港|移動|休息|休憩|到着|出発|手荷物|審査|税関|AREX|乗換|下車|徒歩|タクシー|リムジン|コンビニ|軽食|입국|출국|체크인|호텔|숙박|공항|이동|휴식|휴게|도착|출발|수하물|심사|세관|환승|하차|도보|택시|리무진|편의점|경의중앙선|귀환|귀국|숙박지|숙박처|KTX|SRT|고속버스|KORAIL)/i.test(line || "");
   }
 
   function _isRecommendationLine(line) {
@@ -419,16 +428,23 @@
   function _isPlanNoiseLine(line) {
     const t = String(line || "").trim();
     if (!t) return true;
-    if (/^(?:外観写真|写真|地図|経路|ルート|지도|통로|Map|Directions)$/i.test(t)) return true;
+    if (/^(?:外観写真|写真|外観\s*写真|외관\s*사진|사진|地図|経路|ルート|지도|통로|Map|Directions)$/i.test(t)) return true;
     if (/^【(?:予算|旅行|全体|注意|参考|移動|ポイント|チェックリスト)/.test(t)) return true;
     if (/^\[(?:予算|旅行|全体|注意|参考|移動|ポイント)/.test(t)) return true;
     if (/^(?:예산|여행의\s*포인트|전체\s*포인트|주의|참고)\b/.test(t)) return true;
     if (/^★\s*\d/.test(t) || /^(?:営業中|営業終了|영업\s*중|영업\s*종료|¥+|₩+)/.test(t)) return true;
     if (/(?:Google|グーグル|평점|評価|口コミ|件|메뉴|メニュー)/i.test(t)) return true;
+    // Korean naver-score lines like "Naver 70.0 Blog 24,592" or "네이버 54.8 Blog 7"
+    if (/^(?:Naver|네이버)\s+\d/.test(t)) return true;
     if (/(?:この日|이 날|当日).*(?:候補|動線|移動経路|식사|동선|경로)/.test(t)) return true;
+    if (/(?:이 날의|この日の).*(?:참조|参照|확인된|確認済|조합|내장|들르)/.test(t)) return true;
     if (/(?:外観|写真|カード|本文で引用|본문에서 인용)/.test(t)) return true;
+    if (/(?:쇼핑과\s*사진|买い物と写真|스팟|スポット.*들르|立ち寄り)/i.test(t)) return true;
     if (/(?:食事候補リスト|식사\s*후보|レストラン情報がありません|現地で|현지에서|探す|찾으|利用してください|이용해)/i.test(t)) return true;
     if (/^(?:午前|午後|昼食|夕食|朝食|夜|ランチ|ディナー|朝|昼|食事|오전|오후|점심|저녁|아침)\s*$/.test(t)) return true;
+    // Ticket event metadata lines — period/date/ticket-link lines are noise
+    if (/^(?:기간|期間|회기|会期)\s*[:：]/.test(t)) return true;
+    if (/^INTERPARK\s+TICKET/i.test(t)) return true;
     return false;
   }
 
@@ -447,9 +463,15 @@
       if (s && !out.includes(s)) out.push(s);
     };
 
+    // Extract venue name from “회장:XXX”, “장소:XXX”, “会場:XXX” patterns (ticket events)
+    const venueM = t.match(/^(?:회장|장소|venue|会場|場所)\s*[:：]\s*(.+)/i);
+    if (venueM) {
+      add(venueM[1]);
+      return out; // venue lines → only return the extracted venue name
+    }
     add(t);
     for (const part of t.split(/[·・]/)) add(part);
-    const quoteHead = t.split(/[「『'“"<]/)[0];
+    const quoteHead = t.split(/[「『'””<]/)[0];
     if (quoteHead !== t) add(quoteHead);
     const venueTail = t.match(/(?:\d{4}[-./]\d{1,2}[-./]\d{1,2}[^·・]*[·・]\s*)(.+)$/);
     if (venueTail) add(venueTail[1]);
@@ -497,10 +519,20 @@
 
   function _routeRelevantText(reply) {
     const lines = String(reply || "").split(/\r?\n/);
-    const startIdx = lines.findIndex((line) =>
+    let start = -1;
+    const planHeadIdx = lines.findIndex((line) =>
       /(?:テキスト詳細計画|텍스트\s*상세\s*계획|詳細計画|상세\s*계획)/i.test(line)
     );
-    const start = startIdx >= 0 ? startIdx + 1 : 0;
+    if (planHeadIdx >= 0) {
+      start = planHeadIdx + 1;
+    } else {
+      // Fall back to first day header — skip any LLM intro text before "1日目"
+      const firstDayIdx = lines.findIndex((line) => {
+        const t = line.trim();
+        return isDayHeaderLine(t);
+      });
+      start = firstDayIdx >= 0 ? firstDayIdx : 0;
+    }
     const out = [];
     for (let i = start; i < lines.length; i++) {
       if (_isRouteTailSection(lines[i])) break;
@@ -530,6 +562,8 @@
       if (MAPS_URL_RE.test(t)) {
         const url = t.split(/\s/)[0];
         const place = byUrl[mapsUrlKey(url)] || null;
+        // Always allow the raw Maps URL itself so URL-matched stops are never filtered
+        allowed.add(`url:${mapsUrlKey(url)}`);
         addPlace(place, labelBeforeUrl(lines, url));
         continue;
       }
@@ -545,7 +579,7 @@
         .trim();
       if (
         !cleaned ||
-        cleaned.length > 36 ||
+        cleaned.length > 54 ||
         /[。.!?！？]/.test(cleaned) ||
         /(?:おすすめ|人気|地元|現地|代表|確認|利用|楽し|撮影|散策|移動|候補|動線|経路|전망|시가지|현지|추천|인기|대표|확인|이용|즐기|후보|동선|경로|없습니다|찾)/i.test(cleaned)
       ) {
@@ -560,10 +594,19 @@
   function _stopAllowedByReply(stop, allowedKeys) {
     if (stop?.isAirport || stop?.isAccommodation) return true;
     if (!allowedKeys?.size) return true;
-    const uri = stop?.place?.google_maps_uri || stop?.place?.maps_url || stop?.url || "";
-    if (uri && allowedKeys.has(`url:${mapsUrlKey(uri)}`)) return true;
-    const name = _normStopText(stop?.place?.name || stop?.label || "");
-    return Boolean(name && allowedKeys.has(`name:${name}`));
+    const uris = [
+      stop?.place?.google_maps_uri,
+      stop?.place?.maps_url,
+      stop?.url,
+      stop?.sourceUrl,
+    ].filter(Boolean);
+    for (const uri of uris) {
+      if (allowedKeys.has(`url:${mapsUrlKey(uri)}`)) return true;
+    }
+    const names = [stop?.place?.name, stop?.label]
+      .map((s) => _normStopText(s))
+      .filter(Boolean);
+    return names.some((n) => allowedKeys.has(`name:${n}`));
   }
 
   function addRouteAnchors(days, meta) {
@@ -673,7 +716,7 @@
       if (DAY_HEADER_RE.test(t)) return "";
       return t
         .replace(/^\[[\d:〜~\-]+\]\s*/, "")
-        .replace(/^[-・*]\s*/, "")
+        .replace(/^[-・*①②③④⑤⑥⑦⑧⑨⑩]\s*/, "")
         .replace(/（[^）]*）$/g, "")
         .trim();
     }
@@ -682,11 +725,17 @@
 
   function parseDayNumber(line) {
     const t = line.trim();
-    if (/最終日|帰国日|最終\s*日|최종일|마지막\s*날/.test(t)) return -1;
+    if (/^(?:#{1,3}\s*)?(?:【\s*)?(?:最終日|帰国日|最終\s*日|최종일|마지막\s*날)\s*(?:[】\]:：\-].*)?$/.test(t)) return -1;
     if (/^첫날/.test(t)) return 1;
     const m = t.match(/(\d+)\s*日目|第\s*(\d+)\s*日|Day\s*(\d+)|(\d+)\s*(?:일째|일차|일\s*차)/i);
     if (m) return parseInt(m[1] || m[2] || m[3] || m[4], 10);
     return null;
+  }
+
+  function isDayHeaderLine(line) {
+    const t = String(line || "").trim();
+    if (parseDayNumber(t) === null) return false;
+    return /^(?:#{1,3}\s*)?(?:【\s*)?(?:\d+\s*日目|第\s*\d+\s*日|Day\s*\d+\b|\d+\s*(?:일째|일차|일\s*차)|첫날\b|最終日|帰国日|最終\s*日|최종일|마지막\s*날)/i.test(t);
   }
 
   function findPlaceForLine(line, placeIndex) {
@@ -695,10 +744,13 @@
 
   function placeToStop(place, line, sourceLineIdx = null) {
     if (!place) return null;
+    // Prefer the plan-text line as label so that Naver search mismatch
+    // (e.g. wrong POI returned for a query) doesn't replace the correct name.
+    const label = line || place.name || "スポット";
     return {
       url: place.google_maps_uri || place.maps_url || "",
       place,
-      label: place.name || line || "スポット",
+      label,
       line: line || place.name || "",
       sourceLineIdx,
       lat: place.latitude != null ? Number(place.latitude) : null,
@@ -737,10 +789,7 @@
       const t = lines[i].trim();
       if (!t) continue;
       const dayNum = parseDayNumber(t);
-      if (
-        dayNum !== null &&
-        (/日目|Day\s*\d|第\s*\d+\s*日|最終日|帰国日|일째|일차|일\s*차|첫날|최종일|마지막/i.test(t) || /^【\s*\d+/.test(t))
-      ) {
+      if (dayNum !== null && isDayHeaderLine(t)) {
         const num = dayNum === -1 ? (fallbackDayCount || days.length + 1 || 99) : dayNum;
         current = { day: num, title: t.replace(/^#+\s*/, ""), stops: [] };
         days.push(current);
@@ -755,7 +804,7 @@
       if (current) {
         if (_isRecommendationLine(t) || _isPlanNoiseLine(t)) continue;
         // Keep the map route aligned with the detailed plan: only explicit
-        // Google Maps URLs or standalone place-name lines in the plan body
+        // map URLs or standalone place-name lines in the plan body
         // create stops. Reference-data/prose matches are intentionally ignored.
         const place = findPlaceForLine(t, placeIndex);
         const rec = placeToStop(place, t, i);
@@ -765,17 +814,14 @@
       }
     }
 
-    if (!days.length && orphanStops.length) {
-      const n = Math.max(1, fallbackDayCount || 1);
+    // Orphan stops (Maps URLs before the first day header) are discarded.
+    // With the day-header fallback in _routeRelevantText they should be rare;
+    // merging them into Day 1 caused intro-text places to pollute the arrival day.
+    if (!days.length && fallbackDayCount) {
+      const n = Math.max(1, fallbackDayCount);
       for (let d = 1; d <= n; d++) {
         days.push({ day: d, title: `${d}日目`, stops: [] });
       }
-      orphanStops.forEach((s, idx) => {
-        const bucket = days[Math.min(Math.floor(idx / Math.ceil(orphanStops.length / n)), n - 1)];
-        bucket.stops.push(s);
-      });
-    } else if (orphanStops.length && days.length) {
-      days[0].stops.unshift(...orphanStops);
     }
 
     return normalizePlanDays(days, fallbackDayCount);
@@ -796,52 +842,7 @@
   }
 
   function loadGoogleMaps(apiKey) {
-    if (mapsReady()) return Promise.resolve();
-    if (_mapsLoadPromise) return _mapsLoadPromise;
-
-    _mapsLoadPromise = new Promise((resolve, reject) => {
-      let settled = false;
-      const done = (fn) => (arg) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        fn(arg);
-      };
-
-      global.gm_authFailure = done(() => {
-        _mapsLoadPromise = null;
-        reject(new Error("AUTH_FAILURE"));
-      });
-
-      global[GMAPS_CALLBACK] = done(() => {
-        if (mapsReady()) resolve();
-        else reject(new Error("MAPS_NOT_READY"));
-      });
-
-      const timer = setTimeout(() => {
-        done(reject)(new Error("TIMEOUT"));
-        _mapsLoadPromise = null;
-      }, 20000);
-
-      const prev = document.querySelector("script[data-plan-map-gmaps]");
-      if (prev) prev.remove();
-
-      const s = document.createElement("script");
-      s.dataset.planMapGmaps = "1";
-      s.async = true;
-      s.defer = true;
-      s.src =
-        `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}` +
-        `&callback=${GMAPS_CALLBACK}&loading=async` +
-        `&libraries=geometry&v=weekly&language=ja&region=KR`;
-      s.onerror = done(() => {
-        _mapsLoadPromise = null;
-        reject(new Error("SCRIPT_LOAD"));
-      });
-      document.head.appendChild(s);
-    });
-
-    return _mapsLoadPromise;
+    return Promise.reject(new Error("GOOGLE_MAPS_DISABLED"));
   }
 
   function loadNaverMaps(apiKey) {
@@ -904,6 +905,42 @@
     return ["#2B6CB0", "#C73E55", "#D4A853", "#38A169", "#805AD5", "#DD6B20"];
   }
 
+  function markerDisplayStops(stops) {
+    const threshold = 0.0005;
+    const groups = [];
+    const out = new Array(stops.length);
+    stops.forEach((stop, idx) => {
+      const lat = Number(stop.lat);
+      const lng = Number(stop.lng);
+      let group = groups.find((g) =>
+        Math.abs(g.lat - lat) <= threshold && Math.abs(g.lng - lng) <= threshold
+      );
+      if (!group) {
+        group = { lat, lng, items: [] };
+        groups.push(group);
+      }
+      group.items.push({ stop, idx, lat, lng });
+    });
+    groups.forEach((group) => {
+      const count = group.items.length;
+      if (count === 1) {
+        const item = group.items[0];
+        out[item.idx] = item;
+        return;
+      }
+      const radius = 0.00042 + Math.min(count, 6) * 0.00004;
+      group.items.forEach((item, pos) => {
+        const angle = -Math.PI / 2 + (Math.PI * 2 * pos) / count;
+        out[item.idx] = {
+          ...item,
+          lat: group.lat + Math.sin(angle) * radius,
+          lng: group.lng + Math.cos(angle) * radius,
+        };
+      });
+    });
+    return out;
+  }
+
   function materializeNaverStopCoord(stop) {
     if (!stop || (stop.lat != null && stop.lng != null)) return stop;
     const p = stop.place || {};
@@ -943,9 +980,14 @@
     const path = [];
     const colors = markerColors();
 
-    stops.forEach((stop, idx) => {
-      const pos = { lat: stop.lat, lng: stop.lng };
+    stops.forEach((stop) => {
+      const pos = { lat: Number(stop.lat), lng: Number(stop.lng) };
       path.push(pos);
+      bounds.extend(pos);
+    });
+
+    markerDisplayStops(stops).forEach(({ stop, idx, lat, lng }) => {
+      const pos = { lat, lng };
       bounds.extend(pos);
       const marker = new global.google.maps.Marker({
         position: pos,
@@ -966,7 +1008,7 @@
         const addr = stop.place?.address ? `<br><small>${esc(stop.place.address)}</small>` : "";
         const link = mapsOpenUrl(stop);
         _infoWindow.setContent(
-          `<div class="plan-map-infowin"><strong>${name}</strong>${addr}<br><a href="${esc(link)}" target="_blank" rel="noopener">Google Maps</a></div>`
+          `<div class="plan-map-infowin"><strong>${name}</strong>${addr}<br><a href="${esc(link)}" target="_blank" rel="noopener">Naver Map</a></div>`
         );
         _infoWindow.open({ map: _mapInstance, anchor: marker });
       });
@@ -1017,15 +1059,21 @@
     const path = [];
     const colors = markerColors();
 
-    stops.forEach((stop, idx) => {
+    // Build path first, then render markers in reverse so stop 1 is on top when overlapping
+    stops.forEach((stop) => {
       const pos = new nmap.LatLng(Number(stop.lat), Number(stop.lng));
       path.push(pos);
       bounds.extend(pos);
+    });
+
+    [...markerDisplayStops(stops)].reverse().forEach(({ stop, idx, lat, lng }) => {
+      const pos = new nmap.LatLng(lat, lng);
       const color = colors[idx % colors.length];
       const marker = new nmap.Marker({
         position: pos,
         map: _mapInstance,
         title: stop.place?.name || stop.label,
+        zIndex: stops.length - idx,
         icon: {
           content:
             `<span style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:${color};color:#fff;border:2px solid #fff;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.25)">${idx + 1}</span>`,
@@ -1129,10 +1177,7 @@
     for (let i = 0; i < lines.length; i++) {
       const t = String(lines[i] || "").trim();
       const dayNum = parseDayNumber(t);
-      if (
-        dayNum !== null &&
-        (/日目|Day\s*\d|第\s*\d+\s*日|最終日|帰国日|일째|일차|일\s*차|첫날|최종일|마지막/i.test(t) || /^【\s*\d+/.test(t))
-      ) {
+      if (dayNum !== null && isDayHeaderLine(t)) {
         if (current) current.end = i;
         const num = dayNum === -1 ? (fallbackDayCount || sections.length + 1 || 99) : dayNum;
         current = { day: num, start: i, end: lines.length };
@@ -1271,7 +1316,12 @@
       .map((stop, stopIdx) => {
         const hasCoords = stop.lat != null && stop.lng != null;
         const p = stop.place || {};
-        const name = esc(p.name || stop.label);
+        // Prefer the plan-text label over the DB place name to avoid wrong Naver
+        // search results overwriting the stop title (e.g. "대한민국 고기왕" shown
+        // instead of "국립아시아문화전당 광주").
+        // Strip leading circle-number bullets (② ③ etc.) from plan-text labels.
+        const rawLabel = (stop.label || p.name || "").replace(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*/, "").trim();
+        const name = esc(rawLabel || stop.label || p.name);
         const lockable = !stop.isAirport && !stop.isAccommodation;
         const lockKey = stopLockKey(stop, day.day);
         const isLocked = _lockedStops.has(lockKey);
@@ -1285,7 +1335,9 @@
           : esc(p.primary_type || p.types?.[0] || "観光スポット");
         const thumb = stopThumbHtml(stop);
         const mapsUri = esc(mapsOpenUrl(stop));
-        const tip = stop.line && !MAPS_URL_RE.test(stop.line) ? esc(stop.line) : "";
+        // Hide tip when it's a Maps URL or duplicates the stop label.
+        const tipRaw = stop.line && !MAPS_URL_RE.test(stop.line) ? stop.line : "";
+        const tip = tipRaw && tipRaw !== stop.label ? esc(tipRaw) : "";
         const dragAttrs = `draggable="false" data-draggable="false"`;
         const dragHandle = `<span class="plan-day-stop__drag plan-day-stop__drag--fixed" aria-hidden="true">•</span>`;
         if (hasCoords) {
@@ -1344,15 +1396,11 @@
       const raw = stop.isAccommodation
         ? (stop.place?.address || stop.line || stop.label)
         : (stop.place?.address || stop.place?.name || stop.label);
-      const base = String(raw || "").trim();
+      const base = String(raw || "").replace(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*/, "").trim();
       if (!base || base.length < 2) return [];
       const noParen = base.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
       const spacedRoadQuery = noParen.replace(/([\uac00-\ud7a3])(\d)/g, "$1 $2");
       return [base, noParen, spacedRoadQuery, `${noParen} South Korea`, `South Korea ${noParen}`]
-        .map((q) => q.trim())
-        .filter((q, idx, arr) => q && arr.indexOf(q) === idx);
-      const spacedRoad = noParen.replace(/([가-힣])(\d)/g, "$1 $2");
-      return [base, noParen, spacedRoad, `${noParen} 대한민국`, `대한민국 ${noParen}`]
         .map((q) => q.trim())
         .filter((q, idx, arr) => q && arr.indexOf(q) === idx);
     }
@@ -1392,7 +1440,16 @@
                 maps_url: p.maps_url || stop.url || "",
               };
             } else {
-              stop.place = { ...stop.place, ...p, google_maps_uri: p.maps_url || stop.url };
+              // Preserve original place name/address; only update coordinates and maps URI.
+              stop.place = {
+                ...p,
+                name: stop.place?.name || p.name,
+                address: stop.place?.address || p.address,
+                latitude: lat,
+                longitude: lng,
+                google_maps_uri: stop.place?.google_maps_uri || stop.url || p.maps_url,
+                maps_url: stop.place?.maps_url || stop.url || p.maps_url,
+              };
             }
             break;
           } catch (_) {
@@ -1437,23 +1494,20 @@
     return (
       "<p><strong>地図を表示できません（APIキー認証エラー）</strong></p>" +
       "<ul style='margin:.5rem 0 0 1rem;padding:0;font-size:.82rem;line-height:1.5'>" +
-      "<li>Google Cloud → <b>APIとサービス → 認証情報</b> → ブラウザ用キー</li>" +
-      "<li><b>アプリケーションの制限</b>: <b>HTTPリファラー</b>（IPアドレス制限は不可）</li>" +
+      "<li>Naver Cloud Platform → Maps JavaScript API のブラウザ用キー</li>" +
+      "<li><b>アプリケーションの制限</b>: <b>HTTPリファラー</b></li>" +
       `<li>許可例: <code>${host}/*</code> 、 <code>http://localhost:8000/*</code></li>` +
-      "<li><b>APIの制限</b>: Maps JavaScript API を含める</li>" +
-      "<li>Vertex / Gemini の「サービスアカウントにキーをバインド」は<b>ブラウザ地図には不要</b></li>" +
-      "<li>課金（Billing）が有効か確認</li>" +
+      "<li>NAVER_MAPS_CLIENT_ID が設定されているか確認</li>" +
       "</ul>" +
-      `<p style='font-size:.78rem;margin-top:.5rem'>キー出所${src} — 開発者ツール(F12)→Console の Google Maps エラーも確認してください。</p>`
+      `<p style='font-size:.78rem;margin-top:.5rem'>キー出所${src} — 開発者ツール(F12)→Console の Naver Maps エラーも確認してください。</p>`
     );
   }
 
   async function initMap(canvas, cfg) {
     const apiKey = cfg.api_key;
     showMapStatus("地図を読み込み中…");
-    _mapsProvider = cfg.provider === "naver" ? "naver" : "google";
-    if (_mapsProvider === "naver") await loadNaverMaps(apiKey);
-    else await loadGoogleMaps(apiKey);
+    _mapsProvider = "naver";
+    await loadNaverMaps(apiKey);
 
     if (_mapsProvider === "naver" && !_mapInstance && canvas) {
       _mapInstance = new global.naver.maps.Map(canvas, {
@@ -1546,7 +1600,7 @@
         const naver = pts
           ? `<a href="https://map.naver.com/" target="_blank" rel="noopener">ネイバーマップでルート</a> · <a href="https://map.kakao.com/" target="_blank" rel="noopener">カカオマップ</a>`
           : "";
-        fallback.innerHTML = `<p class="plan-map-fallback-msg">地図APIキー未設定のためルート地図は表示しません。${naver}${pts ? `<br><small>（参考）<a href="https://www.google.com/maps/dir/${pts}" target="_blank" rel="noopener">Google Maps</a></small>` : ""}</p>`;
+        fallback.innerHTML = `<p class="plan-map-fallback-msg">地図APIキー未設定のためルート地図は表示しません。${naver}</p>`;
       }
       return;
     }

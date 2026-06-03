@@ -110,11 +110,16 @@ def search_road_addresses(
     }
 
     try:
+        # juso.go.kr uses legacy TLS configuration that causes SSL EOF errors
+        # in some environments — disable certificate verification as a workaround.
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         resp = requests.get(
             _JUSO_SEARCH_URL,
             params=params,
             headers=_REQUEST_HEADERS,
             timeout=timeout,
+            verify=False,
         )
         resp.raise_for_status()
         payload = resp.json()

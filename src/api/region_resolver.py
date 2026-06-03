@@ -9,6 +9,25 @@ from __future__ import annotations
 from typing import Any
 
 
+_CITY_SUFFIXES = ("특별자치시", "특별자치도", "광역시", "특별시", "자치구", "시", "군", "구")
+
+
+def _canonical_area_label(value: str) -> str:
+    text = " ".join(str(value or "").replace(",", " ").split()).strip()
+    if not text:
+        return ""
+    # Region city queries are usually like "장성군", "포항시 북구", or
+    # "경남 고성군"; use the most specific token and strip admin suffixes.
+    token = text.split()[-1]
+    if token in ("북구", "남구", "동구", "서구", "중구") and len(text.split()) >= 2:
+        token = text.split()[-2]
+    for suffix in _CITY_SUFFIXES:
+        if token.endswith(suffix) and len(token) > len(suffix):
+            token = token[: -len(suffix)]
+            break
+    return token
+
+
 REGION_CITY_ID_TO_ITINERARY_AREA: dict[str, str] = {
     "seoul:jongno": "종로",
     "seoul:jung": "명동",
@@ -106,6 +125,32 @@ REGION_CITY_ID_TO_ITINERARY_AREA: dict[str, str] = {
     "chungcheong:chungju": "충주",
     "chungcheong:cheongju": "청주",
     "chungcheong:sejong": "세종",
+    "chungbuk:cheongju": "청주",
+    "chungbuk:chungju": "충주",
+    "chungbuk:jecheon": "제천",
+    "chungbuk:boeun": "보은",
+    "chungbuk:okcheon": "옥천",
+    "chungbuk:yeongdong": "영동",
+    "chungbuk:jeungpyeong": "증평",
+    "chungbuk:jincheon": "진천",
+    "chungbuk:goesan": "괴산",
+    "chungbuk:eumseong": "음성",
+    "chungbuk:danyang": "단양",
+    "chungnam:cheonan": "천안",
+    "chungnam:gongju": "공주",
+    "chungnam:boryeong": "보령",
+    "chungnam:asan": "아산",
+    "chungnam:seosan": "서산",
+    "chungnam:nonsan": "논산",
+    "chungnam:gyeryong": "계룡",
+    "chungnam:dangjin": "당진",
+    "chungnam:geumsan": "금산",
+    "chungnam:buyeo": "부여",
+    "chungnam:seocheon": "서천",
+    "chungnam:cheongyang": "청양",
+    "chungnam:hongseong": "홍성",
+    "chungnam:yesan": "예산",
+    "chungnam:taean": "태안",
     "jeonbuk:jeonju": "전주",
     "jeonbuk:gunsan": "군산",
     "jeonbuk:iksan": "익산",
@@ -127,6 +172,28 @@ REGION_CITY_ID_TO_ITINERARY_AREA: dict[str, str] = {
     "jeolla:damyang": "담양",
     "jeolla:gunsan": "군산",
     "jeolla:gwangju": "광주",
+    "jeonnam:mokpo": "목포",
+    "jeonnam:yeosu": "여수",
+    "jeonnam:suncheon": "순천",
+    "jeonnam:naju": "나주",
+    "jeonnam:gwangyang": "광양",
+    "jeonnam:damyang": "담양",
+    "jeonnam:gokseong": "곡성",
+    "jeonnam:gurye": "구례",
+    "jeonnam:goheung": "고흥",
+    "jeonnam:boseong": "보성",
+    "jeonnam:hwasun": "화순",
+    "jeonnam:jangheung": "장흥",
+    "jeonnam:gangjin": "강진",
+    "jeonnam:haenam": "해남",
+    "jeonnam:yeongam": "영암",
+    "jeonnam:muan": "무안",
+    "jeonnam:hampyeong": "함평",
+    "jeonnam:yeonggwang": "영광",
+    "jeonnam:jangseong": "장성",
+    "jeonnam:wando": "완도",
+    "jeonnam:jindo": "진도",
+    "jeonnam:sinan": "신안",
     "gyeongsang:busan": "부산",
     "gyeongsang:busan_haeundae": "해운대",
     "gyeongsang:busan_jung": "부산",
@@ -138,6 +205,49 @@ REGION_CITY_ID_TO_ITINERARY_AREA: dict[str, str] = {
     "gyeongsang:goseong_gn": "경남고성",
     "gyeongsang:pohang": "포항",
     "gyeongsang:andong": "안동",
+    "gyeongsang:yeongcheon": "영천",
+    "gyeongsang:haman": "함안",
+    "gyeongbuk:pohang": "포항",
+    "gyeongbuk:gyeongju": "경주",
+    "gyeongbuk:gimcheon": "김천",
+    "gyeongbuk:andong": "안동",
+    "gyeongbuk:gumi": "구미",
+    "gyeongbuk:yeongju": "영주",
+    "gyeongbuk:yeongcheon": "영천",
+    "gyeongbuk:sangju": "상주",
+    "gyeongbuk:mungyeong": "문경",
+    "gyeongbuk:gyeongsan": "경산",
+    "gyeongbuk:gunwi": "군위",
+    "gyeongbuk:uiseong": "의성",
+    "gyeongbuk:cheongsong": "청송",
+    "gyeongbuk:yeongyang": "영양",
+    "gyeongbuk:yeongdeok": "영덕",
+    "gyeongbuk:cheongdo": "청도",
+    "gyeongbuk:goryeong": "고령",
+    "gyeongbuk:seongju": "성주",
+    "gyeongbuk:chilgok": "칠곡",
+    "gyeongbuk:yecheon": "예천",
+    "gyeongbuk:bonghwa": "봉화",
+    "gyeongbuk:uljin": "울진",
+    "gyeongbuk:ulleung": "울릉",
+    "gyeongnam:changwon": "창원",
+    "gyeongnam:jinju": "진주",
+    "gyeongnam:tongyeong": "통영",
+    "gyeongnam:sacheon": "사천",
+    "gyeongnam:gimhae": "김해",
+    "gyeongnam:miryang": "밀양",
+    "gyeongnam:geoje": "거제",
+    "gyeongnam:yangsan": "양산",
+    "gyeongnam:uiryeong": "의령",
+    "gyeongnam:haman": "함안",
+    "gyeongnam:changnyeong": "창녕",
+    "gyeongnam:goseong": "경남고성",
+    "gyeongnam:namhae": "남해",
+    "gyeongnam:hadong": "하동",
+    "gyeongnam:sancheong": "산청",
+    "gyeongnam:hamyang": "함양",
+    "gyeongnam:geochang": "거창",
+    "gyeongnam:hapcheon": "합천",
     "jeju:jeju_city": "제주",
     "jeju:seogwipo": "서귀포",
 }
@@ -185,8 +295,8 @@ REGION_ADDR_KEYWORDS: dict[str, tuple[str, ...]] = {
         "jeonju", "gwangju metropolitan", "yeosu", "mokpo", "suncheon",
     ),
     "gyeongsang": (
-        "경상", "gyeongsang", "대구", "경주", "창원", "포항", "울산", "진주", "거제", "고성", "경북", "경남",
-        "daegu", "gyeongju", "changwon", "pohang", "ulsan", "jinju", "geoje", "goseong",
+        "경상", "gyeongsang", "대구", "경주", "창원", "포항", "울산", "진주", "거제", "고성", "영천", "함안", "경북", "경남",
+        "daegu", "gyeongju", "changwon", "pohang", "ulsan", "jinju", "geoje", "goseong", "yeongcheon", "haman",
     ),
 }
 
@@ -212,6 +322,14 @@ CITY_ID_ADDR_KEYWORDS: dict[str, tuple[str, ...]] = {
     "gyeongsang:goseong_gn": (
         "경남 고성", "경상남도 고성", "경남", "gyeongsangnam-do", "gyeongsangnam do",
         "gyeongnam", "goseong-eup", "dong-oe-ri", "songhak-ro", "고성읍", "동외리",
+    ),
+    "gyeongsang:yeongcheon": (
+        "영천", "영천시", "경북 영천", "경상북도 영천", "gyeongsangbuk-do",
+        "gyeongbuk", "yeongcheon", "yeongcheon-si", "youngcheon",
+    ),
+    "gyeongsang:haman": (
+        "함안", "함안군", "경남 함안", "경상남도 함안", "gyeongsangnam-do",
+        "gyeongnam", "haman", "haman-gun",
     ),
     "jeolla:gwangju": (
         "광주광역시", "gwangju metropolitan", "gwangju, south korea", "gwangju-si, gwangju",
@@ -284,9 +402,9 @@ def _area_from_city_id(profile: dict[str, Any] | None, key: str) -> str:
     meta = _region_city_meta_by_key(profile).get(key) or {}
     query = str(meta.get("query") or "").strip()
     if query:
-        return query
+        return _canonical_area_label(query) or query
     label = str(meta.get("label") or "").strip()
-    return label
+    return _canonical_area_label(label) or label
 
 
 def areas_from_region_city_ids(profile: dict[str, Any] | None) -> list[str]:
@@ -319,6 +437,14 @@ def address_matches_destination(
         city_kws = [kw.lower() for cid in ids for kw in CITY_ID_ADDR_KEYWORDS.get(cid, ())]
         if city_kws:
             return any(kw in a for kw in city_kws)
+        derived_kws = [
+            area.lower()
+            for cid in ids
+            for area in (_area_from_city_id(None, cid),)
+            if area
+        ]
+        if derived_kws:
+            return any(kw in a for kw in derived_kws)
     regions = [str(r).strip().lower() for r in (dest_regions or []) if str(r).strip()]
     if not regions:
         return True

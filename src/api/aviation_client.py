@@ -25,6 +25,9 @@ from datetime import date, datetime
 from typing import Any
 
 import requests
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 

@@ -1,5 +1,5 @@
 /**
- * Google Maps 外部リンク — place_id / cid / 座標 / 地域付き検索の優先順位
+ * Naver Map 外部リンク — 座標 / 地域付き検索の優先順位
  */
 (function (global) {
   "use strict";
@@ -122,47 +122,20 @@
         ? Number(place.longitude)
         : null;
 
-    const pid = extractPlaceId(place, raw);
     if (/map\.naver\.com/i.test(raw)) return raw;
 
-    const preferNaver =
-      opts?.provider === "naver" ||
-      place?.source === "naver_maps_geocode" ||
-      place?.source === "naver_maps_search_url";
-    if (preferNaver) {
-      if (lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng) && isKoreanCoords(lat, lng)) {
-        return naverCoordUrl(name, lat, lng);
-      }
-      const q = disambiguatedSearchQuery(name, place, opts);
-      return naverSearchUrl(q);
-    }
-
-    if (pid) {
-      const q = disambiguatedSearchQuery(name || "place", place, opts);
-      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}&query_place_id=${encodeURIComponent(pid)}`;
-    }
-
-    const cid = extractCid(raw);
-    if (cid) {
-      return `https://www.google.com/maps?cid=${cid}`;
-    }
-
-    if (raw && !isCoordOnlyPlaceUrl(raw) && /maps\.google|google\.com\/maps/i.test(raw)) {
-      return raw;
-    }
-
     if (lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng) && isKoreanCoords(lat, lng)) {
-      return `https://www.google.com/maps?q=${lat},${lng}&z=17`;
+      return naverCoordUrl(name, lat, lng);
     }
 
     const fromUrl = parseCoordsFromUrl(raw);
     if (fromUrl && isKoreanCoords(fromUrl.lat, fromUrl.lng)) {
-      return `https://www.google.com/maps?q=${fromUrl.lat},${fromUrl.lng}&z=17`;
+      return naverCoordUrl(name, fromUrl.lat, fromUrl.lng);
     }
 
     if (name) {
       const q = disambiguatedSearchQuery(name, place, opts);
-      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+      return naverSearchUrl(q);
     }
 
     return raw || "#";

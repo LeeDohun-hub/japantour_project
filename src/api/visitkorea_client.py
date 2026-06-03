@@ -70,10 +70,10 @@ class TourApiItem:
         return d
 
     def maps_uri(self) -> str:
-        """좌표 기반 Google Maps 링크 (mapx=경도, mapy=위도)."""
+        """좌표 기반 Naver Map 링크 (mapx=경도, mapy=위도)."""
         if not self.mapx or not self.mapy:
             return ""
-        return f"https://www.google.com/maps/search/?api=1&query={self.mapy},{self.mapx}"
+        return f"https://map.naver.com/p/search/{self.mapy},{self.mapx}?c={self.mapx},{self.mapy},16,0,0,0,dh"
 
     def event_period_display(self) -> str:
         """행사 기간 YYYYMMDD → YYYY-MM-DD 표시."""

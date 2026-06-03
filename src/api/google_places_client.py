@@ -133,11 +133,18 @@ def _min_meal_place_rating() -> float:
 
 
 def meets_min_meal_rating(place: NearbyPlace) -> bool:
-    """Google 評価が閾値未満、または評価なしの飲食店は推薦対象外。"""
+    """Google rating below threshold → excluded.
+    Naver-only places (no Google rating) are accepted when they have a
+    naver_score quality signal instead of a Google-style star rating."""
     minimum = _min_meal_place_rating()
-    if place.rating is None:
-        return False
-    return float(place.rating) >= minimum
+    if place.rating is not None:
+        return float(place.rating) >= minimum
+    # Naver Search results don't carry Google ratings; accept them when
+    # naver_score is present (indicates at least some discoverability signal).
+    naver_score = getattr(place, "naver_score", None)
+    if naver_score is not None:
+        return True
+    return False
 
 
 def is_suitable_meal_place(place: NearbyPlace) -> bool:
@@ -588,7 +595,7 @@ def _attach_request_maps_uri(place: NearbyPlace, maps_url: str) -> NearbyPlace:
 
 
 def extract_place_id_from_maps_url(maps_url: str) -> str | None:
-    """Google Maps URL에서 ChIJ place id 추출."""
+    """Map URL에서 ChIJ place id 추출."""
     if not maps_url:
         return None
     m = re.search(r"[?&]place_id=([A-Za-z0-9_-]+)", maps_url, re.I)
@@ -604,7 +611,7 @@ def extract_place_id_from_maps_url(maps_url: str) -> str | None:
 
 
 def extract_maps_cid(maps_url: str) -> str | None:
-    """Google Maps URL の cid パラメータを抽出 (十進数・十六進数両対応)."""
+    """Map URL の cid パラメータを抽出 (十進数・十六進数両対応)."""
     if not maps_url:
         return None
     # Standard ?cid=DECIMAL

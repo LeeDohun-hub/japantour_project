@@ -13,14 +13,19 @@ from datetime import date, timedelta
 logger = logging.getLogger(__name__)
 
 try:
-    from duckduckgo_search import DDGS
-    from duckduckgo_search.exceptions import DuckDuckGoSearchException, RatelimitException
+    from ddgs import DDGS
+    from ddgs.exceptions import DuckDuckGoSearchException, RatelimitException
     _DDGS_AVAILABLE = True
 except ImportError:
-    _DDGS_AVAILABLE = False
-    DuckDuckGoSearchException = Exception  # type: ignore[misc,assignment]
-    RatelimitException = Exception         # type: ignore[misc,assignment]
-    logger.debug("duckduckgo-search not installed — web search disabled")
+    try:
+        from duckduckgo_search import DDGS  # type: ignore[no-redef]
+        from duckduckgo_search.exceptions import DuckDuckGoSearchException, RatelimitException  # type: ignore[no-redef]
+        _DDGS_AVAILABLE = True
+    except ImportError:
+        _DDGS_AVAILABLE = False
+        DuckDuckGoSearchException = Exception  # type: ignore[misc,assignment]
+        RatelimitException = Exception         # type: ignore[misc,assignment]
+        logger.debug("ddgs / duckduckgo-search not installed — web search disabled")
 
 
 @dataclass
@@ -130,15 +135,21 @@ def _build_itinerary_festival_web_query(traveler_profile: dict) -> str | None:
     )
 
 
+_MAX_USER_MSG_QUERY_LEN = 150
+
+
 def _build_query(user_message: str, keyword: str) -> str:
     """LLM 키워드 + 사용자 메시지 → 검색 최적화 쿼리."""
-    # 연도가 없으면 현재 연도 힌트 추가
     text = user_message + keyword
     has_year = any(yr in text for yr in _YEAR_PATTERN)
-    base = user_message.strip()
+    # When user_message is very long (e.g., wizard itinerary prompt), prefer keyword
+    # to avoid Bing 400 errors from URLs exceeding length limits.
+    if keyword.strip() and len(user_message) > _MAX_USER_MSG_QUERY_LEN:
+        base = keyword.strip()
+    else:
+        base = user_message[:_MAX_USER_MSG_QUERY_LEN].strip()
     if not has_year:
         base = f"{base} 2026"
-    # 한국 관련 검색임을 명시 (더 관련 높은 결과)
     if "한국" not in base and "korea" not in base.lower() and "서울" not in base:
         base = f"한국 {base}"
     return base
