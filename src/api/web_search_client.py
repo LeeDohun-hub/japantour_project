@@ -60,6 +60,17 @@ _EVENT_TRIGGER_KEYWORDS: list[str] = [
     "いつ", "開催", "始まる",
 ]
 
+_TOURISM_TRIGGER_KEYWORDS: list[str] = [
+    # Korean
+    "명소", "관광지", "여행지", "가볼만한곳", "가볼 만한 곳", "볼거리",
+    "야경", "전망대", "전망", "핫플", "랜드마크",
+    # English
+    "attraction", "tourist spot", "landmark", "sightseeing",
+    "night view", "observatory", "viewpoint",
+    # Japanese
+    "観光地", "名所", "見どころ", "夜景", "展望台", "ランドマーク",
+]
+
 # 연도 패턴 — 연도가 포함된 쿼리는 현재 정보가 필요할 가능성 높음
 _YEAR_PATTERN = ("2025", "2026", "2027")
 
@@ -100,10 +111,22 @@ def _needs_web_search(
     has_year = any(yr in text for yr in _YEAR_PATTERN)
     if has_event_kw or has_year:
         return True
+    has_tourism_kw = any(kw.lower() in text for kw in _TOURISM_TRIGGER_KEYWORDS)
+    if category in ("leisure", "itinerary", "general") and has_tourism_kw:
+        return True
     # 日程プラン: 夏の旅行期間なら Waterbomb 等の取得のためウェブ検索を必ず試す
     if category == "itinerary" and _trip_overlaps_summer_festival_window(traveler_profile):
         return True
     return False
+
+
+def needs_web_search(
+    user_message: str,
+    keyword: str,
+    category: str,
+    traveler_profile: dict | None = None,
+) -> bool:
+    return _needs_web_search(user_message, keyword, category, traveler_profile)
 
 
 def _build_itinerary_festival_web_query(traveler_profile: dict) -> str | None:

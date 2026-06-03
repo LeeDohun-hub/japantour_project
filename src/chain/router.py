@@ -73,6 +73,7 @@ from src.api.web_search_client import (
     WebSearchResult,
     fetch_stadium_food_by_venue,
     fmt_web_search_results,
+    needs_web_search,
 )
 from src.api.ticket_platform_events_client import (
     TicketPlatformEvent,
@@ -110,6 +111,7 @@ ITINERARY_MODEL = _os.environ.get("ITINERARY_MODEL", "gpt-4.1")
 ANSWER_TEMPERATURE = 0.3   # 0.7 → 0.3: 사실성 향상
 RAG_TOP_K = 8              # 5 → 8: 멀티 에리어 병합 시 area당 결과 수 확보
 HISTORY_WINDOW = 6         # 최근 N턴만 컨텍스트에 포함
+HISTORY_CONTENT_LIMIT = 2000
 
 # ─── 장소명 생성 제한 카테고리 ──────────────────────────────────────────
 # 이 카테고리는 근거(RAG or Places API) 없이 구체적 상호명 생성 금지
@@ -372,9 +374,18 @@ def _strip_internal_data_disclosure(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _trim_history_content(content: str, *, limit: int = HISTORY_CONTENT_LIMIT) -> str:
+    text = str(content or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "\n...[history truncated]"
+
+
 def _sanitize_stream_chunks(chunks):
     """Streamingでも内部データ事情の説明行を画面に出さない。"""
     buffer = ""
+    flush_chars = 360
+    guard_chars = 120
     for chunk in chunks:
         if not chunk:
             continue
@@ -383,6 +394,10 @@ def _sanitize_stream_chunks(chunks):
             line, buffer = buffer.split("\n", 1)
             if not _INTERNAL_DATA_DISCLOSURE_RE.search(line):
                 yield line + "\n"
+        if len(buffer) > flush_chars + guard_chars:
+            safe, buffer = buffer[:-guard_chars], buffer[-guard_chars:]
+            if safe and not _INTERNAL_DATA_DISCLOSURE_RE.search(safe):
+                yield safe
     if buffer and not _INTERNAL_DATA_DISCLOSURE_RE.search(buffer):
         yield buffer
 
@@ -5998,7 +6013,11 @@ def route_and_answer(
             "hallyu" in list(prof.get("activities") or [])
             or "kpop" in list(prof.get("hallyu") or [])
         )
-        if category == "itinerary" and not (wants_kpop or _env_flag("ENABLE_EVENT_ENRICHMENT", "0")):
+        if (
+            category == "itinerary"
+            and not (wants_kpop or _env_flag("ENABLE_EVENT_ENRICHMENT", "0"))
+            and not needs_web_search(user_message, keyword, category, traveler_profile)
+        ):
             return []
         try:
             wsc = WebSearchClient()
@@ -6057,13 +6076,14 @@ def route_and_answer(
             logger.warning("ICN ground transport worker failed: %s", exc)
             return [], []
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=11) as _pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=12) as _pool:
         _f_rag      = _pool.submit(_do_rag)
         _f_places   = _pool.submit(_do_places)
         _f_flights  = _pool.submit(_do_flights)
         _f_sports   = _pool.submit(_do_sports)
         _f_vk       = _pool.submit(_do_visitkorea)
         _f_kto_dl   = _pool.submit(_do_kto_datalab)
+        _f_itinerary_places = _pool.submit(_do_itinerary_places)
         _f_gyeonggi = _pool.submit(_do_gyeonggi)
         _f_websearch = _pool.submit(_do_web_search)
         _f_ticketpf = _pool.submit(_do_ticket_platform)
@@ -6077,7 +6097,13 @@ def route_and_answer(
             _f_vk.result()
         )
         kto_datalab_context, kto_priority_queries                 = _f_kto_dl.result()
-        itinerary_places                                          = _do_itinerary_places(kto_priority_queries)
+        itinerary_places                                          = _f_itinerary_places.result()
+        if kto_priority_queries:
+            kto_itinerary_places = _do_itinerary_places(kto_priority_queries)
+            itinerary_places = _merge_itinerary_places(
+                [itinerary_places, kto_itinerary_places],
+                max_total=_itinerary_place_limits(traveler_profile)["max_total"],
+            )
         gyeonggi_events: list[GyeonggiEvent]                     = _f_gyeonggi.result()
         web_search_results: list[WebSearchResult]                = _f_websearch.result()
         ticket_platform_events: list[TicketPlatformEvent]       = _f_ticketpf.result()
@@ -6370,7 +6396,7 @@ def route_and_answer(
         role = turn.get("role")
         content = turn.get("content")
         if role in ("user", "assistant") and isinstance(content, str):
-            messages.append({"role": role, "content": content})
+            messages.append({"role": role, "content": _trim_history_content(content)})
 
     user_content = (
         f"質問: {user_message}\n\n"
@@ -6454,17 +6480,27 @@ def route_and_answer(
             logger.error("Stream creation failed (model=%s): %s", _model, _stream_exc)
             raise
 
-        def _token_gen():
-            chunks: list[str] = []
+        def _raw_token_gen():
             for _chunk in _stream_obj:
-                chunks.append(_chunk.choices[0].delta.content or "")
+                yield _chunk.choices[0].delta.content or ""
+
+        def _buffered_final_token_gen():
+            chunks: list[str] = []
+            for _chunk in _raw_token_gen():
+                chunks.append(_chunk)
             final = _finalize_answer_text("".join(chunks))
             for i in range(0, len(final), 160):
                 yield final[i:i + 160]
 
+        token_chunks = (
+            _buffered_final_token_gen()
+            if category == "itinerary"
+            else _raw_token_gen()
+        )
+
         return RouteResult(
             reply="",
-            token_stream=_sanitize_stream_chunks(_token_gen()),
+            token_stream=_sanitize_stream_chunks(token_chunks),
             **_common_result_kwargs,
         )
 

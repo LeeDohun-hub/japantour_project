@@ -222,7 +222,7 @@ def _fallback_chat(
         role = turn.get("role")
         content = turn.get("content")
         if role in ("user", "assistant") and isinstance(content, str):
-            messages.append({"role": role, "content": content})
+            messages.append({"role": role, "content": _trim_fallback_history_content(content)})
     messages.append({"role": "user", "content": message})
 
     completion = client.chat.completions.create(
@@ -234,6 +234,16 @@ def _fallback_chat(
 
 
 from typing import Generator
+
+
+_FALLBACK_HISTORY_CONTENT_LIMIT = 2000
+
+
+def _trim_fallback_history_content(content: str) -> str:
+    text = str(content or "").strip()
+    if len(text) <= _FALLBACK_HISTORY_CONTENT_LIMIT:
+        return text
+    return text[:_FALLBACK_HISTORY_CONTENT_LIMIT].rstrip() + "\n...[history truncated]"
 
 
 def run_chat_stream(
