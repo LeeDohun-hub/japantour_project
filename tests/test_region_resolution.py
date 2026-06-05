@@ -5,6 +5,7 @@ import unittest
 from src.api.region_resolver import (
     address_matches_destination,
     areas_from_region_city_ids,
+    destination_filter_from_text,
     region_city_ids_from_profile,
     selected_destination_context,
 )
@@ -186,6 +187,53 @@ class RegionResolverTests(unittest.TestCase):
 
         self.assertIn("gyeonggi:gwangju_si", context)
         self.assertIn("경기광주", context)
+
+    def test_free_text_destination_filter_narrows_ilsan_to_goyang(self) -> None:
+        filt = destination_filter_from_text("일산 피자 맛집")
+
+        self.assertIn("gyeonggi:goyang", filt["region_city_ids"])
+        self.assertTrue(
+            address_matches_destination(
+                "경기도 고양시 일산동구 고양대로 1124",
+                region_city_ids=filt["region_city_ids"],
+                dest_regions=filt["dest_regions"],
+            )
+        )
+        self.assertFalse(
+            address_matches_destination(
+                "경기도 파주시 지목로 17-7",
+                region_city_ids=filt["region_city_ids"],
+                dest_regions=filt["dest_regions"],
+            )
+        )
+        self.assertFalse(
+            address_matches_destination(
+                "경기도 김포시 검단로 910",
+                region_city_ids=filt["region_city_ids"],
+                dest_regions=filt["dest_regions"],
+            )
+        )
+
+    def test_free_text_destination_filter_uses_nationwide_city_labels(self) -> None:
+        filt = destination_filter_from_text("포항 물회 맛집")
+
+        self.assertTrue(
+            any(cid.endswith(":pohang") for cid in filt["region_city_ids"])
+        )
+        self.assertTrue(
+            address_matches_destination(
+                "경상북도 포항시 북구 해안로",
+                region_city_ids=filt["region_city_ids"],
+                dest_regions=filt["dest_regions"],
+            )
+        )
+        self.assertFalse(
+            address_matches_destination(
+                "경상북도 경주시 보문로",
+                region_city_ids=filt["region_city_ids"],
+                dest_regions=filt["dest_regions"],
+            )
+        )
 
 
 class RouterRegionDetectionTests(unittest.TestCase):

@@ -1,78 +1,37 @@
-"""인터파크 NOL 티켓 공연·전시 메타데이터.
+"""KOPIS 공연예술통합전산망 공연 메타데이터.
 
-티켓링크 공연 메인은 순수 SPA라 HTML만으로는 목록을 얻기 어렵다. 인터파크는 아래 3경로를 병합한다.
-
-- 소스 ① 장르 페이지 ProductList: ``tickets.interpark.com/contents/genre/{concert|musical|...}``
-  HTML에 임베드된 상품 JSON(하위 탭 목록에 가까운 전체 리스트, 배너만이 아님)
-- 소스 ② 장르 SSR: 동일 URL의 ``__NEXT_DATA__`` (배너·ticketOpen·interparkPlay)
-- 소스 ③ 통합 검색: ``/contents/search?keyword=...`` — 장르별 하위 키워드(페스티벌·가요 등) +
-  워터밤 등 메인·ProductList에 없는 공연 보강
-
-주의: 공식 오픈 API가 아니다. 과도한 호출·상업적 재배포는 각 사이트 정책을 따른다.
+KOPIS OpenAPI(``KOPIS_API_KEY``)로 여행 기간과 겹치는 공연·전시 후보를 가져온다.
+기존 라우터/프론트 호환을 위해 공개 함수명은 ``ticket_platform``으로 유지한다.
 """
 
 from __future__ import annotations
 
-import json
 import logging
-import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+import os
+import xml.etree.ElementTree as ET
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from typing import Any
-from urllib.parse import quote
 
 import requests
 
 logger = logging.getLogger(__name__)
 
-_NEXT_DATA_RE = re.compile(
-    r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',
-    re.DOTALL,
-)
+_KOPIS_BASE = "http://www.kopis.or.kr/openApi/restful"
+_KOPIS_PUBLIC_PAGE = "https://www.kopis.or.kr/por/db/pblprfr/pblprfrView.do?mt20Id="
 
-# ProductList 영역에 임베드된 상품 블록 (장르 페이지 HTML 전체 파싱)
-_HTML_GOODS_BLOCK_RE = re.compile(
-    r'"goodsCode":"(\d{8})"'
-    r'.*?"goodsName":"([^"\\]+(?:\\.[^"\\])*)"'
-    r'.*?"placeName":"([^"\\]*)"'
-    r'.*?"playStartDate":"(\d{8})"'
-    r'.*?"playEndDate":"(\d{8})"',
-    re.DOTALL,
+# KOPIS 장르코드: 연극/뮤지컬/클래식/국악/대중음악/무용/대중무용/서커스·마술/복합
+_KOPIS_GENRES: tuple[tuple[str, str, str], ...] = (
+    ("DDDD", "concert", "대중음악"),
+    ("GGGA", "musical", "뮤지컬"),
+    ("CCCA", "classic", "서양음악(클래식)"),
+    ("AAAA", "play", "연극"),
+    ("CADA", "korean_music", "한국음악(국악)"),
+    ("BBBC", "dance", "무용"),
+    ("BBBE", "popular_dance", "대중무용"),
+    ("EEEA", "magic", "서커스/마술"),
+    ("EEEB", "mixed", "복합"),
 )
-
-_INTERPARK_GENRE_BASE = "https://tickets.interpark.com/contents/genre"
-_INTERPARK_SEARCH_URL = "https://tickets.interpark.com/contents/search"
-
-# slug, 라벨, 하위 탭에 대응하는 검색 키워드(통합 검색으로 보강)
-_GENRE_CATALOG: tuple[tuple[str, str, tuple[str, ...]], ...] = (
-    ("concert", "콘서트", ("페스티벌", "가요", "록", "재즈", "인디", "트로트", "발라드", "힙합", "어쿠스틱")),
-    ("musical", "뮤지컬", ("창작", "라이선스", "갈라", "내한", "웨스트엔드")),
-    ("play", "연극", ("코미디", "드라마", "스릴러", "리더십")),
-    ("exhibition", "전시", ("전시", "체험", "박람회", "아트", "팝업")),
-    ("classic", "클래식/무용", ("클래식", "무용", "오페라", "발레", "콘서트")),
-    ("family", "아동/가족", ("아동", "가족", "키즈", "인형극")),
-)
-
-# 여행 프로필·계절에 따른 검색 키워드 (메인 스냅샷에 없는 페스티벌 보강)
-_SEARCH_KEYWORDS_SUMMER: tuple[str, ...] = (
-    "워터밤",
-    "waterbomb",
-    "페스티벌",
-)
-_SEARCH_KEYWORDS_BY_REGION: dict[str, tuple[str, ...]] = {
-    "gyeonggi": ("고양 페스티벌", "킨텍스 콘서트", "일산 공연"),
-    "seoul": ("서울 페스티벌", "서울 콘서트"),
-    "incheon": ("인천 페스티벌",),
-    "busan": ("부산 페스티벌",),
-    "jeju": (
-        "제주 공연",
-        "서귀포 공연",
-        "제주 콘서트",
-        "제주 뮤지컬",
-        "제주 전시",
-    ),
-}
 
 _JEJU_REGION_MARKERS: tuple[str, ...] = (
     "제주",
@@ -100,11 +59,27 @@ _REGION_VENUE_MARKERS: dict[str, tuple[str, ...]] = {
         "paradise", "월미", "青羅",
     ),
     "jeju": _JEJU_REGION_MARKERS,
-    "busan": ("부산", "釜山", "busan", "金海", "海雲臺", "海雲台"),
+    "busan": ("부산", "부산광역시", "釜山", "busan", "海雲臺", "海雲台", "해운대"),
     "gyeongsang": ("부산", "대구", "경상", "庆尚", "大邱", "金海"),
     "gangwon": ("강원", "江原", "춘천", "春川", "강릉", "江陵", "속초", "束草"),
     "jeolla": ("전주", "全州", "광주", "光州", "全羅", "光州"),
     "chungcheong": ("대전", "大田", "忠清", "청주", "清州"),
+}
+
+_AREA_KEY_TO_EVENT_REGION: dict[str, str] = {
+    "busan": "busan",
+    "jeju": "jeju",
+    "seoul": "seoul",
+    "gyeonggi": "gyeonggi",
+    "incheon": "incheon",
+    "gangwon": "gangwon",
+    "chungcheong": "chungcheong",
+    "jeolla": "jeolla",
+    "gyeongsang": "gyeongsang",
+    "gyeongbuk": "gyeongsang",
+    "gyeongnam": "gyeongsang",
+    "daegu": "gyeongsang",
+    "ulsan": "gyeongsang",
 }
 
 _CAPITAL_REGION_KEYS = frozenset({"seoul", "gyeonggi", "incheon"})
@@ -124,14 +99,6 @@ _FAR_FROM_CAPITAL_MARKERS: tuple[str, ...] = (
     "창원",
     "昌原",
 )
-
-_REQUEST_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    ),
-    "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
-}
 
 # 여행지·숙소 매칭 + 대형 페스 키워드 (제목·장소에 포함 시 우선 표시)
 _MAJOR_EVENT_SUBSTRINGS: tuple[str, ...] = (
@@ -178,7 +145,21 @@ def _profile_jeju_only(profile: dict | None) -> bool:
 
 def _trip_active_region_keys(profile: dict | None) -> set[str]:
     """위저드 관광 지역 + 도착 공항 기준."""
-    keys = {str(r).lower() for r in (profile or {}).get("regions") or [] if r}
+    raw_area_keys = (
+        (profile or {}).get("regionAreaKeys")
+        or (profile or {}).get("region_area_keys")
+        or []
+    )
+    area_keys = {str(r).lower() for r in raw_area_keys if r}
+    # regionAreaKeys is the user's explicit chip (ex. busan), while regions can be a
+    # broader bucket (ex. gyeongsang). Prefer the explicit chip to avoid cross-region
+    # event cards like Daegu/Changwon for a Busan trip.
+    keys = {
+        _AREA_KEY_TO_EVENT_REGION.get(k, k)
+        for k in area_keys
+    } if area_keys else {
+        str(r).lower() for r in (profile or {}).get("regions") or [] if r
+    }
     flight = (profile or {}).get("flight") or {}
     arr = (flight.get("to") or flight.get("arrival_airport") or "").upper()
     if arr == "CJU":
@@ -238,7 +219,7 @@ def _event_matches_trip_region(
 
 @dataclass(frozen=True)
 class TicketPlatformEvent:
-    """인터파크 모바일에서 추출한 공연·전시 1건."""
+    """KOPIS에서 조회한 공연·전시 1건."""
 
     title: str
     genre_page: str
@@ -249,7 +230,9 @@ class TicketPlatformEvent:
     play_end: date | None
     goods_code: str
     ticket_url: str
-    source: str = "interpark_mticket"
+    source: str = "kopis"
+    poster: str = ""
+    state: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -263,6 +246,8 @@ class TicketPlatformEvent:
             "goods_code": self.goods_code,
             "ticket_url": self.ticket_url,
             "source": self.source,
+            "poster": self.poster,
+            "state": self.state,
         }
 
 
@@ -274,48 +259,6 @@ def _parse_yyyymmdd(raw: str | None) -> date | None:
         return datetime.strptime(s, "%Y%m%d").date()
     except ValueError:
         return None
-
-
-def _trip_overlaps_summer(start_d: date, end_d: date) -> bool:
-    for y in range(start_d.year, end_d.year + 1):
-        if start_d <= date(y, 9, 30) and end_d >= date(y, 6, 1):
-            return True
-    return False
-
-
-def _build_search_queries(traveler_profile: dict | None, start_d: date, end_d: date) -> list[str]:
-    """통합 검색 키워드 — 장르·하위 탭·지역 조합(최대 28개)."""
-    out: list[str] = []
-    if _trip_overlaps_summer(start_d, end_d):
-        out.extend(_SEARCH_KEYWORDS_SUMMER)
-    else:
-        out.append("페스티벌")
-
-    for _slug, label, subs in _GENRE_CATALOG:
-        out.append(label)
-        for sub in subs:
-            out.append(sub)
-            out.append(f"{label} {sub}")
-
-    prof = traveler_profile or {}
-    for reg in [str(r).lower() for r in (prof.get("regions") or [])]:
-        out.extend(_SEARCH_KEYWORDS_BY_REGION.get(reg, ()))
-
-    accom = prof.get("accommodation") or {}
-    addr = " ".join(
-        str(accom.get(k) or "") for k in ("address", "name", "detail", "region")
-    ).lower()
-    if any(k in addr for k in ("고양", "일산", "킨텍스", "kintex", "경기")):
-        out.extend(_SEARCH_KEYWORDS_BY_REGION["gyeonggi"])
-        if _trip_overlaps_summer(start_d, end_d):
-            out.extend(("고양 페스티벌", "킨텍스 페스티벌"))
-    if "서울" in addr or "seoul" in addr:
-        out.extend(_SEARCH_KEYWORDS_BY_REGION["seoul"])
-    for reg in [str(r).lower() for r in (prof.get("regions") or [])]:
-        if reg == "jeju":
-            out.extend(_SEARCH_KEYWORDS_BY_REGION["jeju"])
-
-    return list(dict.fromkeys(q.strip() for q in out if q and q.strip()))[:28]
 
 
 def _parse_profile_date(raw: Any) -> date | None:
@@ -398,198 +341,175 @@ def _overlap(a0: date, a1: date, b0: date, b1: date) -> bool:
     return not (a1 < b0 or b1 < a0)
 
 
-def _unescape_json_string(s: str) -> str:
-    return s.replace("\\u0026", "&").replace('\\"', '"').replace("\\\\", "\\")
+def _kopis_api_key() -> str:
+    return (os.getenv("KOPIS_API_KEY") or "").strip()
 
 
-def _banner_goods_rows(banner: Any) -> list[dict]:
-    """장르 페이지 배너·추천 블록."""
-    if not isinstance(banner, dict):
-        return []
-    rows: list[dict] = []
-    for key in ("hotItem", "bigBanner", "miniBanner", "mdPick", "saleZone"):
-        block = banner.get(key)
-        if isinstance(block, list):
-            for item in block:
-                if isinstance(item, dict) and item.get("goodsCode"):
-                    rows.append(item)
-    return rows
+def _xml_text(node: ET.Element | None, name: str) -> str:
+    if node is None:
+        return ""
+    found = node.find(name)
+    return (found.text or "").strip() if found is not None and found.text else ""
 
 
-def _parse_goods_embedded_html(
-    html: str,
-    genre_slug: str,
-    genre_label: str,
-) -> list[TicketPlatformEvent]:
-    """장르 페이지 ProductList에 임베드된 상품 JSON 전체."""
-    seen: set[str] = set()
-    out: list[TicketPlatformEvent] = []
-    for m in _HTML_GOODS_BLOCK_RE.finditer(html):
-        code, name, venue, ps_raw, pe_raw = m.groups()
-        if code in seen:
-            continue
-        seen.add(code)
-        name = _unescape_json_string(name)
-        venue = _unescape_json_string(venue)
-        ps = _parse_yyyymmdd(ps_raw)
-        pe = _parse_yyyymmdd(pe_raw) or ps
-        out.append(
-            TicketPlatformEvent(
-                title=name,
-                genre_page=genre_slug,
-                genre_label_ko=genre_label,
-                venue=venue,
-                place_region="",
-                play_start=ps,
-                play_end=pe,
-                goods_code=code,
-                ticket_url=f"https://tickets.interpark.com/goods/{code}",
-                source="interpark_product_list",
-            )
-        )
-    return out
+def _parse_xml(content: bytes | str) -> ET.Element:
+    if isinstance(content, bytes):
+        content = content.decode("utf-8", errors="replace")
+    return ET.fromstring(content)
 
 
-def _event_from_goods_flat(
-    gi: dict,
+def _kopis_detail_url(mt20id: str) -> str:
+    return f"{_KOPIS_PUBLIC_PAGE}{mt20id}"
+
+
+def _kopis_related_url(detail: ET.Element | None) -> str:
+    if detail is None:
+        return ""
+    urls: list[str] = []
+    for rel in detail.findall(".//relate"):
+        url = _xml_text(rel, "relateurl")
+        if url.startswith("http"):
+            urls.append(url)
+    if not urls:
+        return ""
+    ticket_hosts = (
+        "interpark",
+        "ticketlink",
+        "yes24",
+        "melon",
+        "ticketmelon",
+        "ticket.",
+    )
+    for url in urls:
+        low = url.lower()
+        if "kopis.or.kr" not in low and any(host in low for host in ticket_hosts):
+            return url
+    for url in urls:
+        if "kopis.or.kr" not in url.lower():
+            return url
+    return urls[0]
+
+
+def _kopis_event_from_db(
+    db: ET.Element,
     *,
-    genre_path: str,
+    genre_page: str,
     genre_label: str,
+    detail: ET.Element | None = None,
 ) -> TicketPlatformEvent | None:
-    code = str(gi.get("goodsCode") or "").strip()
-    name = (gi.get("goodsName") or gi.get("title") or gi.get("playName") or "").strip()
-    if not code or not name:
+    mt20id = _xml_text(db, "mt20id") or _xml_text(detail, "mt20id")
+    title = _xml_text(db, "prfnm") or _xml_text(detail, "prfnm")
+    if not mt20id or not title:
         return None
-    venue = (gi.get("placeName") or "").strip()
-    ps = _parse_yyyymmdd(
-        gi.get("playStartDate") or gi.get("startDate")
-    )
-    pe = _parse_yyyymmdd(
-        gi.get("playEndDate") or gi.get("endDate")
-    ) or ps
-    link = (gi.get("link") or "").strip()
-    if link and link.startswith("http"):
-        ticket_url = link
-    else:
-        ticket_url = f"https://tickets.interpark.com/goods/{code}"
-    region = (gi.get("goodsRegionStr") or gi.get("placeRegion") or "").strip()
+    start = _parse_yyyymmdd(_xml_text(db, "prfpdfrom") or _xml_text(detail, "prfpdfrom"))
+    end = _parse_yyyymmdd(_xml_text(db, "prfpdto") or _xml_text(detail, "prfpdto")) or start
+    venue = _xml_text(db, "fcltynm") or _xml_text(detail, "fcltynm")
+    area = _xml_text(db, "area") or _xml_text(db, "signgucode") or _xml_text(detail, "area")
+    genre = _xml_text(db, "genrenm") or _xml_text(detail, "genrenm") or genre_label
+    poster = _xml_text(db, "poster") or _xml_text(detail, "poster")
+    state = _xml_text(db, "prfstate") or _xml_text(detail, "prfstate")
+    related = _kopis_related_url(detail)
     return TicketPlatformEvent(
-        title=name,
-        genre_page=genre_path,
-        genre_label_ko=genre_label,
+        title=title,
+        genre_page=genre_page,
+        genre_label_ko=genre,
         venue=venue,
-        place_region=region,
-        play_start=ps,
-        play_end=pe,
-        goods_code=code,
-        ticket_url=ticket_url,
-        source=gi.get("_source") or "interpark_mticket",
+        place_region=area,
+        play_start=start,
+        play_end=end,
+        goods_code=mt20id,
+        ticket_url=related or _kopis_detail_url(mt20id),
+        source="kopis",
+        poster=poster,
+        state=state,
     )
 
 
-def _event_from_search_doc(doc: dict) -> TicketPlatformEvent | None:
-    """통합 검색 ``searchResult.goods.docs`` 항목."""
-    cat = (doc.get("category") or "").strip()
-    sub = (doc.get("subCategory") or "").strip()
-    label = f"{cat}>{sub}" if cat and sub else (cat or sub or "검색")
-    gi = {**doc, "_source": "interpark_search"}
-    return _event_from_goods_flat(
-        gi,
-        genre_path="search",
-        genre_label=label,
-    )
+def _fetch_kopis_detail(mt20id: str, *, api_key: str, timeout: int) -> ET.Element | None:
+    if not mt20id:
+        return None
+    try:
+        resp = requests.get(
+            f"{_KOPIS_BASE}/pblprfr/{mt20id}",
+            params={"service": api_key},
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        root = _parse_xml(resp.content)
+        return root.find(".//db")
+    except Exception as exc:
+        logger.warning("KOPIS detail fetch failed [%s]: %s", mt20id, exc)
+        return None
 
 
-def _fetch_interpark_genre(
+def _fetch_kopis_genre(
+    genre_code: str,
     genre_slug: str,
     genre_label: str,
     *,
-    timeout: int = 14,
+    api_key: str,
+    start_d: date,
+    end_d: date,
+    rows: int,
+    timeout: int,
 ) -> list[TicketPlatformEvent]:
-    """장르 페이지 — SSR 배너 + HTML ProductList(하위 목록에 가까운 전체 리스트)."""
-    url = f"{_INTERPARK_GENRE_BASE}/{genre_slug}"
     try:
-        r = requests.get(url, timeout=timeout, headers=_REQUEST_HEADERS)
-        r.raise_for_status()
+        resp = requests.get(
+            f"{_KOPIS_BASE}/pblprfr",
+            params={
+                "service": api_key,
+                "stdate": start_d.strftime("%Y%m%d"),
+                "eddate": end_d.strftime("%Y%m%d"),
+                "cpage": 1,
+                "rows": rows,
+                "shcate": genre_code,
+            },
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        root = _parse_xml(resp.content)
     except Exception as exc:
-        logger.warning("interpark genre fetch failed [%s]: %s", genre_slug, exc)
+        logger.warning("KOPIS list fetch failed [%s]: %s", genre_code, exc)
         return []
 
-    by_code: dict[str, TicketPlatformEvent] = {}
-
-    for ev in _parse_goods_embedded_html(r.text, genre_slug, genre_label):
-        by_code[ev.goods_code] = ev
-
-    m = _NEXT_DATA_RE.search(r.text)
-    if m:
-        try:
-            payload: dict[str, Any] = json.loads(m.group(1))
-            pp = (payload.get("props") or {}).get("pageProps") or {}
-            for row in pp.get("interparkPlay") or []:
-                if not isinstance(row, dict):
-                    continue
-                gi = row.get("goodsInfo") or {}
-                if isinstance(gi, dict):
-                    gi = {**gi, "_source": "interpark_ssr"}
-                    ev = _event_from_goods_flat(
-                        gi, genre_path=genre_slug, genre_label=genre_label
-                    )
-                    if ev:
-                        by_code.setdefault(ev.goods_code, ev)
-            banner = pp.get("banner") or {}
-            for gi in _banner_goods_rows(banner):
-                gi = {**gi, "_source": "interpark_ssr"}
-                ev = _event_from_goods_flat(
-                    gi, genre_path=genre_slug, genre_label=genre_label
-                )
-                if ev:
-                    by_code.setdefault(ev.goods_code, ev)
-        except Exception as exc:
-            logger.warning("interpark JSON parse [%s]: %s", genre_slug, exc)
-    else:
-        logger.warning("interpark no __NEXT_DATA__ [%s]", genre_slug)
-
-    logger.info(
-        "interpark genre [%s] → %d goods (html+ssr)",
-        genre_slug,
-        len(by_code),
-    )
-    return list(by_code.values())
-
-
-def _fetch_interpark_search(keyword: str, *, timeout: int = 12) -> list[TicketPlatformEvent]:
-    """인터파크 NOL 통합 검색 — 메인 장르 스냅샷에 없는 공연(워터밤 등) 보강."""
-    url = f"{_INTERPARK_SEARCH_URL}?keyword={quote(keyword)}"
-    try:
-        r = requests.get(url, timeout=timeout, headers=_REQUEST_HEADERS)
-        r.raise_for_status()
-    except Exception as exc:
-        logger.warning("interpark search failed [%r]: %s", keyword, exc)
-        return []
-
-    m = _NEXT_DATA_RE.search(r.text)
-    if not m:
-        logger.warning("interpark search no __NEXT_DATA__ [%r]", keyword)
-        return []
-
-    try:
-        payload: dict[str, Any] = json.loads(m.group(1))
-    except Exception as exc:
-        logger.warning("interpark search JSON parse [%r]: %s", keyword, exc)
-        return []
-
-    pp = (payload.get("props") or {}).get("pageProps") or {}
-    sr = (pp.get("searchResult") or {}).get("goods") or {}
-    docs = sr.get("docs") if isinstance(sr, dict) else []
     out: list[TicketPlatformEvent] = []
-    for doc in docs or []:
-        if not isinstance(doc, dict):
-            continue
-        ev = _event_from_search_doc(doc)
+    for db in root.findall(".//db"):
+        ev = _kopis_event_from_db(
+            db,
+            genre_page=genre_slug,
+            genre_label=genre_label,
+            detail=None,
+        )
         if ev:
             out.append(ev)
-    logger.info("interpark search [%r] → %d goods", keyword, len(out))
+    logger.info("KOPIS genre [%s] → %d performances", genre_code, len(out))
     return out
+
+
+def _enrich_kopis_event(ev: TicketPlatformEvent, *, api_key: str, timeout: int) -> TicketPlatformEvent:
+    detail = _fetch_kopis_detail(ev.goods_code, api_key=api_key, timeout=timeout)
+    if detail is None:
+        return ev
+    enriched = _kopis_event_from_db(
+        detail,
+        genre_page=ev.genre_page,
+        genre_label=ev.genre_label_ko,
+        detail=detail,
+    )
+    if not enriched:
+        return ev
+    return replace(
+        ev,
+        title=enriched.title or ev.title,
+        genre_label_ko=enriched.genre_label_ko or ev.genre_label_ko,
+        venue=enriched.venue or ev.venue,
+        place_region=enriched.place_region or ev.place_region,
+        play_start=enriched.play_start or ev.play_start,
+        play_end=enriched.play_end or ev.play_end,
+        ticket_url=enriched.ticket_url or ev.ticket_url,
+        poster=enriched.poster or ev.poster,
+        state=enriched.state or ev.state,
+    )
 
 
 def _is_major_or_region_relevant(
@@ -628,7 +548,12 @@ def fetch_ticket_platform_events(
     max_total: int = 36,
     timeout_per_genre: int = 14,
 ) -> list[TicketPlatformEvent]:
-    """여행 기간과 겹치는 공연·전시 — 장르 ProductList + 하위 검색 키워드 병합."""
+    """여행 기간과 겹치는 공연·전시 — KOPIS OpenAPI 기반."""
+    api_key = _kopis_api_key()
+    if not api_key:
+        logger.info("KOPIS_API_KEY is not configured; skip performance lookup")
+        return []
+
     start_d, end_d = _travel_window(traveler_profile)
     if not start_d:
         start_d = date.today()
@@ -637,29 +562,23 @@ def fetch_ticket_platform_events(
     if end_d < start_d:
         end_d = start_d
 
-    blob = _profile_location_blob(traveler_profile)
-    search_queries = _build_search_queries(traveler_profile, start_d, end_d)
-
     merged: list[TicketPlatformEvent] = []
-    genre_jobs = [(slug, label) for slug, label, _ in _GENRE_CATALOG]
-    workers = min(16, len(genre_jobs) + len(search_queries))
-    with ThreadPoolExecutor(max_workers=max(workers, 1)) as pool:
-        futs: list = []
-        for slug, label in genre_jobs:
-            futs.append(
-                pool.submit(
-                    _fetch_interpark_genre, slug, label, timeout=timeout_per_genre
-                )
+    rows_per_genre = max(8, min(18, max_total))
+    for genre_code, genre_slug, genre_label in _KOPIS_GENRES:
+        merged.extend(
+            _fetch_kopis_genre(
+                genre_code,
+                genre_slug,
+                genre_label,
+                api_key=api_key,
+                start_d=start_d,
+                end_d=end_d,
+                rows=rows_per_genre,
+                timeout=timeout_per_genre,
             )
-        for q in search_queries:
-            futs.append(pool.submit(_fetch_interpark_search, q, timeout=timeout_per_genre))
-        for fut in as_completed(futs):
-            try:
-                merged.extend(fut.result())
-            except Exception as exc:
-                logger.warning("interpark worker: %s", exc)
+        )
 
-    # 기간 필터 — 날짜 없으면 대형 페스 키워드만 여행 기간과 함께 통과
+    # 기간 필터
     in_window: list[TicketPlatformEvent] = []
     for ev in merged:
         pe = ev.play_end or ev.play_start
@@ -667,11 +586,8 @@ def fetch_ticket_platform_events(
             if _overlap(start_d, end_d, ev.play_start, pe):
                 in_window.append(ev)
             continue
-        hay = f"{ev.title} {ev.venue}".lower()
-        if any(s.lower() in hay for s in _MAJOR_EVENT_SUBSTRINGS):
-            in_window.append(ev)
 
-    # 중복 goods_code
+    # 중복 mt20id
     seen: set[str] = set()
     deduped: list[TicketPlatformEvent] = []
     for ev in in_window:
@@ -680,35 +596,39 @@ def fetch_ticket_platform_events(
         seen.add(ev.goods_code)
         deduped.append(ev)
 
+    blob = _profile_location_blob(traveler_profile)
     scored: list[tuple[int, TicketPlatformEvent]] = []
     for ev in deduped:
         sc, _ = _is_major_or_region_relevant(ev, blob, traveler_profile)
-        # 기간 내 전부 후보로 두되, 점수 0도 소량 포함(지역 무관 대형 공연 놓침 방지)
         scored.append((sc, ev))
 
     scored.sort(key=lambda x: (-x[0], x[1].play_start or date.min))
     filtered = [ev for _, ev in scored if _event_matches_trip_region(ev, traveler_profile)]
     if not filtered:
         logger.info(
-            "interpark: no events for regions %s",
+            "KOPIS: no events for regions %s",
             sorted(_trip_active_region_keys(traveler_profile)),
         )
-    return filtered[:max_total]
+    selected = filtered[:max_total]
+    return [
+        _enrich_kopis_event(ev, api_key=api_key, timeout=timeout_per_genre)
+        for ev in selected
+    ]
 
 
 def fmt_ticket_platform_events(events: list[TicketPlatformEvent], lang: str = "ja") -> str:
     """LLM 컨텍스트용 텍스트."""
     if not events:
         empty = (
-            "(인터파크 모바일 NOL — 해당 여행 기간·조건에 맞는 공연 메타 없음)"
+            "(KOPIS 공연예술통합전산망 — 해당 여행 기간·조건에 맞는 공연 메타 없음)"
             if lang == "ko"
-            else "(Interpark mobile NOL — 該当旅行期間に一致する公演メタなし)"
+            else "(KOPIS公演芸術統合電算網 — 該当旅行期間に一致する公演メタなし)"
         )
         return empty
     intro = (
-        "인터파크 NOL — 장르 ProductList(HTML) + 하위 키워드 검색 + SSR — 예매는 각 URL에서 확인."
+        "KOPIS 공연예술통합전산망 OpenAPI — 예매/상세는 각 URL에서 확인."
         if lang == "ko"
-        else "Interpark NOL — ジャンルProductList＋下位キーワード検索＋SSR — 購入は各URLで確認。"
+        else "KOPIS公演芸術統合電算網 OpenAPI — 購入・詳細は各URLで確認。"
     )
     lines = [intro, ""]
     for i, ev in enumerate(events, 1):
@@ -720,7 +640,8 @@ def fmt_ticket_platform_events(events: list[TicketPlatformEvent], lang: str = "j
         lines.append(
             f"[{i}] [{ev.genre_label_ko}] {ev.title}\n"
             f"    장소: {ev.venue or '(미상)'}\n"
-            f"    기간: {dr or '(일정 SSR에 없음)'}\n"
+            f"    기간: {dr or '(일정 정보 없음)'}\n"
+            f"    상태: {ev.state or '(미상)'}\n"
             f"    URL: {ev.ticket_url}"
         )
     return "\n".join(lines)

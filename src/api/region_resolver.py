@@ -6,6 +6,7 @@ the planner and the map-card enrichment endpoint make the same decision.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 
@@ -356,6 +357,140 @@ CITY_ID_ADDR_NEGATIVE_KEYWORDS: dict[str, tuple[str, ...]] = {
         "toseong", "간성", "거진", "토성", "현내", "죽왕",
     ),
 }
+
+FREE_TEXT_CITY_ALIASES: dict[str, str] = {
+    # Sub-city travel names that users commonly type but addresses usually store
+    # under the parent city/district.
+    "일산": "gyeonggi:goyang",
+    "ilsan": "gyeonggi:goyang",
+    "一山": "gyeonggi:goyang",
+    "킨텍스": "gyeonggi:goyang",
+    "kintex": "gyeonggi:goyang",
+    "송도": "incheon:yeonsu",
+    "songdo": "incheon:yeonsu",
+    "검단": "incheon:geomdan",
+    "geomdan": "incheon:geomdan",
+    "대부도": "gyeonggi:ansan_danwon",
+    "daebudo": "gyeonggi:ansan_danwon",
+    "경기광주": "gyeonggi:gwangju_si",
+    "경기 광주": "gyeonggi:gwangju_si",
+    "경기도 광주": "gyeonggi:gwangju_si",
+    "곤지암": "gyeonggi:gwangju_si",
+    "남한산성": "gyeonggi:gwangju_si",
+    "해운대": "gyeongsang:busan_haeundae",
+    "haeundae": "gyeongsang:busan_haeundae",
+}
+
+DEST_REGION_TEXT_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "seoul": ("서울", "seoul", "ソウル"),
+    "incheon": ("인천", "incheon", "仁川"),
+    "gyeonggi": ("경기", "경기도", "gyeonggi"),
+    "gangwon": ("강원", "강원도", "gangwon"),
+    "chungcheong": ("충청", "충북", "충남", "대전", "세종", "chungcheong", "daejeon", "sejong"),
+    "jeolla": ("전라", "전북", "전남", "광주광역시", "jeolla"),
+    "gyeongsang": ("경상", "경북", "경남", "대구", "울산", "gyeongsang", "daegu", "ulsan"),
+    "busan": ("부산", "busan", "釜山"),
+    "jeju": ("제주", "제주도", "jeju", "済州"),
+}
+
+AMBIGUOUS_FREE_TEXT_LABELS = {"고성", "goseong"}
+
+
+def _dest_region_from_city_id(city_id: str) -> str:
+    prefix = city_id.split(":", 1)[0]
+    if prefix in ("gyeongbuk", "gyeongnam", "gyeongsang"):
+        return "gyeongsang"
+    if prefix in ("jeonbuk", "jeonnam", "jeolla"):
+        return "jeolla"
+    if prefix in ("chungbuk", "chungnam", "chungcheong"):
+        return "chungcheong"
+    if prefix == "gyeonggi":
+        return "gyeonggi"
+    if prefix == "gangwon":
+        return "gangwon"
+    if prefix == "seoul":
+        return "seoul"
+    if prefix == "incheon":
+        return "incheon"
+    if prefix == "jeju":
+        return "jeju"
+    return ""
+
+
+def _compact_text(value: str) -> str:
+    return re.sub(r"[\s,./·・()\\[\\]{}<>]+", "", str(value or "").lower())
+
+
+def _city_label_index() -> dict[str, list[str]]:
+    labels: dict[str, list[str]] = {}
+    for city_id, label in REGION_CITY_ID_TO_ITINERARY_AREA.items():
+        clean = str(label or "").strip()
+        if len(clean) < 2:
+            continue
+        labels.setdefault(clean.lower(), []).append(city_id)
+    return labels
+
+
+def destination_filter_from_text(*texts: str) -> dict[str, Any]:
+    """Infer strict destination filters from a free-text chat query.
+
+    This is intentionally central and data-driven: it uses the nationwide
+    region-city table above instead of per-feature city patches.
+    """
+    raw = " ".join(str(t or "") for t in texts if str(t or "").strip())
+    if not raw.strip():
+        return {"region_city_ids": [], "dest_regions": [], "area_hint": ""}
+    lowered = raw.lower()
+    compact = _compact_text(raw)
+
+    ids: list[str] = []
+    regions: list[str] = []
+    area_hint = ""
+
+    def add_city(city_id: str, hint: str = "") -> None:
+        nonlocal area_hint
+        if city_id and city_id not in ids:
+            ids.append(city_id)
+        reg = _dest_region_from_city_id(city_id)
+        if reg and reg not in regions:
+            regions.append(reg)
+        if hint and not area_hint:
+            area_hint = hint
+
+    for alias, city_id in sorted(FREE_TEXT_CITY_ALIASES.items(), key=lambda x: len(x[0]), reverse=True):
+        if _compact_text(alias) in compact:
+            add_city(city_id, alias)
+
+    label_index = _city_label_index()
+    for label, city_ids in sorted(label_index.items(), key=lambda x: len(x[0]), reverse=True):
+        if label in AMBIGUOUS_FREE_TEXT_LABELS and not any(
+            kw in lowered for kw in ("강원", "경남", "경상남", "gangwon", "gyeongnam")
+        ):
+            continue
+        if _compact_text(label) not in compact:
+            continue
+        if ids and any(cid in ids for cid in city_ids):
+            continue
+        # Multiple city IDs can share a broad label such as 부산/포항. Keeping all
+        # matching IDs is still strict because address_matches_destination falls
+        # back to the canonical area keyword for each ID.
+        for cid in city_ids:
+            add_city(cid, label)
+
+    if not ids:
+        for reg, keywords in DEST_REGION_TEXT_KEYWORDS.items():
+            if any(_compact_text(kw) in compact for kw in keywords):
+                if reg not in regions:
+                    regions.append(reg)
+                if not area_hint:
+                    area_hint = next((kw for kw in keywords if _compact_text(kw) in compact), "")
+                break
+
+    return {
+        "region_city_ids": ids,
+        "dest_regions": regions,
+        "area_hint": area_hint,
+    }
 
 
 def region_city_ids_from_profile(profile: dict[str, Any] | None) -> list[str]:

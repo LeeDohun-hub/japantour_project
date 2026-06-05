@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import unittest
-from datetime import datetime
+from datetime import date, datetime
 
 from src.api.web_search_client import needs_web_search
 from src.chain.router import (
     _arex_next_train_reply,
+    _chat_concert_region_area_keys,
+    _chat_lookup_date_window,
+    _concert_artist_query,
     _is_arex_next_train_question,
     _icn_to_seoul_transport_reply,
     _is_icn_to_seoul_transport_question,
+    _is_project_help_question,
+    _is_wizard_plan_request,
     _trim_history_content,
 )
 from src.api.aviation_client import AirportRailroadOperation
@@ -29,6 +34,38 @@ class WebSearchTriggerTests(unittest.TestCase):
         )
 
 
+class DirectConcertLookupParsingTests(unittest.TestCase):
+    def test_month_only_kpop_query_uses_full_month_window(self) -> None:
+        start_d, end_d = _chat_lookup_date_window("7월 kpop 콘서트 일정")
+
+        self.assertEqual((start_d.month, start_d.day), (7, 1))
+        self.assertEqual((end_d.month, end_d.day), (7, 31))
+
+    def test_explicit_year_month_query_uses_that_month(self) -> None:
+        start_d, end_d = _chat_lookup_date_window("2026년 7월 kpop 콘서트 일정")
+
+        self.assertEqual(start_d, date(2026, 7, 1))
+        self.assertEqual(end_d, date(2026, 7, 31))
+
+    def test_generic_kpop_month_query_does_not_become_artist(self) -> None:
+        self.assertEqual(_concert_artist_query("7월 kpop 콘서트 일정"), "")
+
+    def test_artist_survives_when_month_is_present(self) -> None:
+        self.assertEqual(_concert_artist_query("세븐틴 7월 콘서트 일정"), "세븐틴")
+
+    def test_city_hint_becomes_concert_region_filter(self) -> None:
+        self.assertEqual(_chat_concert_region_area_keys("부산 7월 kpop 콘서트"), ["busan"])
+
+
+class ProjectHelpQuestionTests(unittest.TestCase):
+    def test_detects_app_feature_question(self) -> None:
+        self.assertTrue(_is_project_help_question("AI 채팅은 어떤 질문에 답할 수 있어?"))
+        self.assertTrue(_is_project_help_question("저장된 플랜은 어떻게 불러오나요?"))
+
+    def test_source_lookup_question_still_can_use_direct_lookup(self) -> None:
+        self.assertFalse(_is_project_help_question("KOPIS에서 7월 콘서트 일정 알려줘"))
+
+
 class HistoryTrimTests(unittest.TestCase):
     def test_history_content_is_capped(self) -> None:
         trimmed = _trim_history_content("a" * 2500, limit=2000)
@@ -38,6 +75,14 @@ class HistoryTrimTests(unittest.TestCase):
 
 
 class IcnSeoulTransportReplyTests(unittest.TestCase):
+    def test_wizard_plan_request_survives_transport_keywords(self) -> None:
+        self.assertTrue(
+            _is_wizard_plan_request(
+                {"plan_mode": True, "regions": ["seoul"], "nights": 4, "days": 5},
+                "韓国旅行プランを作成してください。仁川空港からソウル市内への移動方法も含めてください。",
+            )
+        )
+
     def test_detects_arex_next_train_question(self) -> None:
         self.assertTrue(
             _is_arex_next_train_question(

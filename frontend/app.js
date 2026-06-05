@@ -81,7 +81,7 @@ function renderTicketPlatformCards(events, lang) {
   const LP = window.LinkPreview;
   if (!LP || !events || !events.length) return "";
   const isJa = lang === "日本語";
-  const title = isJa ? "🎫 チケット・公演（インターパーク）" : "🎫 티켓·공연 (인터파크)";
+  const title = isJa ? "🎫 公演情報（KOPIS）" : "🎫 공연정보 (KOPIS)";
   const cards = events.slice(0, 6).map((ev) => {
     const url = LP.normalizeUrl(ev.ticket_url || "");
     return LP.renderCard(LP.eventToPreview(ev, url));

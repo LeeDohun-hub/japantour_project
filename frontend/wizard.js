@@ -11,7 +11,7 @@ const TOTAL_STEPS = 8;
 let currentStep = 1;
 let currentUser = null;
 let wizardData = {};
-/** @type {{ name?: string, address?: string, latitude?: number, longitude?: number, maps_url?: string } | null} */
+/** @type {{ name?: string, address?: string, english_address?: string, latitude?: number, longitude?: number, maps_url?: string } | null} */
 let _selectedAccomPlace = null;
 
 const $ = (id) => document.getElementById(id);
@@ -103,7 +103,8 @@ function buildStepDots() {
 }
 
 // ── NAVIGATION ────────────────────────────────────────────────────────────
-function goToStep(step) {
+function goToStep(step, options = {}) {
+  const skipGenerate = Boolean(options.skipGenerate);
   currentStep = step;
 
   document.querySelectorAll(".wiz-card").forEach((card) => {
@@ -127,7 +128,7 @@ function goToStep(step) {
 
   if (step === TOTAL_STEPS) {
     wizNavBar.style.display = "none";
-    generatePlan();
+    if (!skipGenerate) generatePlan();
   } else {
     wizNavBar.style.display = "flex";
     wizBtnNext.textContent = step === TOTAL_STEPS - 1 ? "プランを生成 ✨" : "次へ";
@@ -178,6 +179,15 @@ function setupNavigation() {
     window.scrollTo(0, 0);
   });
 
+  $("btnSavedPlans")?.addEventListener("click", () => openSavedPlansPanel());
+  $("btnOpenSavedPlans")?.addEventListener("click", () => openSavedPlansPanel());
+  $("btnSavePlan")?.addEventListener("click", () => saveCurrentPlanManually());
+  $("btnClearSavedPlans")?.addEventListener("click", clearSavedPlans);
+  $("btnCloseSavedPlans")?.addEventListener("click", closeSavedPlansPanel);
+  $("savedPlansOverlay")?.addEventListener("click", (e) => {
+    if (e.target === $("savedPlansOverlay")) closeSavedPlansPanel();
+  });
+
   $("btnPrintPlan")?.addEventListener("click", () => {
     window.print();
   });
@@ -202,10 +212,19 @@ function _setShareButtonLabel(text) {
 
 function _syncPlanShareActions() {
   const btn = $("btnSharePlan");
-  if (!btn) return;
+  const saveBtn = $("btnSavePlan");
   const hasUrl = Boolean(wizardData.planShareUrl);
-  btn.disabled = !hasUrl;
-  _setShareButtonLabel(hasUrl ? "共有リンクをコピー" : "共有リンク準備中");
+  const hasPlan = Boolean((wizardData.currentPlanText || wizardData.planEditedText || "").trim());
+  if (btn) {
+    btn.disabled = !hasUrl;
+    _setShareButtonLabel(hasUrl ? "共有リンクをコピー" : "保存後に共有リンク");
+  }
+  if (saveBtn) {
+    saveBtn.disabled = !hasPlan || Boolean(wizardData.currentPlanSnapshotId && !wizardData.planDirty);
+    saveBtn.textContent = wizardData.currentPlanSnapshotId
+      ? (wizardData.planDirty ? "💾 変更を保存" : "💾 保存済み")
+      : "💾 プランを保存";
+  }
 }
 
 // ── VALIDATION ────────────────────────────────────────────────────────────
@@ -1666,6 +1685,12 @@ async function generatePlan(isReroll = false) {
   $("planOutputArea").style.display  = "none";
   $("planErrorArea").style.display   = "none";
   wizardData.planShareUrl = "";
+  wizardData.currentPlanText = "";
+  wizardData.currentPlanMeta = {};
+  wizardData.currentPlanProfilePayload = null;
+  wizardData.planDirty = false;
+  delete wizardData.planEditedText;
+  delete wizardData.currentPlanSnapshotId;
   _syncPlanShareActions();
   if (!isReroll && window.PlanMapView?.clearLocks) window.PlanMapView.clearLocks();
   if (window.PlanMapView?.destroy) window.PlanMapView.destroy();
@@ -1788,10 +1813,11 @@ async function generatePlan(isReroll = false) {
       _displayPlanOutput({ ...metaData, reply: fullReply }).catch((err) => {
         console.warn("plan display enhancement failed", err);
       });
-      _savePlanSnapshot(profilePayload, fullReply, metaData || {}).then((snapshot) => {
-        wizardData.planShareUrl = snapshot?.share_url || "";
-        _syncPlanShareActions();
-      });
+      wizardData.currentPlanProfilePayload = profilePayload;
+      wizardData.currentPlanText = fullReply;
+      wizardData.currentPlanMeta = metaData || {};
+      wizardData.planDirty = false;
+      _syncPlanShareActions();
     }, 180);
 
   } catch {
@@ -1809,30 +1835,268 @@ async function _savePlanSnapshot(profilePayload, reply, metaData) {
   const days = profilePayload.days ? `${profilePayload.days}日` : "";
   const title = [regions[0], city, days].filter(Boolean).join(" · ") || "韓国旅行プラン";
   try {
+    const payload = {
+      title,
+      profile: profilePayload,
+      plan_text: reply,
+      places: metaData.places || [],
+      metadata: {
+        visitkorea_stays: metaData.visitkorea_stays || [],
+        visitkorea_festivals: metaData.visitkorea_festivals || [],
+        visitkorea_attractions: metaData.visitkorea_attractions || [],
+        sports_events: metaData.sports_events || [],
+        gyeonggi_events: metaData.gyeonggi_events || [],
+        ticket_platform_events: metaData.ticket_platform_events || [],
+      },
+    };
+    if (wizardData.currentPlanSnapshotId) {
+      payload.snapshot_id = wizardData.currentPlanSnapshotId;
+    }
     const res = await fetch("/api/plan-snapshot/", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrfToken() },
       credentials: "same-origin",
-      body: JSON.stringify({
-        title,
-        profile: profilePayload,
-        plan_text: reply,
-        places: metaData.places || [],
-        metadata: {
-          visitkorea_stays: metaData.visitkorea_stays || [],
-          visitkorea_festivals: metaData.visitkorea_festivals || [],
-          visitkorea_attractions: metaData.visitkorea_attractions || [],
-          sports_events: metaData.sports_events || [],
-          gyeonggi_events: metaData.gyeonggi_events || [],
-          ticket_platform_events: metaData.ticket_platform_events || [],
-        },
-      }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) return null;
     return await res.json().catch(() => null);
   } catch (err) {
     console.warn("plan snapshot save failed", err);
     return null;
+  }
+}
+
+async function saveCurrentPlanManually() {
+  const reply = (wizardData.currentPlanText || wizardData.planEditedText || "").trim();
+  if (!reply) return;
+  const btn = $("btnSavePlan");
+  const prevLabel = btn?.textContent || "";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "💾 保存中...";
+  }
+  const profilePayload = wizardData.currentPlanProfilePayload || wizardData;
+  const metaData = wizardData.currentPlanMeta || {};
+  const snapshot = await _savePlanSnapshot(profilePayload, reply, metaData);
+  if (snapshot?.snapshot_id) {
+    wizardData.currentPlanSnapshotId = snapshot.snapshot_id;
+    wizardData.planShareUrl = snapshot.share_url || "";
+    wizardData.planDirty = false;
+    if (btn) btn.textContent = "💾 保存済み";
+    _syncPlanShareActions();
+    return;
+  }
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = prevLabel || "💾 プランを保存";
+  }
+  window.alert("プランを保存できませんでした。");
+}
+
+function _savedPlanDateLabel(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function openSavedPlansPanel() {
+  const overlay = $("savedPlansOverlay");
+  if (!overlay) return;
+  overlay.hidden = false;
+  loadSavedPlans();
+}
+
+function closeSavedPlansPanel() {
+  const overlay = $("savedPlansOverlay");
+  if (overlay) overlay.hidden = true;
+}
+
+async function loadSavedPlans() {
+  const listEl = $("savedPlansList");
+  const detailEl = $("savedPlanDetail");
+  const statusEl = $("savedPlansStatus");
+  if (listEl) listEl.innerHTML = '<p class="saved-plan-empty">読み込み中...</p>';
+  if (detailEl) detailEl.innerHTML = '<p class="saved-plan-empty">左の一覧からプランを選択してください。</p>';
+  try {
+    const res = await fetch("/api/plan-snapshots/", { credentials: "same-origin" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "load_failed");
+    const plans = data.plans || [];
+    if (statusEl) {
+      statusEl.textContent = data.authenticated
+        ? `アカウントに保存されたプラン: ${plans.length}件`
+        : `このブラウザセッションの保存プラン: ${plans.length}件`;
+    }
+    renderSavedPlansList(plans);
+  } catch (err) {
+    if (statusEl) statusEl.textContent = "保存済みプランを読み込めませんでした。";
+    if (listEl) listEl.innerHTML = `<p class="saved-plan-empty">${escHtml(err.message || "読み込みエラー")}</p>`;
+  }
+}
+
+async function clearSavedPlans() {
+  if (!window.confirm("保存済みプランをすべて削除しますか？")) return;
+  const statusEl = $("savedPlansStatus");
+  const btn = $("btnClearSavedPlans");
+  const prevLabel = btn?.textContent || "";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "初期化中...";
+  }
+  try {
+    const res = await fetch("/api/plan-snapshots/", {
+      method: "DELETE",
+      headers: { "X-CSRFToken": getCsrfToken() },
+      credentials: "same-origin",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || "clear_failed");
+    delete wizardData.currentPlanSnapshotId;
+    wizardData.planShareUrl = "";
+    _syncPlanShareActions();
+    if (statusEl) statusEl.textContent = `保存済みプランを初期化しました（${data.deleted || 0}件）。`;
+    await loadSavedPlans();
+  } catch (err) {
+    if (statusEl) statusEl.textContent = `初期化できませんでした: ${err.message || "error"}`;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = prevLabel || "初期化";
+    }
+  }
+}
+
+function renderSavedPlansList(plans) {
+  const listEl = $("savedPlansList");
+  if (!listEl) return;
+  if (!plans.length) {
+    listEl.innerHTML = '<p class="saved-plan-empty">保存済みプランはまだありません。</p>';
+    return;
+  }
+  listEl.innerHTML = plans.map((p) => `
+    <button type="button" class="saved-plan-item" data-id="${escHtml(String(p.id))}">
+      <strong>${escHtml(p.title || "韓国旅行プラン")}</strong>
+      <span class="saved-plan-meta">${escHtml(_savedPlanDateLabel(p.updated_at))}</span>
+      ${p.excerpt ? `<span class="saved-plan-excerpt">${escHtml(p.excerpt)}</span>` : ""}
+    </button>
+  `).join("");
+  listEl.querySelectorAll(".saved-plan-item").forEach((btn) => {
+    btn.addEventListener("click", () => loadSavedPlanDetail(btn.dataset.id));
+  });
+}
+
+async function loadSavedPlanDetail(id) {
+  if (!id) return;
+  const detailEl = $("savedPlanDetail");
+  if (detailEl) detailEl.innerHTML = '<p class="saved-plan-empty">読み込み中...</p>';
+  document.querySelectorAll(".saved-plan-item").forEach((item) => {
+    item.classList.toggle("active", item.dataset.id === String(id));
+  });
+  try {
+    const res = await fetch(`/api/plan-snapshot/${encodeURIComponent(id)}/`, { credentials: "same-origin" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "load_failed");
+    renderSavedPlanDetail(data.plan);
+  } catch (err) {
+    if (detailEl) detailEl.innerHTML = `<p class="saved-plan-empty">${escHtml(err.message || "読み込みエラー")}</p>`;
+  }
+}
+
+function renderSavedPlanDetail(plan) {
+  const detailEl = $("savedPlanDetail");
+  if (!detailEl || !plan) return;
+  const shareUrl = plan.share_url || "";
+  detailEl.innerHTML = `
+    <div class="saved-plan-detail-head">
+      <div>
+        <h3>${escHtml(plan.title || "韓国旅行プラン")}</h3>
+        <p class="saved-plan-meta">${escHtml(_savedPlanDateLabel(plan.updated_at))}</p>
+      </div>
+      <div class="saved-plan-detail-actions">
+        <button type="button" class="btn btn-sm primary" id="btnLoadSavedPlan">読み込む</button>
+        <button type="button" class="btn btn-sm secondary" id="btnCopySavedPlan">リンクコピー</button>
+        <button type="button" class="btn btn-sm ghost" id="btnDeleteSavedPlan">削除</button>
+      </div>
+    </div>
+    <div class="saved-plan-detail-text">${escHtml(plan.plan_text || "")}</div>
+  `;
+  $("btnLoadSavedPlan")?.addEventListener("click", () => loadSavedPlanIntoWizard(plan));
+  $("btnCopySavedPlan")?.addEventListener("click", async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      $("btnCopySavedPlan").textContent = "コピー済み";
+    } catch {
+      window.prompt("共有リンク", shareUrl);
+    }
+  });
+  $("btnDeleteSavedPlan")?.addEventListener("click", async () => {
+    if (!window.confirm("この保存済みプランを削除しますか？")) return;
+    await deleteSavedPlan(plan.id);
+  });
+}
+
+async function loadSavedPlanIntoWizard(plan) {
+  if (!plan?.plan_text) return;
+  const profile = plan.profile && typeof plan.profile === "object" ? { ...plan.profile } : {};
+  const meta = plan.metadata && typeof plan.metadata === "object" ? { ...plan.metadata } : {};
+  if (Array.isArray(plan.places) && !Array.isArray(meta.places)) meta.places = plan.places;
+  meta.reply = plan.plan_text;
+
+  wizardData = {
+    ...profile,
+    currentPlanSnapshotId: Number(plan.id) || null,
+    planShareUrl: plan.share_url || "",
+    currentPlanText: plan.plan_text,
+    currentPlanMeta: meta,
+    currentPlanProfilePayload: { ...profile },
+    planDirty: false,
+  };
+  delete wizardData.planEditedText;
+
+  closeSavedPlansPanel();
+  if (window.PlanMapView?.destroy) window.PlanMapView.destroy();
+  goToStep(TOTAL_STEPS, { skipGenerate: true });
+
+  $("planLoadingArea").style.display = "none";
+  $("planErrorArea").style.display = "none";
+  $("planOutputArea").style.display = "block";
+  $("planTitle").textContent = plan.title || _planResultTitle(currentUser || {});
+
+  try {
+    await _displayPlanOutput(meta);
+  } catch (err) {
+    console.warn("saved plan display enhancement failed", err);
+    $("planContent").innerHTML = _renderPlanHtml(plan.plan_text, {}, {});
+  }
+  wizardData.currentPlanSnapshotId = Number(plan.id) || null;
+  wizardData.planShareUrl = plan.share_url || "";
+  wizardData.planDirty = false;
+  _syncPlanShareActions();
+}
+
+async function deleteSavedPlan(id) {
+  if (!id) return;
+  try {
+    const res = await fetch(`/api/plan-snapshot/${encodeURIComponent(id)}/`, {
+      method: "DELETE",
+      headers: { "X-CSRFToken": getCsrfToken() },
+      credentials: "same-origin",
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || "delete_failed");
+    }
+    if (wizardData.currentPlanSnapshotId === Number(id)) {
+      delete wizardData.currentPlanSnapshotId;
+      wizardData.planShareUrl = "";
+      _syncPlanShareActions();
+    }
+    await loadSavedPlans();
+  } catch (err) {
+    const statusEl = $("savedPlansStatus");
+    if (statusEl) statusEl.textContent = `削除できませんでした: ${err.message || "error"}`;
   }
 }
 
@@ -1856,7 +2120,7 @@ function buildPrompt(isReroll = false) {
   const aMap = { food:"グルメ", shopping:"ショッピング", nightview:"夜景", tradition:"伝統文化",
                  hallyu:"韓流・K-pop", drama:"ドラマ", kpop:"K-pop", cafe:"カフェ巡り",
                  nature:"自然", photo:"フォトスポット", sports:"スポーツ観戦", vacation:"バカンス" };
-  const vacMap = { poolvilla:"プールヴィラ", pension:"ペンション" };
+  const vacMap = { poolvilla:"プールヴィラ", camping:"キャンピング" };
   const tsMap = {
     experience:"体験・アクティビティ", sns_hot:"SNS人気スポット", nature:"自然と一緒に",
     must_see:"有名観光地は必須", healing:"ゆったり癒し", culture:"文化・芸術・歴史",
@@ -1982,18 +2246,20 @@ function buildPrompt(isReroll = false) {
   if (sportParts.length) {
     lines.push(`【スポーツ観戦】${sportParts.join("・")} — Reference Dataの試合日程をプランに組み込むこと`);
   }
-  const vacParts = (d.vacationTypes || []).map((v) => vacMap[v] || v);
+  const vacTypes = d.vacationTypes || [];
+  const vacParts = vacTypes.map((v) => vacMap[v] || v);
   if (vacParts.length || actMerged.includes("vacation")) {
-    lines.push(
-      `【バカンス】${vacParts.length ? vacParts.join("・") : "バカンス"} — プールヴィラ・ペンション・リゾート滞在を意識した日程にすること`
-    );
+    const VACS_REF_ONLY = "【厳守】プールヴィラ・キャンピング場などのバカンス宿泊施設は、下部の「バカンス宿泊候補」参照データに掲載されるため、日程本文（Day1〜最終日）のどのコマにも施設名・スポット名として記載しないこと。日程には「プールヴィラでリゾート体験」等の概要説明のみ記述すること";
+    lines.push(`【バカンス】${vacParts.length ? vacParts.join("・") : "バカンス"} — バカンス気分を意識した日程にすること。${VACS_REF_ONLY}`);
   }
 
   if (promptBudget?.total) {
     const bsSym = promptBudget.currency === "KRW" ? "₩" : "¥";
+    const prMap = { transport:"交通費重視", stay:"宿泊費重視", food:"食費重視" };
     let bs = `総予算:${bsSym}${promptBudget.total}`;
     if (promptBudget.daily) bs += `、1日:${bsSym}${promptBudget.daily}`;
     if (promptBudget.style) bs += `、予算の考え方:${sMap[promptBudget.style]||promptBudget.style}`;
+    if (promptBudget.priority?.length) bs += `、重視費目:${promptBudget.priority.map(p => prMap[p]||p).join("/")}`;
     if (promptBudget.auto) bs += "（未入力のためシステムが標準値を設定）";
     lines.push(`【予算】${bs}`);
   }
@@ -2110,16 +2376,14 @@ const TRANSPORT_BUS_BY_AIRPORT = {
 };
 
 const LOCAL_RAIL_OFFICIAL_LINKS = `
-<div class="ti-links-note">地方移動・都市鉄道の公式リンク</div>
-<a href="https://info.korail.com/info/contents.do?key=857" target="_blank" rel="noopener">KORAIL 路線図・時刻表</a> ·
-<a href="https://www.humetro.busan.kr/" target="_blank" rel="noopener">釜山交通公社</a> ·
-<a href="https://www.grtc.co.kr/" target="_blank" rel="noopener">光州交通公社</a> ·
-<a href="https://www.dtro.or.kr/cmsh/dtro.or.kr/html/nosundo.html" target="_blank" rel="noopener">大邱都市鉄道 路線図</a>`;
+<div class="ti-links-note">地方移動・都市鉄道リンク</div>
+<a href="https://english1.visitkorea.or.kr/common_intl/subway.kto?lang=1" target="_blank" rel="noopener">韓国観光公社 地下鉄ルート検索</a>
+<div class="ti-links-note">※ 一部の交通公社公式サイトは日本から開けない場合があります。</div>`;
 
 const TRANSPORT_RAIL_BY_AIRPORT = {
   ICN: `<div class="ti-card"><strong>🚆 鉄道・地下鉄（AREX・広域鉄道）</strong>
 仁川空港↔ソウル駅 AREX直通約43分 / 一般約51分。乗換で広域鉄道・地下鉄（1・9号線等）<br>
-<a href="https://www.arex.or.kr/jp/" target="_blank" rel="noopener">▶ AREX 公式</a> ·
+<a href="https://www.arex.or.kr/" target="_blank" rel="noopener">▶ AREX 公式</a> ·
 <a href="https://www.seoulmetro.co.kr/jp/" target="_blank" rel="noopener">ソウル交通公社</a> ·
 ${LOCAL_RAIL_OFFICIAL_LINKS}</div>`,
   GMP: `<div class="ti-card"><strong>🚆 鉄道・地下鉄（広域鉄道）</strong>
@@ -2138,7 +2402,7 @@ const TRANSPORT_INFO = {
   rail: TRANSPORT_RAIL_BY_AIRPORT.ICN,
   subway: TRANSPORT_RAIL_BY_AIRPORT.ICN,
   taxi: `<div class="ti-card"><strong>🚕 タクシー / KakaoTaxi</strong>
-<a href="https://www.kakaomobility.com/" target="_blank" rel="noopener">▶ KakaoTaxi</a></div>`,
+<a href="https://www.kakaomobility.com/service-kakaot" target="_blank" rel="noopener">▶ KakaoTaxi</a></div>`,
   bus: TRANSPORT_BUS_BY_AIRPORT.ICN,
   rental: `<div class="ti-card"><strong>🚗 レンタカー</strong>
 <a href="https://www.lotterentacar.net/" target="_blank" rel="noopener">▶ 各社レンタカー</a></div>`,
@@ -2559,7 +2823,20 @@ function _syncAccomDisplay() {
     const nameEl = $("accomSelectedName");
     const addrEl = $("accomSelectedAddr");
     if (nameEl) nameEl.textContent = name || "選択済み住所";
-    if (addrEl) addrEl.textContent = displayFull;
+    if (addrEl) {
+      const selectedAddr = (_selectedAccomPlace?.address || "").trim();
+      const selectedEng = (_selectedAccomPlace?.english_address || "").trim();
+      const sameSelectedAddress = selectedAddr && full && (
+        full === selectedAddr || full.includes(selectedAddr) || selectedAddr.includes(full)
+      );
+      if (selectedEng && sameSelectedAddress && selectedEng !== selectedAddr) {
+        addrEl.innerHTML =
+          `<span class="accom-sel-address-main">${escHtml(selectedEng)}</span>` +
+          `<span class="accom-sel-address-sub">韓国語住所: ${escHtml(selectedAddr)}</span>`;
+      } else {
+        addrEl.textContent = displayFull;
+      }
+    }
   } else {
     infoEl.style.display = "none";
   }
@@ -2588,17 +2865,24 @@ async function _fetchJusoAddresses(keyword, page = 1) {
 
 function _applyJusoAddress(addr) {
   const road = (addr.road_addr || addr.display_name || "").trim();
+  const english = (addr.english_road_addr || "").trim();
   const jibun = (addr.jibun_addr || "").trim();
+  const selectedAddress = road || jibun || english;
   if ($("accomDetailManual")) {
-    $("accomDetailManual").value = _stripAccomBase(road, _buildAccomBase()) || road;
+    $("accomDetailManual").value = _stripAccomBase(selectedAddress, _buildAccomBase()) || selectedAddress;
   }
-  if ($("accomAddress")) $("accomAddress").value = road || jibun;
+  if ($("accomAddress")) $("accomAddress").value = selectedAddress;
   if (addr.building_name && $("accomName") && !($("accomName").value || "").trim()) {
     $("accomName").value = addr.building_name;
   }
   _storeAccomPlace({
     name: addr.building_name || "",
-    address: road || jibun,
+    address: selectedAddress,
+    english_address: english,
+    jibun_address: jibun,
+    english_jibun_address: addr.english_jibun_addr || "",
+    zip_no: addr.zip_no || "",
+    source: addr.source || "juso",
     latitude: null,
     longitude: null,
     maps_url: "",
@@ -2627,16 +2911,28 @@ function _renderJusoResults(addresses, { resultsEl, error, configured }) {
   }
 
   resultsEl.innerHTML =
-    '<p class="accom-search-msg accom-search-msg--hint">行政安全部 道路名住所 API の結果です。行をクリックして選択してください。</p>' +
+    '<p class="accom-search-msg accom-search-msg--hint">行政安全部 道路名住所 API の結果です。英語住所と韓国語住所を確認して選択してください。</p>' +
     addresses
-      .map(
-        (a, i) => `
+      .map((a, i) => {
+        const primary = a.english_road_addr || a.display_name || a.road_addr || "住所";
+        const korean = a.road_addr && a.road_addr !== primary
+          ? `<span class="accom-result-addr accom-result-addr--ko">韓国語住所: ${escHtml(a.road_addr)}</span>`
+          : "";
+        const jibun = a.jibun_addr
+          ? `<span class="accom-result-addr">地番住所: ${escHtml(a.jibun_addr)}</span>`
+          : "";
+        const engJibun = a.english_jibun_addr
+          ? `<span class="accom-result-addr">英語地番住所: ${escHtml(a.english_jibun_addr)}</span>`
+          : "";
+        return `
     <button type="button" class="accom-result-item accom-result-item--juso" data-idx="${i}">
-      <strong>${escHtml(a.display_name || a.road_addr || "住所")}</strong>
-      ${a.jibun_addr ? `<span class="accom-result-addr">${escHtml(a.jibun_addr)}</span>` : ""}
+      <strong>${escHtml(primary)}</strong>
+      ${korean}
+      ${jibun}
+      ${engJibun}
       ${a.zip_no ? `<span class="accom-result-zip">〒${escHtml(a.zip_no)}</span>` : ""}
-    </button>`
-      )
+    </button>`;
+      })
       .join("");
 
   resultsEl.querySelectorAll(".accom-result-item--juso").forEach((item) => {
@@ -2716,14 +3012,9 @@ function setupAccomDetailSearch() {
     btn.textContent = "検索中…";
     try {
       const { addresses, error, configured } = await _fetchJusoAddresses(query);
-      if (addresses.length || !configured) {
-        _renderJusoResults(addresses, { resultsEl, error, configured });
-        if (addresses.length) return;
-      }
-      const places = await _fetchPlaces(query);
-      _renderPlacesResults(places, { resultsEl, mode: "detail" });
+      _renderJusoResults(addresses, { resultsEl, error, configured });
     } catch {
-      _renderPlacesResults([], { resultsEl, mode: "detail" });
+      _renderJusoResults([], { resultsEl, error: "network_error", configured: true });
     } finally {
       btn.disabled = false;
       btn.textContent = "検索";
@@ -2735,6 +3026,11 @@ function _storeAccomPlace(p) {
   _selectedAccomPlace = {
     name: p.name || "",
     address: p.address || "",
+    english_address: p.english_address || "",
+    jibun_address: p.jibun_address || "",
+    english_jibun_address: p.english_jibun_address || "",
+    zip_no: p.zip_no || "",
+    source: p.source || "",
     latitude: p.latitude ?? null,
     longitude: p.longitude ?? null,
     maps_url: p.maps_url || "",
@@ -2795,7 +3091,7 @@ function _renderPlacesResults(places, { resultsEl, mode }) {
 const _PLAN_MAPS_URL_RE = /^https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps|goo\.gl\/maps|maps\.app\.goo\.gl|map\.naver\.com)\/\S+/i;
 const _PLAN_MAPS_URL_EXTRACT =
   /https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps|goo\.gl\/maps|maps\.app\.goo\.gl|map\.naver\.com)\/[^\s\]<")]+/gi;
-const _PLAN_TICKET_URL_RE = /^https?:\/\/(?:tickets?\.interpark\.com|www\.ticketlink\.co\.kr|www\.ssglanders\.com|www\.giantsclub\.com|ticket\.ncdinos\.com)\/\S+/i;
+const _PLAN_TICKET_URL_RE = /^https?:\/\/(?:www\.kopis\.or\.kr|tickets?\.interpark\.com|ticket\.interpark\.com|www\.ticket\.interpark\.com|www\.ticketlink\.co\.kr|ticketlink\.co\.kr|ticket\.yes24\.com|ticket\.melon\.com|www\.ticketmelon\.co\.kr|ticket\.ssg\.com|www\.ssglanders\.com|www\.giantsclub\.com|ticket\.ncdinos\.com)\/\S+/i;
 
 function _escapeHtml(s) {
   return String(s || "").replace(/[&<>"']/g, (c) =>
@@ -3429,7 +3725,9 @@ function _renderVisitKoreaCards(stays, festivals, attractions) {
     html += `<div class="plan-refs-section"><h3 class="plan-refs-title">🎭 イベント・祭り（韓国観光公社）</h3><div class="plan-vk-grid">${buildCards(festivals, "🎭", true)}</div></div>`;
   }
   if (stays && stays.length) {
-    html += `<div class="plan-refs-section"><h3 class="plan-refs-title">🏨 宿泊施設（韓国観光公社）</h3><div class="plan-vk-grid">${buildCards(stays, "🏨", false)}</div></div>`;
+    const hasVacation = (wizardData.activities || []).includes("vacation") || (wizardData.vacationTypes || []).length > 0;
+    const title = hasVacation ? "🏖 バカンス宿泊候補" : "🏨 宿泊施設（韓国観光公社）";
+    html += `<div class="plan-refs-section"><h3 class="plan-refs-title">${title}</h3><div class="plan-vk-grid">${buildCards(stays, "🏨", false)}</div></div>`;
   }
   return html;
 }
@@ -3478,7 +3776,7 @@ function _renderPlanPlacesRefSection(places, reply) {
   const note = linked.length
     ? "※ 本文で引用された店舗。評価・写真は Google データです。"
     : "※ エリア周辺の検索候補。評価・写真は Google データです。";
-  return `<div class="plan-refs-section"><h3 class="plan-refs-title">📍 エリア周辺のスポット（Google Places）</h3>
+  return `<div class="plan-refs-section"><h3 class="plan-refs-title">📍 エリア周辺のスポット</h3>
     <div class="plan-place-grid">${cards}</div>
     <p class="plan-refs-note">${note}</p></div>`;
 }
@@ -3819,11 +4117,18 @@ async function _displayPlanOutput(data) {
     ? LinkPreview.buildEventIndex(data.ticket_platform_events || [])
     : {};
   $("planContent").innerHTML = _renderPlanHtml(reply, placeIndexes, ticketIdx);
-  let editSaveTimer = null;
+  wizardData.currentPlanText = reply;
+  wizardData.currentPlanMeta = data || {};
+  if (!wizardData.currentPlanProfilePayload) wizardData.currentPlanProfilePayload = { ...wizardData };
+  wizardData.planDirty = false;
+  _syncPlanShareActions();
   const rerenderPlanText = (nextReply) => {
     if (!nextReply || nextReply === reply) return;
     reply = nextReply;
     wizardData.planEditedText = reply;
+    wizardData.currentPlanText = reply;
+    wizardData.currentPlanMeta = data || {};
+    wizardData.planDirty = true;
     $("planContent").innerHTML = _renderPlanHtml(reply, placeIndexes, ticketIdx);
     if (window.LinkPreview) {
       LinkPreview.hydrate($("planContent"), ticketIdx).catch((err) => {
@@ -3833,13 +4138,6 @@ async function _displayPlanOutput(data) {
     wizardData.avoid_place_names = _collectPlanPlaceNames(reply, data.places || []);
     wizardData.planShareUrl = "";
     _syncPlanShareActions();
-    clearTimeout(editSaveTimer);
-    editSaveTimer = setTimeout(() => {
-      _savePlanSnapshot(wizardData, reply, data || {}).then((snapshot) => {
-        wizardData.planShareUrl = snapshot?.share_url || "";
-        _syncPlanShareActions();
-      });
-    }, 700);
   };
   const hydratePromise = window.LinkPreview
     ? LinkPreview.hydrate($("planContent"), ticketIdx).catch((err) => {
@@ -3957,7 +4255,7 @@ function _renderTicketPlatformCards(events) {
     return `<div class="plan-ticket-with-venue">${LinkPreview.renderCard(LinkPreview.eventToPreview(ev, url))}${venueCard}</div>`;
   }).join("");
   return `<div class="plan-refs-section">
-    <h3 class="plan-refs-title">🎫 チケット・公演（インターパーク）</h3>
+    <h3 class="plan-refs-title">🎫 公演情報（KOPIS）</h3>
     <div class="plan-ticket-grid">${cards}</div>
   </div>`;
 }

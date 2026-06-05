@@ -15,6 +15,7 @@
       <span class="nav-user-label" id="navUserLabel"></span>
       <button type="button" id="btnNavLogout" class="btn btn-sm ghost nav-logout-btn" style="display:none">ログアウト</button>
       <a href="/" id="btnNavPlanMode" class="btn btn-sm secondary nav-plan-mode" aria-current="page" title="1〜8ステップで旅行プランを作成">プランモード</a>
+      <button type="button" id="btnSavedPlans" class="btn btn-sm secondary nav-saved-plans">保存プラン</button>
       <a href="/chat/" class="btn btn-sm secondary nav-chat-shortcut">💬 AIチャット</a>
     </div>
   </header>
@@ -298,17 +299,17 @@
           <!-- 施設検索（宿泊先決定済み） -->
           <div id="accomDetailShared" class="accom-detail" style="display:none">
             <div class="accom-search-block">
-              <label class="addr-label">詳細住所で検索 <span class="opt">任意</span></label>
+              <label class="addr-label">詳細住所で検索 <span class="opt">任意・英語可</span></label>
               <p class="accom-search-hint"></p>
               <div class="accom-search-row">
-                <input type="text" id="accomDetailSearchInput" placeholder="例：강남구12、서울아파트" />
+                <input type="text" id="accomDetailSearchInput" placeholder="例：123 Teheran-ro、테헤란로 123" />
                 <button type="button" id="accomDetailSearchBtn" class="btn btn-sm secondary">検索</button>
               </div>
               <div id="accomDetailSearchResults" class="accom-search-results" style="display:none"></div>
             </div>
             <div class="accom-detail-manual">
               <label class="addr-label">詳細住所（直接入力） <span class="opt">任意</span></label>
-              <input type="text" id="accomDetailManual" placeholder="検索で見つからない場合はこちらに入力（例：강남구 123-45）" />
+              <input type="text" id="accomDetailManual" placeholder="検索で見つからない場合はこちらに入力（例：123 Teheran-ro）" />
             </div>
             <div id="accomSelectedInfo" class="accom-selected-info" style="display:none">
               ✅ <span id="accomSelectedName" class="accom-sel-name"></span>
@@ -461,7 +462,7 @@
             <div class="wiz-section-label">バカンスの宿タイプ <span class="opt">複数選択可</span></div>
             <div class="chip-grid" id="vacationChips">
               <button class="chip" data-val="poolvilla">🏊 プールヴィラ</button>
-              <button class="chip" data-val="pension">🏡 ペンション</button>
+              <button class="chip" data-val="camping">⛺ キャンピング</button>
             </div>
           </div>
           <div id="sportsDetailBlock" class="wiz-sub-block" style="display:none;margin-top:1rem">
@@ -659,8 +660,44 @@
                 参照データのカードは、スポーツ観戦の選択・希望エリア・Googleマップ連携の飲食店・旅行期間中の公演・行事データがある場合に表示されます。
               </p>
             </div>
+            <details class="plan-text-details plan-payment-guide">
+              <summary class="plan-text-summary">💳 韓国でのカード・現金トラブル対処法</summary>
+              <div class="plan-pg-body">
+
+                <div class="plan-pg-item plan-pg-item--ok">
+                  <div class="plan-pg-head">✅ カード承認OK</div>
+                  <div class="plan-pg-desc">そのままご利用ください。</div>
+                </div>
+
+                <div class="plan-pg-item plan-pg-item--warn">
+                  <div class="plan-pg-head">❌ カードが拒否された場合</div>
+                  <div class="plan-pg-rows">
+                    <div class="plan-pg-row">
+                      <span class="plan-pg-tag">クレジット</span>
+                      <span>別のカード（Visa / Mastercard）に変更してください。出発前にカード会社へ海外利用解除の申請をすると防げます。</span>
+                    </div>
+                    <div class="plan-pg-row">
+                      <span class="plan-pg-tag">デビット</span>
+                      <span>日本の口座でウォンへ換金し、送金サービス（<a href="https://www.wise.com/jp/" target="_blank" rel="noopener">Wise</a> など）を利用するか、下記のATM引き出しを試してください。</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="plan-pg-item plan-pg-item--cash">
+                  <div class="plan-pg-head">💴 現金が底をついた場合</div>
+                  <div class="plan-pg-desc">
+                    日本のネット銀行カード（セブン銀行・SMBC信託プレスティア・楽天銀行など）で韓国のATMからウォンを直接引き出せます。<br>
+                    <strong>対応ATM：</strong>コンビニ（세븐일레벤・GS25・CU）内、またはウリィ銀行・KB国民銀行などの大手銀行ATM。<br>
+                    <strong>注意：</strong>1回の引き出し上限（通常 ₩700,000〜₩1,000,000）とカード会社の海外ATM手数料を事前にご確認ください。
+                  </div>
+                </div>
+
+              </div>
+            </details>
+
             <div class="plan-actions">
               <a href="/chat/" class="btn primary">💬 AIチャットで詳しく聞く</a>
+              <button type="button" class="btn wiz-btn-outline" id="btnSavePlan">💾 プランを保存</button>
               <button type="button" class="btn wiz-btn-outline" id="btnSharePlan">🔗 共有リンクをコピー</button>
               <button type="button" class="btn wiz-btn-outline" id="btnPrintPlan">📄 PDF保存</button>
               <button type="button" class="btn wiz-btn-outline" id="btnRerollPlan">🔄 別のプランを生成</button>
@@ -682,6 +719,27 @@
       <button class="btn primary" id="wizBtnNext">次へ</button>
     </div>
   </div><!-- /.wizard-container -->
+
+  <div id="savedPlansOverlay" class="saved-plans-overlay" hidden>
+    <section class="saved-plans-panel" role="dialog" aria-modal="true" aria-labelledby="savedPlansTitle">
+      <header class="saved-plans-head">
+        <div>
+          <h2 id="savedPlansTitle">保存済みプラン</h2>
+          <p id="savedPlansStatus">保存した旅行プランを読み込めます。</p>
+        </div>
+        <div class="saved-plans-head-actions">
+          <button type="button" id="btnClearSavedPlans" class="btn btn-sm ghost saved-plans-clear">初期化</button>
+          <button type="button" id="btnCloseSavedPlans" class="saved-plans-close" aria-label="閉じる">×</button>
+        </div>
+      </header>
+      <div class="saved-plans-body">
+        <div id="savedPlansList" class="saved-plans-list"></div>
+        <article id="savedPlanDetail" class="saved-plan-detail">
+          <p class="saved-plan-empty">左の一覧からプランを選択してください。</p>
+        </article>
+      </div>
+    </section>
+  </div>
 
   <script src="/link-preview.js"></script>
   <script src="/maps-open-url.js"></script>

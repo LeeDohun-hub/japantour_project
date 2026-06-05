@@ -74,7 +74,7 @@ _KBO_TICKET_MAP: dict[str, str] = {
     "KIA":  "https://www.ticketlink.co.kr/sports/baseball",
     "두산":  "https://ticket.interpark.com/Contents/Sports/GoodsInfo?SportsCode=07001&TeamCode=PB004",
     "키움":  "https://ticket.interpark.com/Contents/Sports/GoodsInfo?SportsCode=07001&TeamCode=PB003",
-    "SSG":  "https://www.ssglanders.com/main",
+    "SSG":  "https://ticket.ssg.com/ticket",
     "롯데":  "https://www.giantsclub.com/contents/ticket",
     "NC":   "https://ticket.ncdinos.com/",
 }
@@ -163,6 +163,22 @@ _REGION_CHIP_CENTROIDS: dict[str, tuple[float, float]] = {
     "gyeongsang": (35.1796, 129.0756),
     "busan": (35.1796, 129.0756),
     "jeju": (33.4996, 126.5312),
+}
+
+_AREA_KEY_TO_SPORTS_REGION: dict[str, str] = {
+    "busan": "busan",
+    "jeju": "jeju",
+    "seoul": "seoul",
+    "gyeonggi": "gyeonggi",
+    "incheon": "incheon",
+    "gangwon": "gangwon",
+    "chungcheong": "chungcheong",
+    "jeolla": "jeolla",
+    "gyeongsang": "gyeongsang",
+    "gyeongbuk": "gyeongsang",
+    "gyeongnam": "gyeongsang",
+    "daegu": "gyeongsang",
+    "ulsan": "gyeongsang",
 }
 
 _REGION_CHIP_EXTRA_CENTERS: dict[str, list[tuple[float, float]]] = {
@@ -921,7 +937,7 @@ class SportsScheduleClient:
                     " ティケットリンク(LG·한화·삼성·KT·KIA): https://www.ticketlink.co.kr/sports/baseball"
                     " / インターパーク 두산: https://ticket.interpark.com/Contents/Sports/GoodsInfo?SportsCode=07001&TeamCode=PB004"
                     " / インターパーク 키움: https://ticket.interpark.com/Contents/Sports/GoodsInfo?SportsCode=07001&TeamCode=PB003"
-                    " / SSG: https://www.ssglanders.com/ticket/home"
+                    " / SSG: https://ticket.ssg.com/ticket"
                     " / 롯데: https://www.giantsclub.com/contents/ticket"
                     " / NC: https://ticket.ncdinos.com/"
                 )
@@ -1106,6 +1122,29 @@ def accommodation_location_blob(profile: dict | None) -> str:
     return " ".join(parts).lower()
 
 
+def destination_location_blob(profile: dict | None) -> str:
+    """관광 목적지 텍스트만 묶음. 숙소 주소는 의도적으로 제외."""
+    if not profile:
+        return ""
+    parts: list[str] = []
+    for key in ("regionCities", "region_cities", "regionCitiesOther", "region_cities_other"):
+        val = profile.get(key)
+        if val:
+            parts.append(str(val))
+    for key in ("regionAreaKeys", "region_area_keys", "regions"):
+        for val in profile.get(key) or []:
+            if val:
+                parts.append(str(val))
+    for meta in profile.get("regionCityMeta") or profile.get("region_city_meta") or []:
+        if not isinstance(meta, dict):
+            continue
+        for key in ("label", "query", "id", "region"):
+            val = meta.get(key)
+            if val:
+                parts.append(str(val))
+    return " ".join(parts).lower()
+
+
 def accommodation_center(profile: dict | None) -> tuple[float, float] | None:
     """숙소 좌표 → 주소·도시 키워드 → region 칩 순으로 중심 추정."""
     if not profile:
@@ -1148,8 +1187,34 @@ def trip_sports_centers(profile: dict | None) -> list[tuple[tuple[float, float],
         seen.add(key)
         out.append((coords, radius))
 
+    explicit_area_keys = [
+        str(r).lower()
+        for r in (
+            profile.get("regionAreaKeys")
+            or profile.get("region_area_keys")
+            or []
+        )
+        if str(r).strip()
+    ]
+    explicit_destination = bool(explicit_area_keys or profile.get("regionCityIds") or profile.get("region_city_ids"))
+    blob = destination_location_blob(profile)
+    if explicit_destination:
+        for city in sorted(_CITY_CENTROIDS, key=len, reverse=True):
+            if city in blob:
+                add(_CITY_CENTROIDS[city], 30.0)
+        for area_key in explicit_area_keys:
+            region_key = _AREA_KEY_TO_SPORTS_REGION.get(area_key, area_key)
+            # Explicit city/province chips should stay tight. Broad bucket extras
+            # are only used when the user actually selected the broad bucket.
+            radius = 35.0 if area_key != "gyeongsang" else 45.0
+            add(_REGION_CHIP_CENTROIDS.get(region_key), radius)
+            if area_key == "gyeongsang":
+                for coords in _REGION_CHIP_EXTRA_CENTERS.get(region_key, []):
+                    add(coords, radius)
+        if out:
+            return out
+
     add(accommodation_center(profile), NEARBY_SPORTS_MAX_KM)
-    blob = accommodation_location_blob(profile)
     for city in sorted(_CITY_CENTROIDS, key=len, reverse=True):
         if city in blob:
             add(_CITY_CENTROIDS[city], 35.0)

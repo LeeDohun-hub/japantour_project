@@ -1,15 +1,18 @@
 /**
- * KBO ticket platform link previews — shared by wizard plan & chat.
- * 対応: Interpark / チケットリンク / SSG / ロッテ / NC
+ * Ticket/performance link previews — shared by wizard plan & chat.
+ * 対応: KOPIS / Interpark / チケットリンク / SSG / ロッテ / NC
  */
 (function (global) {
   const TICKET_URL_RE =
-    /https?:\/\/(?:tickets?\.interpark\.com|www\.ticketlink\.co\.kr|www\.ssglanders\.com|www\.giantsclub\.com|ticket\.ncdinos\.com)\/[^\s\]<")\]、。.,]*/gi;
+    /https?:\/\/(?:www\.kopis\.or\.kr|tickets?\.interpark\.com|ticket\.interpark\.com|www\.ticket\.interpark\.com|www\.ticketlink\.co\.kr|ticketlink\.co\.kr|ticket\.yes24\.com|ticket\.melon\.com|www\.ticketmelon\.co\.kr|ticket\.ssg\.com|www\.ssglanders\.com|www\.giantsclub\.com|ticket\.ncdinos\.com)\/[^\s\]<")\]、。.,]*/gi;
 
   function siteNameFromUrl(url) {
+    if (/kopis/i.test(url)) return "公演情報";
     if (/interpark/i.test(url)) return "INTERPARK TICKET";
     if (/ticketlink/i.test(url)) return "チケットリンク";
-    if (/ssglanders/i.test(url)) return "SSG LANDERS TICKET";
+    if (/yes24/i.test(url)) return "YES24 TICKET";
+    if (/melon/i.test(url)) return "Melon Ticket";
+    if (/ssglanders|ticket\.ssg/i.test(url)) return "SSG LANDERS TICKET";
     if (/giantsclub/i.test(url)) return "LOTTE GIANTS TICKET";
     if (/ncdinos/i.test(url)) return "NC DINOS TICKET";
     return "チケット";
@@ -50,7 +53,10 @@
       byUrl[key] = ev;
       const code = ev.goods_code || goodsCodeFromUrl(key);
       if (code) {
-        byUrl[`https://tickets.interpark.com/goods/${code}`] = ev;
+        if (/^\d+$/.test(String(code))) {
+          byUrl[`https://tickets.interpark.com/goods/${code}`] = ev;
+        }
+        byUrl[`https://www.kopis.or.kr/por/db/pblprfr/pblprfrView.do?mt20Id=${code}`] = ev;
       }
     }
     return byUrl;
@@ -66,8 +72,8 @@
       url: url || ev.ticket_url,
       title: ev.title || "公演・イベント",
       description: parts.join(" · ") || ev.genre_label_ko || "",
-      image: null,
-      site_name: "INTERPARK TICKET",
+      image: ev.poster || null,
+      site_name: siteNameFromUrl(url || ev.ticket_url || ""),
       from_api: true,
     };
   }
@@ -84,9 +90,10 @@
       ? `<p class="ticket-preview-desc">${escapeHtml(preview.description)}</p>`
       : "";
     const site = escapeHtml(preview.site_name || siteNameFromUrl(preview.url || ""));
+    const cta = /kopis/i.test(preview.site_name || preview.url || "") ? "詳細を見る →" : "チケットを見る →";
     const img = _thumbHtml(preview.image);
     const noThumb = img ? "" : " ticket-preview-card--no-thumb";
-    return `<a class="ticket-preview-card${noThumb}" href="${url}" target="_blank" rel="noopener noreferrer">${img}<div class="ticket-preview-body"><span class="ticket-preview-site">${site}</span><strong class="ticket-preview-title">${title}</strong>${desc}<span class="ticket-preview-cta">チケットを見る →</span></div></a>`;
+    return `<a class="ticket-preview-card${noThumb}" href="${url}" target="_blank" rel="noopener noreferrer">${img}<div class="ticket-preview-body"><span class="ticket-preview-site">${site}</span><strong class="ticket-preview-title">${title}</strong>${desc}<span class="ticket-preview-cta">${cta}</span></div></a>`;
   }
 
   function renderSkeleton(url) {

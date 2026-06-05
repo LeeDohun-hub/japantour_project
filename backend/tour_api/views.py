@@ -23,7 +23,7 @@ from django.http import FileResponse, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.core.cache import cache
 from django.views.decorators.csrf import ensure_csrf_cookie
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 from tour_api.chat_persistence import (
     get_or_create_chat_session,
@@ -83,7 +83,11 @@ def api_juso_search(request):
     if str(_root / "src") not in sys.path:
         sys.path.insert(0, str(_root / "src"))
 
-    from src.api.juso_client import is_juso_configured, search_road_addresses
+    from src.api.juso_client import (
+        is_juso_configured,
+        is_juso_eng_configured,
+        search_road_addresses,
+    )
 
     keyword = (
         request.GET.get("keyword", "").strip()
@@ -112,8 +116,9 @@ def api_juso_search(request):
         ],
         "total": meta.get("count", len(addresses)),
         "page": page,
-        "source": "juso",
+        "source": meta.get("source") or "juso",
         "configured": is_juso_configured(),
+        "eng_configured": is_juso_eng_configured(),
     }
     if meta.get("error"):
         payload["error"] = meta["error"]
@@ -1122,6 +1127,7 @@ def _chat_profile_from_snapshot(snapshot: TravelPlanSnapshot | None) -> dict | N
     if not snapshot or not isinstance(snapshot.profile, dict):
         return None
     profile = dict(snapshot.profile)
+    # 플랜 생성 전용 키 제거
     for key in (
         "plan_mode",
         "plan_reroll",
@@ -1130,6 +1136,17 @@ def _chat_profile_from_snapshot(snapshot: TravelPlanSnapshot | None) -> dict | N
         "plan_auto_defaults",
         "days",
         "nights",
+    ):
+        profile.pop(key, None)
+    # 지역 관련 키 제거 — 챗봇 일반 질문에서 저장된 이전 여행지가
+    # VisitKorea·KOPIS·Naver 검색의 지역 필터를 오염시키는 것을 방지.
+    # 지역은 사용자의 현재 메시지에서 _infer_legacy_area_code 등으로 추론함.
+    for key in (
+        "regions",
+        "regionAreaKeys",
+        "regionCities",
+        "regionCitiesOther",
+        "accommodation",
     ):
         profile.pop(key, None)
     return profile
@@ -1185,7 +1202,22 @@ def _format_plan_snapshot_context(snapshot: TravelPlanSnapshot | None) -> str:
     )
 
 
+def _should_attach_recent_plan_context(message: str) -> bool:
+    text = (message or "").lower()
+    if not text.strip():
+        return False
+    markers = (
+        "내 플랜", "내 일정", "저장된", "저장 플랜", "방금", "아까", "위 플랜",
+        "여행플랜", "여행 플랜", "몇일차", "며칠차", "일차", "수정", "불러온",
+        "このプラン", "保存済み", "保存プラン", "さっき", "先ほど", "日目",
+        "旅程", "旅行プラン", "修正", "読み込んだ",
+    )
+    return any(m in text for m in markers)
+
+
 def _with_recent_plan_context(message: str, snapshot: TravelPlanSnapshot | None) -> str:
+    if not _should_attach_recent_plan_context(message):
+        return message
     context = _format_plan_snapshot_context(snapshot)
     if not context:
         return message
@@ -1208,6 +1240,43 @@ def _snapshot_from_share_token(token: str) -> TravelPlanSnapshot | None:
     return TravelPlanSnapshot.objects.filter(id=snapshot_id).first()
 
 
+def _plan_snapshot_queryset_for_request(request: HttpRequest):
+    qs = TravelPlanSnapshot.objects.all()
+    if request.user.is_authenticated:
+        return qs.filter(user=request.user)
+    key = request.session.session_key
+    if not key:
+        return qs.none()
+    return qs.filter(user=None, session_key=key)
+
+
+def _serialize_plan_snapshot(snapshot: TravelPlanSnapshot, request: HttpRequest, *, detail: bool = False) -> dict:
+    token = _plan_share_token(snapshot.id)
+    profile = snapshot.profile if isinstance(snapshot.profile, dict) else {}
+    metadata = snapshot.metadata if isinstance(snapshot.metadata, dict) else {}
+    payload = {
+        "id": snapshot.id,
+        "title": snapshot.title or "韓国旅行プラン",
+        "created_at": snapshot.created_at.isoformat(),
+        "updated_at": snapshot.updated_at.isoformat(),
+        "days": profile.get("days") or "",
+        "nights": profile.get("nights") or "",
+        "regions": profile.get("regionCities") or profile.get("regionCitiesOther") or profile.get("regions") or "",
+        "share_url": request.build_absolute_uri(f"/share/plan/{token}/"),
+    }
+    if detail:
+        payload.update({
+            "profile": profile,
+            "plan_text": snapshot.plan_text or "",
+            "places": snapshot.places if isinstance(snapshot.places, list) else [],
+            "metadata": metadata,
+        })
+    else:
+        text = " ".join(str(snapshot.plan_text or "").split())
+        payload["excerpt"] = text[:160]
+    return payload
+
+
 @require_POST
 def api_plan_snapshot(request):
     try:
@@ -1220,6 +1289,7 @@ def api_plan_snapshot(request):
     places = body.get("places") or []
     metadata = body.get("metadata") or {}
     title = str(body.get("title") or "").strip()[:255]
+    snapshot_id = body.get("snapshot_id")
 
     if not isinstance(profile, dict):
         return JsonResponse({"detail": "profile must be an object"}, status=400)
@@ -1240,22 +1310,61 @@ def api_plan_snapshot(request):
         "places": places[:80],
         "metadata": metadata,
     }
-    if user:
-        snapshot, _ = TravelPlanSnapshot.objects.update_or_create(
+    snapshot = None
+    if snapshot_id:
+        try:
+            snapshot = _plan_snapshot_queryset_for_request(request).filter(id=int(snapshot_id)).first()
+        except (TypeError, ValueError):
+            snapshot = None
+
+    if snapshot:
+        for field, value in defaults.items():
+            setattr(snapshot, field, value)
+        snapshot.save()
+    elif user:
+        snapshot = TravelPlanSnapshot.objects.create(
             user=user,
-            defaults=defaults,
+            **defaults,
         )
     else:
-        snapshot, _ = TravelPlanSnapshot.objects.update_or_create(
-            session_key=session_key,
+        snapshot = TravelPlanSnapshot.objects.create(
             user=None,
-            defaults=defaults,
+            **defaults,
         )
     token = _plan_share_token(snapshot.id)
     return JsonResponse({
         "ok": True,
         "snapshot_id": snapshot.id,
         "share_url": request.build_absolute_uri(f"/share/plan/{token}/"),
+    })
+
+
+@require_http_methods(["GET", "DELETE"])
+def api_plan_snapshots(request):
+    snapshots = _plan_snapshot_queryset_for_request(request)
+    if request.method == "DELETE":
+        count = snapshots.count()
+        snapshots.delete()
+        return JsonResponse({"ok": True, "deleted": count})
+    return JsonResponse({
+        "plans": [
+            _serialize_plan_snapshot(snapshot, request, detail=False)
+            for snapshot in snapshots[:50]
+        ],
+        "authenticated": request.user.is_authenticated,
+    })
+
+
+@require_http_methods(["GET", "DELETE"])
+def api_plan_snapshot_detail(request, snapshot_id: int):
+    snapshot = _plan_snapshot_queryset_for_request(request).filter(id=snapshot_id).first()
+    if not snapshot:
+        return JsonResponse({"detail": "plan not found"}, status=404)
+    if request.method == "DELETE":
+        snapshot.delete()
+        return JsonResponse({"ok": True})
+    return JsonResponse({
+        "plan": _serialize_plan_snapshot(snapshot, request, detail=True),
     })
 
 

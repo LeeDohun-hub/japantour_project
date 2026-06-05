@@ -15,9 +15,14 @@ _ALLOWED_HOSTS = frozenset(
         "www.ticket.interpark.com",
         "www.ticketlink.co.kr",
         "ticketlink.co.kr",
+        "ticket.yes24.com",
+        "ticket.melon.com",
+        "www.ticketmelon.co.kr",
+        "ticket.ssg.com",
         "www.ssglanders.com",
         "www.giantsclub.com",
         "ticket.ncdinos.com",
+        "www.kopis.or.kr",
     }
 )
 
@@ -27,9 +32,14 @@ _SITE_NAME_MAP: dict[str, str] = {
     "www.ticket.interpark.com": "INTERPARK TICKET",
     "www.ticketlink.co.kr": "チケットリンク",
     "ticketlink.co.kr": "チケットリンク",
+    "ticket.yes24.com": "YES24 TICKET",
+    "ticket.melon.com": "Melon Ticket",
+    "www.ticketmelon.co.kr": "Melon Ticket",
+    "ticket.ssg.com": "SSG LANDERS TICKET",
     "www.ssglanders.com": "SSG LANDERS TICKET",
     "www.giantsclub.com": "LOTTE GIANTS TICKET",
     "ticket.ncdinos.com": "NC DINOS TICKET",
+    "www.kopis.or.kr": "公演情報",
 }
 
 _OG_TAG_RE = re.compile(
