@@ -129,7 +129,7 @@ def api_juso_search(request):
 
 @require_GET
 def api_places_search(request):
-    """위저드 Step 3 숙박시설 검색 — Google Places Text Search."""
+    """위저드 Step 3 숙박시설 검색 — Naver Local/Maps."""
     import sys
     from pathlib import Path as _P
     _root = _P(settings.BASE_DIR).parent
@@ -268,7 +268,7 @@ def api_places_search(request):
                 "total_before_filter": len(places),
                 "filtered_out": 0,
                 "provider": "naver_maps",
-                "note": "Naver Maps Geocoding is not a full POI/ratings replacement for Google Places.",
+                "note": "Naver Maps Geocoding fallback result.",
             })
         except Exception as exc:
             logger.warning("api_places_search naver error: %s", exc)
@@ -276,7 +276,7 @@ def api_places_search(request):
     try:
         pclient = GooglePlacesClient()
         if not pclient.is_configured:
-            return JsonResponse({"places": [], "error": "Places API not configured"})
+            return JsonResponse({"places": [], "error": "Legacy place API not configured"})
         search_kwargs: dict = {
             "text_query": query,
             "language_code": "ja",
@@ -513,7 +513,7 @@ def api_places_enrich(request):
     try:
         pclient = GooglePlacesClient()
         if not pclient.is_configured:
-            return JsonResponse({"places": {}, "error": "Places API not configured"})
+            return JsonResponse({"places": {}, "error": "Legacy place API not configured"})
     except Exception as exc:
         return JsonResponse({"places": {}, "error": str(exc)})
 
@@ -560,7 +560,7 @@ def api_places_enrich(request):
 
 @require_GET
 def api_places_debug(request):
-    """Places API 직접 테스트 (DEBUG=true 전용). 브라우저에서 /api/places-debug/?q=명동 호텔 로 호출."""
+    """Legacy place debug endpoint. Disabled while Naver place mode is active."""
     from django.conf import settings as _settings
     if not _settings.DEBUG:
         return JsonResponse({"detail": "DEBUG mode only"}, status=403)
@@ -939,9 +939,9 @@ def api_naver_photo(request):
 
 @require_GET
 def api_photo(request):
-    """Google Places 사진 프록시 — API 키를 서버에서 처리해 클라이언트에 노출 방지."""
+    """Legacy place photo proxy. Disabled while Naver place mode is active."""
     if not _google_places_enabled():
-        return JsonResponse({"detail": "Google Places photos disabled"}, status=404)
+        return JsonResponse({"detail": "Legacy place photos disabled"}, status=404)
 
     name = request.GET.get("name", "").strip()
     if not name or not name.startswith("places/"):
@@ -1460,7 +1460,7 @@ def api_chat(request):
             return JsonResponse({"detail": "history item content too long"}, status=400)
         clean_history.append({"role": role, "content": content})
 
-    # 위치 정보 (선택, Places API 연동용)
+    # 위치 정보 (선택, 장소 검색용)
     latitude: float | None = None
     longitude: float | None = None
     radius_meters: int = 1000

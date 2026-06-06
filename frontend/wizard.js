@@ -3358,7 +3358,7 @@ function _mapOpenUrl(p) {
 
 function _renderMapsUnresolvedFallback(url, queryLabel) {
   const q = _normalizeQueryLabelForEnrich(queryLabel);
-  console.debug?.("Plan place link omitted: unresolved Google Places detail", { url, query: q });
+  console.debug?.("Plan place link omitted: unresolved place detail", { url, query: q });
   return "";
 }
 

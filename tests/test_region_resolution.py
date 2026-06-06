@@ -13,19 +13,25 @@ from src.api.region_resolver import (
 try:
     from src.api.google_places_client import NearbyPlace
     from src.chain.router import (
+        _build_itinerary_attraction_queries,
+        _build_itinerary_food_queries,
         _combine_itinerary_place_candidates,
         _detect_itinerary_areas,
         _expanded_tourism_areas_for_plan,
         _fmt_itinerary_daily_area_binding,
+        _has_itinerary_shopping_interest,
         _repair_wizard_itinerary_rules,
         _tourism_candidate_areas_for_plan,
     )
 except ModuleNotFoundError as exc:
     NearbyPlace = None
+    _build_itinerary_attraction_queries = None
+    _build_itinerary_food_queries = None
     _combine_itinerary_place_candidates = None
     _detect_itinerary_areas = None
     _expanded_tourism_areas_for_plan = None
     _fmt_itinerary_daily_area_binding = None
+    _has_itinerary_shopping_interest = None
     _repair_wizard_itinerary_rules = None
     _tourism_candidate_areas_for_plan = None
     _ROUTER_IMPORT_ERROR = exc
@@ -357,6 +363,52 @@ class RouterItineraryPlaceBalanceTests(unittest.TestCase):
         )
 
         self.assertEqual(len(combined), 8)
+
+    def test_kpop_without_shopping_does_not_add_mall_queries(self) -> None:
+        if _build_itinerary_attraction_queries is None or _has_itinerary_shopping_interest is None:
+            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
+        profile = {
+            "regions": ["seoul"],
+            "regionCities": "강남구",
+            "activities": ["drama", "kpop", "cafe", "nature", "photo"],
+            "additional": {"travelStyles": []},
+        }
+
+        self.assertFalse(_has_itinerary_shopping_interest(profile))
+        queries = _build_itinerary_attraction_queries("K-pop 카페 자연 포토스팟", "", profile)
+        joined = " ".join(queries)
+
+        self.assertNotIn("쇼핑몰", joined)
+        self.assertNotIn("코엑스몰", joined)
+        self.assertNotIn("현대백화점", joined)
+
+    def test_shopping_selection_allows_mall_queries(self) -> None:
+        if _build_itinerary_attraction_queries is None or _has_itinerary_shopping_interest is None:
+            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
+        profile = {
+            "regions": ["seoul"],
+            "regionCities": "강남구",
+            "activities": ["kpop", "shopping"],
+        }
+
+        self.assertTrue(_has_itinerary_shopping_interest(profile))
+        queries = _build_itinerary_attraction_queries("K-pop 쇼핑", "", profile)
+
+        self.assertTrue(any("쇼핑" in q or "코엑스몰" in q for q in queries))
+
+    def test_cafe_hopping_prioritizes_cafe_queries(self) -> None:
+        if _build_itinerary_food_queries is None:
+            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
+        profile = {
+            "regions": ["seoul"],
+            "regionCities": "성수",
+            "activities": ["cafe"],
+            "additional": {"foodPreferences": []},
+        }
+
+        queries = _build_itinerary_food_queries("카페순회 하고 싶어", "", profile)
+
+        self.assertTrue(any("유명 카페" in q or "로컬 카페" in q for q in queries[:8]))
 
 
 class RouterItineraryRepairTests(unittest.TestCase):

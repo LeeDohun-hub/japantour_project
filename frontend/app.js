@@ -440,7 +440,7 @@ function formatReplyWithLocationCards(text, places, lang) {
 }
 
 /**
- * Places API 결과를 숙소/장소 카드 HTML로 변환.
+ * 장소 검색 결과를 숙소/장소 카드 HTML로 변환.
  * @param {Array}  places   - NearbyPlace dict 배열
  * @param {string} category - "lodging" | "food" | 기타
  * @param {string} keyword  - 분류기 키워드 (예: "명동 호텔" / "明洞 ホテル")

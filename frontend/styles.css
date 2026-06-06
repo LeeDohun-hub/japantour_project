@@ -2354,7 +2354,7 @@ a.btn {
   justify-content: center;
 }
 
-/* ── Place cards (Google Places 결과) ── */
+/* ── Place cards (Naver/place search results) ── */
 .place-cards-section {
   margin-top: .75rem;
   display: flex;

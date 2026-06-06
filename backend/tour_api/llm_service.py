@@ -1,7 +1,7 @@
 """OpenAI 채팅·번역 서비스 (Django 뷰에서 사용).
 
 채팅 경로:
-  run_chat() → src/chain/router.route_and_answer() → 분류 + RAG + Places API + LLM
+  run_chat() → src/chain/router.route_and_answer() → 분류 + RAG + Naver 장소 검색 + LLM
 번역 경로:
   응답 언어가「한국어」이고 본문에 가타카나·히라가나가 섞인 경우에만
   translate_to_korean() 호출 → 보조 한국어 블록(translated_ko)
@@ -92,7 +92,7 @@ def run_chat(
     radius_meters: int = 1000,
     traveler_profile: dict | None = None,
 ) -> ChatRunResult:
-    """분류 → RAG → Places API → LLM 라우팅 파이프라인으로 응답 생성.
+    """분류 → RAG → Naver 장소 검색 → LLM 라우팅 파이프라인으로 응답 생성.
 
     Returns:
         reply, 번역, 라우팅 메타데이터

@@ -72,7 +72,7 @@ sequenceDiagram
 | OpenAI | 분류, 답변 생성, 임베딩 |
 | Naver Maps | 지도, 지오코딩 |
 | Naver Search | 장소 후보와 리뷰 신호 |
-| Google Places | 장소 후보 보강 |
+| Naver Search | 장소 후보 보강 |
 | data.go.kr | 인천공항, 공항철도, 항공, 이벤트 |
 | VisitKorea | 관광지, 축제, 숙박 |
 | JUSO | 도로명주소 검색 |
@@ -92,7 +92,7 @@ sequenceDiagram
 - CSRF와 rate limit으로 API를 보호한다.
 - `.env`에 비밀 정보를 모으고 Git에 포함하지 않는다.
 - 외부 API 실패 시 fallback 또는 공식 링크를 제공한다.
-- Google Places는 비용 관리를 위해 명시적으로 활성화한 경우에만 사용한다.
+- 장소 후보는 Naver Search/Maps를 기본으로 사용한다.
 - Streamlit은 레거시 UI이며, 데모 기준은 Django `:8000`으로 한다.
 
 ## 8. 관련 문서

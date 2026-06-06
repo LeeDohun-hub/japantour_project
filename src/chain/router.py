@@ -1,11 +1,11 @@
 """관광 챗봇 질문 라우팅 파이프라인.
 
-흐름: 분류 → 소스 선택(RAG / Places API / 일반 LLM) → 컨텍스트 조립 → 응답 생성
+흐름: 분류 → 소스 선택(RAG / Naver 장소 검색 / 일반 LLM) → 컨텍스트 조립 → 응답 생성
 
 주요 설계 원칙:
 - 사실성 우선: 검증된 데이터가 없으면 생성하지 않음
 - 장소명 환각 방지: food/lodging/shopping/leisure는 근거 없는 상호명 금지
-- 소스 분리: RAG(내부 지식) / Places API(현재 위치 주변) / 일반 LLM을 역할별로 사용
+- 소스 분리: RAG(내부 지식) / Naver 장소 검색 / 일반 LLM을 역할별로 사용
 - 확장성: RAG·Places 데이터가 없어도 안전하게 동작, 있으면 자동으로 활용
 """
 
@@ -255,10 +255,10 @@ def _filter_chat_places_by_destination(
     return filtered
 
 # ─── 장소명 생성 제한 카테고리 ──────────────────────────────────────────
-# 이 카테고리는 근거(RAG or Places API) 없이 구체적 상호명 생성 금지
+# 이 카테고리는 근거(RAG or Naver 장소 검색) 없이 구체적 상호명 생성 금지
 PLACE_NAME_RESTRICTED: frozenset[str] = frozenset({"food", "lodging", "shopping", "leisure"})
 
-# Places API 연동 가능 카테고리 → 검색 타입
+# 장소 검색 가능 카테고리 → 검색 타입
 PLACES_TYPE_MAP: dict[str, list[str]] = {
     "food": ["restaurant", "cafe"],
     # Nearby Search: 모든 숙박 타입 / Text Search: place_types[0] = "hotel" 사용
@@ -688,7 +688,7 @@ Use katakana alongside Korean place/area names (e.g., 明洞（ミョンドン�
         if has_verified_venues:
             sources = []
             if has_places:
-                sources.append("[Google Places Results]")
+                sources.append("[Verified Naver Place Results]")
             if has_visitkorea:
                 sources.append("[Visit Korea Tourism API Results]")
             src_label = " / ".join(sources)
@@ -747,8 +747,9 @@ Evening / night:
   - ABSOLUTE: [夜] slot MUST NOT contain any restaurant, cafe, bar, food stall, or any eating/drinking venue. [夜] is reserved for non-food venues only (night view, walk, park, market stall-browsing, cultural street, etc.) or lodging rest. Dinner is already covered by [夕食]; a second food slot after dinner is FORBIDDEN.
 
 Major malls / department stores (Lotte World Mall, Times Square, Starfield, Shinsegae, Hyundai):
-  - Listing known brand tenants (Dior, Hermès, LV, Chanel, Olive Young, Aland, etc.) from training knowledge is ALLOWED.
-  - Specify floor and brand cluster when known.
+  - Use malls/department stores ONLY when they appear in 「観光スポット候補」.
+  - If they are not in the candidate list, do not add shopping malls from general knowledge.
+  - When a listed mall is used, listing known brand tenants (Dior, Hermès, LV, Chanel, Olive Young, Aland, etc.) from training knowledge is ALLOWED.
 
 Area names:
   - ALWAYS use specific Korean neighborhood names (明洞メインストリート, 弘大 걷고싶은거리,
@@ -937,7 +938,7 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "\n"
             "【日程の見出し — マップ表示用】\n"
             "- 各日は必ず「1日目」「2日目」…「最終日」のような見出し行で区切る。\n"
-            "- 店舗・観光地には [Google Places Results] または [観光スポット候補] の\n"
+            "- 店舗・観光地には [Verified Naver Place Results] または [観光スポット候補] の\n"
             "  google_maps_uri を1行で必ず付ける（地図マーカー連携）。\n"
             "- **観光スポットも必ず具体名＋google_maps_uri**: 「益善洞の路地を散策」「ギャラリー巡り」\n"
             "  「周辺カフェで休憩」のような抽象表現だけの予定は禁止。候補にある実在施設・店舗名を使う。\n"
@@ -953,9 +954,8 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "  「경복궁」改行 google_maps_uri のように、必ず1つの実在地点へ落とし込む。\n"
             "- 各スポット名の直前または直後に、短い1行ガイドを添えること: 何が有名か、何を見るか、\n"
             "  何を食べるか、どんな写真が撮れるかを1文で説明する（評価・住所・地図ボタン文言は書かない）。\n"
-            "- **URLは必ず maps.google.com または goo.gl 形式で、[Google Places Results]に\n"
-            "  記載されているURLをそのままコピーすること。goo.gl/maps/XXXXXX のような\n"
-            "  トレーニングデータ由来の短縮URLを自己生成することは絶対禁止。\n"
+            "- **URLは必ず Reference Data に記載された map.naver.com 等のURLをそのままコピーすること。\n"
+            "  トレーニングデータ由来の短縮URLやGoogle URLを自己生成することは絶対禁止。\n"
             "  google_maps_uri がない場合は URLを一切書かない（でたらめURL生成禁止）。**\n"
             "\n"
             "【2日目以降 — 構成ルール】\n"
@@ -992,10 +992,10 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "  ① 候補リストに未使用の店が2件以上ある → 昼食と夕食にそれぞれ別の店を使う\n"
             "    （例）昼食\n"
             "         店名A\n"
-            "         https://maps.google.com/...\n"
+            "         https://map.naver.com/...\n"
             "         夕食\n"
             "         店名B\n"
-            "         https://maps.google.com/...\n"
+            "         https://map.naver.com/...\n"
             "  ② 該当日の未使用店が1件のみ → もう一方は同一エリア/近接エリアの検証済み候補から選ぶ（帰還日・宿泊エリアは帰還後の夕食だけ）\n"
             "  ③ 候補が完全に空 → 食事枠だけを抽象化せず、Reference Data内の最も近い検証済み食事候補を使う\n"
             "  ▶ 食事メニュー未選択の場合: 候補リストの中から多様なジャンルの店を自由に選んでよい。\n"
@@ -1095,29 +1095,21 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
     places_guidance = ""
     if has_places and category == "itinerary":
         places_guidance = """
-[ITINERARY — MEAL PLACES IN PLAN TEXT]
+[ITINERARY — VERIFIED NAVER PLACES IN PLAN TEXT]
 - Lunch and dinner: Korean restaurants (한식) where the user's preferred menu types can be eaten in-house — never wedding halls, delivery-only, or takeaway-only venues.
-- [Google Places Results] lists only venues with Google rating >= 4.0 (no rating = excluded). Never recommend lower-rated places even if named elsewhere.
-- At most ONE verified restaurant each from [Google Places Results].
-- Put the exact google_maps_uri on its own line immediately after the restaurant name (or "Name: URL" on one line).
-- Sightseeing, shopping, cafe, and meal stops must be concrete venue names from [Google Places Results] or [観光スポット候補], with the exact google_maps_uri on the next line.
+- Use only verified venue candidates from Naver Local/Blog Search or 「観光スポット候補」.
+- Prefer venues with higher Naver quality score, stronger blog reference count, recent blog evidence, and review_keywords matching the traveler preference.
+- Put the exact google_maps_uri on its own line immediately after the restaurant name (or "Name: URL" on one line). The URL may be a map.naver.com URL.
+- Sightseeing, shopping, cafe, and meal stops must be concrete venue names from [Verified Naver Place Results] or [観光スポット候補], with the exact google_maps_uri on the next line.
 - Do NOT write vague standalone activities such as "益善洞の路地を散策", "ギャラリー巡り", "周辺カフェで休憩", or "ショップ巡り" unless they are attached to a verified venue card URL.
 - Cafe hopping is not allowed as an unnamed generic activity. If any cafe candidate exists, name the specific cafe and copy its google_maps_uri.
 - Add one short guide sentence around each venue: what it is known for, what to see, what to eat, or what photo/experience to expect.
-- Do NOT paste rating, review count, address, open hours, or button labels (地図/経路) — the app renders exterior/photo, rating, address, map, and route cards automatically from the URL.
-- Do NOT list multiple restaurants per meal or dump the Places reference block into the itinerary text.
+- Do NOT paste rating, review count, address, open hours, or button labels (地図/経路) — the app renders photo, address, map, and route cards automatically from the URL.
+- Do not mention legacy providers, star ratings, or rating requirements.
+- Do NOT list multiple restaurants per meal or dump the place reference block into the itinerary text.
 - Use search_area and [日程×エリア割当] to match the correct day and region; no cross-region picks.
 - Follow traveler_profile.regions order for multi-day plans; do not default all meals to the lodging city.
 - Day 1: no restaurant names unless explicitly allowed; never use venues from a different day's region section.
-"""
-        if not _google_places_enabled():
-            places_guidance += """
-[NAVER PLACE MODE OVERRIDE]
-- The verified venue list is from official Naver Local/Blog Search signals, not Google Places ratings.
-- Prefer venues with higher Naver quality score, stronger blog reference count, recent blog evidence, and review_keywords matching the traveler preference.
-- Do not mention Google, Google Places, Google rating, exterior photo, or star-rating requirements.
-- The URL line may be a map.naver.com URL. Copy it exactly from Reference Data without shortening or inventing another URL.
-- In the itinerary body, write only the venue name, then the exact URL on the next line, then one short reason based on Naver quality/blog/review_keywords.
 """
         if plan_reroll > 0:
             avoid_line = ""
@@ -1171,7 +1163,9 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
         ticket_guidance = """
 [TICKET PLATFORM — KOPIS OpenAPI]
 - The reference block 「KOPIS 공연예술통합전산망」lists performances/exhibitions with run dates and official/detail URLs.
-- If any item overlaps the user's trip dates and is geographically feasible from their lodging/region, add a concrete time block (evening or half-day) and cite title, venue, run dates, and URL from that block only.
+- If any item overlaps the user's trip dates and is geographically feasible from their lodging/region, add at least one concrete itinerary time block (evening or half-day) unless it conflicts with arrival/departure timing.
+- For K-pop/music interests, prioritize genres/titles that are music, concert, 대중음악, コンサート, or idol-related.
+- For drama/culture interests, musical/theater/Daehak-ro performances are valid itinerary items; cite title, venue, run dates, and URL from the KOPIS block only.
 - If Waterbomb or a major festival appears there, prioritize it over generic "check local events" text.
 - Do NOT invent show names, venues, or URLs not present in that block.
 """
@@ -2604,7 +2598,7 @@ def _fetch_seongsimdang_place(
     pclient: GooglePlacesClient,
     lang: str,
 ) -> NearbyPlace | None:
-    """Google Places에서 대전 성심당 본점 후보 1건."""
+    """Legacy place fallback for Daejeon Seongsimdang; normally bypassed in Naver mode."""
     for q in _SEONGSIMDANG_SEARCH_QUERIES:
         for inc in ("bakery", "cafe", "restaurant"):
             try:
@@ -2848,6 +2842,15 @@ _KNOWN_CHAIN_PREFIXES: frozenset[str] = frozenset({
 })
 
 
+_SHOPPING_MALL_TEXT_RE = re.compile(
+    r"(쇼핑몰|백화점|지하쇼핑|지하상가|몰\b|스타필드|코엑스몰|롯데월드몰|"
+    r"롯데몰|롯데백화점|현대백화점|더현대|신세계백화점|갤러리아백화점|"
+    r"파르나스몰|IFC몰|AK플라자|두타몰|타임스퀘어|triple\s*street|"
+    r"shopping\s*mall|department\s*store|地下ショッピング|百貨店|ショッピングモール)",
+    re.IGNORECASE,
+)
+
+
 def _is_chain_place(place: NearbyPlace) -> bool:
     """체인점 여부 판정 — 지점 접미사 또는 알려진 프랜차이즈명 기준."""
     name = (place.name or "").strip()
@@ -2855,6 +2858,14 @@ def _is_chain_place(place: NearbyPlace) -> bool:
         return True
     first = _chain_name(place).lower()
     return first in _KNOWN_CHAIN_PREFIXES
+
+
+def _is_shopping_mall_place(place: NearbyPlace) -> bool:
+    cat = (place.category or "").lower().strip()
+    blob = _place_blob(place)
+    return cat in {"shopping_mall", "department_store"} or bool(
+        _SHOPPING_MALL_TEXT_RE.search(blob)
+    )
 
 
 def _dedup_food_by_chain(
@@ -3297,6 +3308,29 @@ def _food_preferences_from_profile(
     return prefs, avoid
 
 
+def _has_cafe_hopping_interest(traveler_profile: dict | None, text: str = "") -> bool:
+    profile = traveler_profile or {}
+    add = profile.get("additional") or {}
+    tokens: list[str] = []
+    tokens.extend(str(a).lower() for a in profile.get("activities") or [])
+    tokens.extend(str(a).lower() for a in add.get("foodPreferences") or [])
+    tokens.extend(str(a).lower() for a in profile.get("foodPreferences") or [])
+    blob = " ".join(tokens + [text.lower()])
+    return any(
+        key in blob
+        for key in (
+            "cafe",
+            "coffee",
+            "카페",
+            "카페순회",
+            "카페 순회",
+            "カフェ",
+            "カフェ巡り",
+            "커피",
+        )
+    )
+
+
 def _fmt_food_preference_hint(traveler_profile: dict | None) -> str:
     prefs, avoid = _food_preferences_from_profile(traveler_profile)
     lines: list[str] = []
@@ -3715,8 +3749,19 @@ def _build_itinerary_food_queries(
 
     tourism_areas = _expanded_tourism_areas_for_plan(traveler_profile)
     prefs, _ = _food_preferences_from_profile(traveler_profile)
+    has_cafe_interest = _has_cafe_hopping_interest(
+        traveler_profile, f"{user_message} {keyword}"
+    )
     for q in _food_queries_from_preferences(traveler_profile, areas):
         add(q)
+
+    if has_cafe_interest:
+        cafe_areas = (tourism_areas or areas)[:4]
+        for area in cafe_areas:
+            add(f"{area} 유명 카페")
+            add(f"{area} 로컬 카페")
+            add(f"{area} 한옥 카페")
+            add(f"{area} 디저트 카페")
 
     for area in tourism_areas or areas:
         add(f"{area} 한식 맛집")
@@ -3817,7 +3862,7 @@ def _build_itinerary_food_queries(
     return queries
 
 
-# 에리어별 유명 관광지·랜드마크 직접 검색 쿼리 (Places API에서 `tourist_attraction` 타입에 걸리지 않는 장소 포함)
+# 에리어별 유명 관광지·랜드마크 직접 검색 쿼리
 _AREA_FAMOUS_SPOTS: dict[str, list[str]] = {
     "명동": ["명동대성당 서울", "서울 남산 N타워", "남산골한옥마을 서울", "명동예술극장", "서울 남대문시장"],
     "홍대": ["홍대 걷고싶은거리 서울", "홍대 상상마당 서울", "연남동 경의선숲길", "합정 양화진외국인선교사묘원", "당인리책발전소 서울"],
@@ -4048,12 +4093,9 @@ def _has_itinerary_shopping_interest(traveler_profile: dict | None, text: str = 
         for key in (
             "shopping",
             "shop_hard",
-            "kpop",
-            "hallyu",
             "쇼핑",
             "買い物",
             "ショッピング",
-            "k-pop",
             "굿즈",
             "グッズ",
         )
@@ -4074,6 +4116,8 @@ def _build_itinerary_attraction_queries(
 
     def add(q: str) -> None:
         q = " ".join(q.split()).strip()
+        if not has_shopping_interest and _SHOPPING_MALL_TEXT_RE.search(q):
+            return
         if q and q not in seen:
             seen.add(q)
             queries.append(q)
@@ -4100,9 +4144,10 @@ def _build_itinerary_attraction_queries(
         for area in _accommodation_food_areas(traveler_profile)[:2]:
             add(f"{area} 산책")
             add(f"{area} 카페")
-            add(f"{area} 쇼핑")
-            for spot in _AREA_SHOPPING_ANCHORS.get(area, []):
-                add(spot)
+            if has_shopping_interest:
+                add(f"{area} 쇼핑")
+                for spot in _AREA_SHOPPING_ANCHORS.get(area, []):
+                    add(spot)
 
     reroll = int((traveler_profile or {}).get("plan_reroll") or 0)
     if reroll > 0 and traveler_profile:
@@ -4166,7 +4211,12 @@ def _fallback_anchor_attraction_places(
     seen: set[str] = set()
     for area in areas:
         anchor_names = list(_AREA_FAMOUS_SPOTS.get(area, []))
-        if _has_itinerary_shopping_interest(traveler_profile):
+        has_shopping_interest = _has_itinerary_shopping_interest(traveler_profile)
+        if not has_shopping_interest:
+            anchor_names = [
+                name for name in anchor_names if not _SHOPPING_MALL_TEXT_RE.search(name)
+            ]
+        if has_shopping_interest:
             anchor_names.extend(_AREA_SHOPPING_ANCHORS.get(area, []))
         for name in anchor_names:
             key = _norm_plan_place_name(name)
@@ -4341,6 +4391,9 @@ def _search_naver_places_for_itinerary(
         logger.info("Naver Search API not configured; itinerary place candidates skipped")
         return []
 
+    has_shopping_interest = _has_itinerary_shopping_interest(
+        traveler_profile, f"{user_message} {keyword}"
+    )
     limits = _itinerary_place_limits(traveler_profile)
     seed = _plan_diversity_seed(traveler_profile)
     reroll = int((traveler_profile or {}).get("plan_reroll") or 0)
@@ -4398,6 +4451,7 @@ def _search_naver_places_for_itinerary(
                 replace(p, search_area=area_hint or q[:40])
                 for p in places
                 if _is_korea_place(p) and _is_naver_attr_place(p)
+                and (has_shopping_interest or not _is_shopping_mall_place(p))
             ])
         except Exception as exc:
             logger.warning("Naver itinerary attr search [%r]: %s", q, exc)
@@ -4450,10 +4504,10 @@ def _search_places_for_itinerary(
     traveler_profile: dict | None = None,
     priority_attr_queries: list[str] | None = None,
 ) -> list[NearbyPlace]:
-    """itinerary: 숙소 좌표 Nearby + 지역별 Text Search 맛집·관광."""
+    """itinerary: Naver 장소 검색으로 지역별 맛집·관광 후보 수집."""
     try:
         if not _google_places_enabled():
-            logger.info("Google Places disabled; itinerary Places skipped")
+            logger.info("Naver place mode active")
             return _search_naver_places_for_itinerary(
                 user_message,
                 keyword,
@@ -4466,6 +4520,9 @@ def _search_places_for_itinerary(
     except Exception:
         return []
 
+    has_shopping_interest = _has_itinerary_shopping_interest(
+        traveler_profile, f"{user_message} {keyword}"
+    )
     limits = _itinerary_place_limits(traveler_profile)
     max_total = limits["max_total"]
     seed = _plan_diversity_seed(traveler_profile)
@@ -4518,6 +4575,7 @@ def _search_places_for_itinerary(
                 p for p in nearby_attr
                 if not _is_meal_candidate_place(p)
                 and _is_itinerary_attraction_candidate(p)
+                and (has_shopping_interest or not _is_shopping_mall_place(p))
                 and _is_korea_place(p)
             ]
             attr_batches.append(
@@ -4574,6 +4632,7 @@ def _search_places_for_itinerary(
                 p for p in results
                 if not _is_meal_candidate_place(p)
                 and _is_itinerary_attraction_candidate(p)
+                and (has_shopping_interest or not _is_shopping_mall_place(p))
                 and _is_korea_place(p)
             ]
             query_areas = _areas_from_region_cities(text_query)
@@ -5733,9 +5792,9 @@ def route_and_answer(
         reply_language: "日本語" | "한국어"
         history: 이전 대화 이력 (role/content dict 목록)
         openai_client: 초기화된 OpenAI 클라이언트
-        latitude: 현재 위치 위도 (Places API용, 없으면 None)
+        latitude: 현재 위치 위도 (Naver/legacy place search용, 없으면 None)
         longitude: 현재 위치 경도
-        radius_meters: Places API 검색 반경
+        radius_meters: 장소 검색 반경
     """
 
     # ── 1단계: 질문 분류 ───────────────────────────────────────────────
@@ -5838,7 +5897,7 @@ def route_and_answer(
         if area_hint and area_hint not in search_query:
             search_query = f"{area_hint} {search_query}".strip()
         if not _google_places_enabled():
-            logger.info("Google Places disabled; Places API skipped")
+            logger.info("Naver place mode active")
             try:
                 from src.api.naver_search_client import NaverSearchClient
                 nclient = NaverSearchClient()
@@ -5856,7 +5915,7 @@ def route_and_answer(
         try:
             pclient = GooglePlacesClient()
             if not pclient.is_configured:
-                logger.warning("Google API key not configured — Places API skipped")
+                logger.warning("Legacy place API key not configured — skipped")
                 return [], "API key not configured"
             results = _fetch_category_places(
                 pclient,
@@ -5868,10 +5927,10 @@ def route_and_answer(
                 radius_meters=radius_meters,
             )
             results = _filter_chat_places_by_destination(results, destination_filter)
-            logger.info("Places API [%s/%s] → %d results", category, keyword, len(results))
+            logger.info("Legacy place API [%s/%s] → %d results", category, keyword, len(results))
             return results, ""
         except Exception as exc:
-            logger.warning("Places API error [%s/%s]: %s", category, keyword, exc, exc_info=True)
+            logger.warning("Legacy place API error [%s/%s]: %s", category, keyword, exc, exc_info=True)
             return [], str(exc)
 
     def _do_flights() -> tuple[list, Any, str, str]:
@@ -6559,6 +6618,9 @@ def route_and_answer(
         prefs, _ = _food_preferences_from_profile(traveler_profile)
         travel_areas = _tourism_search_areas(traveler_profile)
         candidate_areas = _tourism_candidate_areas_for_plan(traveler_profile)
+        has_shopping_interest = _has_itinerary_shopping_interest(
+            traveler_profile, user_message
+        )
         food_places = [p for p in itinerary_places if _is_meal_candidate_place(p)]
         if prefs:
             # _refine_itinerary_food_places 에서 이미 선호+소프트폴백을 처리했으므로
@@ -6582,6 +6644,7 @@ def route_and_answer(
             p for p in itinerary_places
             if not _is_meal_candidate_place(p)
             and not _foodish_signal(p)
+            and (has_shopping_interest or not _is_shopping_mall_place(p))
         ]
         stay_attr_places: list[NearbyPlace] = []
         if needs_stay_buffer and stay_areas:
@@ -6626,7 +6689,7 @@ def route_and_answer(
         else:
             ctx_parts.append(
                 "=== 食事候補 — 取得不可 ===\n"
-                "Places APIで検証済みの飲食店リストがありません。\n"
+                "Naver場所検索で検証済みの飲食店リストがありません。\n"
                 "【厳守】店名創作は禁止。本文では候補不足・取得不可・再検索必要・現地確認などの事情を説明しない。\n"
             )
         if attr_places:
@@ -6720,6 +6783,9 @@ def route_and_answer(
     if ticket_platform_events:
         ctx_parts.append(
             "=== KOPIS 공연예술통합전산망 — 공연·전시·축제 메타 ===\n"
+            "※ 日程本文に組み込み可: 旅行期間・目的地と合う公演は、夕方〜夜または半日ブロックとして使う。\n"
+            "※ K-pop/music希望は音楽・コンサート系を優先。ドラマ/文化希望はミュージカル・大学路/劇場公演も有効。\n"
+            "※ 本文にはタイトル、会場、期間、URLをこのブロックからそのまま使う。創作URL禁止。\n"
             + fmt_ticket_platform_events(ticket_platform_events, lang)
         )
     if web_search_results:
@@ -6728,7 +6794,7 @@ def route_and_answer(
             + fmt_web_search_results(web_search_results)
         )
     if has_places and places_results:
-        place_source_label = "Naver Local/Blog Search" if any(getattr(p, "source", "") == "naver_search" for p in places_results) else "Google Places"
+        place_source_label = "Naver Local/Blog Search"
         ctx_parts.append(f"=== {place_source_label} 周辺検索結果 ===\n{_fmt_places(places_results)}")
     if has_rag:
         ctx_parts.append(f"=== 内部知識ベース検索結果 ===\n{_fmt_rag(rag_results)}")
