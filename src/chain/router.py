@@ -17,7 +17,7 @@ import logging
 import random
 import re
 import urllib.parse
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -85,6 +85,45 @@ from src.api.gocamping_client import GoCampingClient
 from src.api import region_resolver
 from src.chain.vector_store import get_vector_store
 from src.chain.prompts import CLASSIFIER_SYSTEM as _CLASSIFIER_SYSTEM
+from src.chain.router_models import RagSearchBundle, RouteResult
+from src.chain.airport_transport import (
+    arex_next_train_reply as _arex_next_train_reply,
+    fetch_arex_operations_for_now as _fetch_arex_operations_for_now,
+    icn_to_seoul_transport_reply as _icn_to_seoul_transport_reply,
+    is_arex_next_train_question as _is_arex_next_train_question,
+    is_icn_to_seoul_transport_question as _is_icn_to_seoul_transport_question,
+    minutes_from_hhmm as _minutes_from_hhmm,
+    next_arex_express_rows as _next_arex_express_rows,
+    next_arex_rows_from_api as _next_arex_rows_from_api,
+    rail_time_label as _rail_time_label,
+)
+from src.chain.concert_lookup_helpers import (
+    CHAT_CONCERT_CONCERT_ONLY_RE as _CHAT_CONCERT_CONCERT_ONLY_RE,
+    CHAT_CONCERT_KPOP_RE as _CHAT_CONCERT_KPOP_RE,
+    CHAT_CONCERT_NATIONWIDE_REGION_KEYS as _CHAT_CONCERT_NATIONWIDE_REGION_KEYS,
+    CHAT_CONCERT_RE as _CHAT_CONCERT_RE,
+    chat_concert_region_area_keys as _chat_concert_region_area_keys,
+    chat_lookup_date_window as _chat_lookup_date_window,
+    concert_artist_query as _concert_artist_query,
+    concert_filter_label as _concert_filter_label,
+    concert_lookup_reply as _concert_lookup_reply,
+    concert_period_label as _concert_period_label,
+    concert_region_label as _concert_region_label,
+    month_end as _month_end,
+    near_future_month as _near_future_month,
+)
+from src.chain.direct_chat_lookup import (
+    chat_direct_concert_lookup as _chat_direct_concert_lookup,
+    chat_direct_lookup as _chat_direct_lookup,
+    chat_direct_sports_lookup as _chat_direct_sports_lookup,
+    stream_text as _stream_text,
+)
+from src.chain.router_text_utils import (
+    HISTORY_CONTENT_LIMIT,
+    sanitize_stream_chunks as _sanitize_stream_chunks,
+    strip_internal_data_disclosure as _strip_internal_data_disclosure,
+    trim_history_content as _trim_history_content,
+)
 
 # Incheon 공항 API (구 AviationStack 대체)
 AviationClient = IncheonAirportClient
@@ -113,7 +152,6 @@ ITINERARY_MODEL = _os.environ.get("ITINERARY_MODEL", "gpt-4.1")
 ANSWER_TEMPERATURE = 0.3   # 0.7 → 0.3: 사실성 향상
 RAG_TOP_K = 8              # 5 → 8: 멀티 에리어 병합 시 area당 결과 수 확보
 HISTORY_WINDOW = 6         # 최근 N턴만 컨텍스트에 포함
-HISTORY_CONTENT_LIMIT = 2000
 
 _PROJECT_CHAT_CONTEXT = """\
 === Project / Home Screen Capability Context ===
@@ -452,704 +490,6 @@ _NEARBY_ATTRACTION_RADIUS_M = 8000
 _MAX_NEARBY_FOOD = 15   # 주변 식당 후보 확대 (기존 8 → 15)
 _MAX_NEARBY_ATTRACTIONS = 4
 _MAX_ITINERARY_PLACES_TOTAL = 30   # 전체 후보 확대 (기존 16 → 30)
-
-_INTERNAL_DATA_DISCLOSURE_RE = re.compile(
-    r"(Reference Data|데이터셋|dataset|미게재|未掲載|未記載|取得不可|取得でき|"
-    r"検証済み.*(?:ありません|ない)|API.*(?:없|無|未|取得|unavailable|available)|"
-    r"(?:생략|省略).*(?:데이터|Data|情報|미게재|未掲載)|"
-    r"時間外の可能性|営業時間外かもしれ|"
-    r"候補(?:が|は|も)?.*(?:足り|少な|終わ|尽き|ない|不足)|候補不足|"
-    r"食事候補.*(?:ない|不足|終わ|尽き)|"
-    r"후보.*(?:부족|없|다했|끝났)|식사\s*후보.*(?:부족|없|다했|끝났))",
-    re.IGNORECASE,
-)
-
-
-def _strip_internal_data_disclosure(text: str) -> str:
-    """ユーザーに見せない内部データ事情の説明行を取り除く。"""
-    if not text:
-        return text
-    lines = []
-    for line in text.splitlines():
-        if _INTERNAL_DATA_DISCLOSURE_RE.search(line):
-            continue
-        lines.append(line)
-    return "\n".join(lines).strip()
-
-
-def _trim_history_content(content: str, *, limit: int = HISTORY_CONTENT_LIMIT) -> str:
-    text = str(content or "").strip()
-    if len(text) <= limit:
-        return text
-    return text[:limit].rstrip() + "\n...[history truncated]"
-
-
-def _sanitize_stream_chunks(chunks):
-    """Streamingでも内部データ事情の説明行を画面に出さない。"""
-    buffer = ""
-    flush_chars = 360
-    guard_chars = 120
-    for chunk in chunks:
-        if not chunk:
-            continue
-        buffer += chunk
-        while "\n" in buffer:
-            line, buffer = buffer.split("\n", 1)
-            if not _INTERNAL_DATA_DISCLOSURE_RE.search(line):
-                yield line + "\n"
-        if len(buffer) > flush_chars + guard_chars:
-            safe, buffer = buffer[:-guard_chars], buffer[-guard_chars:]
-            if safe and not _INTERNAL_DATA_DISCLOSURE_RE.search(safe):
-                yield safe
-    if buffer and not _INTERNAL_DATA_DISCLOSURE_RE.search(buffer):
-        yield buffer
-
-
-_ICN_SEOUL_TRANSPORT_RE = re.compile(
-    r"(인천공항|인천국제공항|仁川空港|仁川国際空港|ICN).*(서울|서울시|서울 시내|명동|明洞|myeongdong|ソウル)"
-    r"|"
-    r"(서울|서울시|서울 시내|명동|明洞|myeongdong|ソウル).*(인천공항|인천국제공항|仁川空港|仁川国際空港|ICN)",
-    re.IGNORECASE,
-)
-
-_AREX_EXPRESS_T2_T1_SEOUL: list[tuple[str, str, str]] = [
-    ("05:16", "05:24", "06:07"),
-    ("06:00", "06:08", "06:51"),
-    ("06:30", "06:38", "07:21"),
-    ("07:05", "07:13", "07:56"),
-    ("08:10", "08:18", "09:01"),
-    ("08:58", "09:06", "09:49"),
-    ("09:30", "09:38", "10:21"),
-    ("10:10", "10:18", "11:01"),
-    ("10:50", "10:58", "11:41"),
-    ("11:30", "11:38", "12:21"),
-    ("12:10", "12:18", "13:01"),
-    ("12:45", "12:53", "13:36"),
-    ("13:20", "13:28", "14:11"),
-    ("14:00", "14:08", "14:51"),
-    ("14:40", "14:48", "15:31"),
-    ("15:20", "15:28", "16:11"),
-    ("16:00", "16:08", "16:51"),
-    ("16:40", "16:48", "17:31"),
-    ("17:20", "17:28", "18:11"),
-    ("18:10", "18:18", "19:01"),
-    ("18:35", "18:43", "19:26"),
-    ("19:15", "19:23", "20:06"),
-    ("20:05", "20:13", "20:56"),
-    ("20:55", "21:03", "21:46"),
-    ("21:50", "21:58", "22:41"),
-    ("22:40", "22:48", "23:31"),
-]
-
-_AREX_EXPRESS_FARE_KO = (
-    "직통열차 운임: 어른 13,000원 / 회원 12,500원, 어린이 9,500원, "
-    "경로·장애인·국가유공자 9,500원"
-)
-_AREX_EXPRESS_FARE_JA = (
-    "直通列車運賃: 大人13,000ウォン / 会員12,500ウォン、子ども9,500ウォン、"
-    "シニア・障がい者・国家有功者9,500ウォン"
-)
-_AREX_FARE_NOTE_KO = "교환번호·제휴카드 할인 적용 시 해당 좌석은 어른 운임으로 변경됩니다."
-_AREX_FARE_NOTE_JA = "交換番号・提携カード割引を適用する場合、該当座席は大人運賃扱いになります。"
-
-
-def _is_arex_next_train_question(message: str, keyword: str = "") -> bool:
-    text = f"{message or ''} {keyword or ''}"
-    if not re.search(r"(AREX|공항철도|직통열차|空港鉄道|直通列車)", text, re.IGNORECASE):
-        return False
-    return bool(re.search(r"(지금|현재|바로|다음|이후|탈 수|시간|열차|시각|now|next|현재 시간)", text, re.IGNORECASE))
-
-
-def _minutes_from_hhmm(hhmm: str) -> int:
-    h, m = hhmm.split(":", 1)
-    return int(h) * 60 + int(m)
-
-
-def _rail_time_label(raw: str) -> str:
-    text = str(raw or "").strip()
-    digits = re.sub(r"\D", "", text)
-    if len(digits) >= 12:
-        return f"{digits[8:10]}:{digits[10:12]}"
-    if len(digits) >= 4:
-        return f"{digits[-4:-2]}:{digits[-2:]}"
-    return text
-
-
-def _next_arex_express_rows(now: datetime | None = None, *, terminal: str = "T1", limit: int = 3) -> list[tuple[str, str]]:
-    current = now or datetime.now()
-    now_min = current.hour * 60 + current.minute
-    idx = 1 if terminal.upper() == "T1" else 0
-    rows = [(row[idx], row[2]) for row in _AREX_EXPRESS_T2_T1_SEOUL if _minutes_from_hhmm(row[idx]) >= now_min]
-    return rows[:limit]
-
-
-def _next_arex_rows_from_api(
-    operations: list[AirportRailroadOperation],
-    now: datetime,
-    *,
-    limit: int = 3,
-) -> list[tuple[str, str, str]]:
-    now_min = now.hour * 60 + now.minute
-    rows: list[tuple[int, str, str, str]] = []
-    for op in operations:
-        dep = _rail_time_label(op.departure_actual or op.departure_scheduled)
-        if not re.fullmatch(r"\d{2}:\d{2}", dep):
-            continue
-        dep_min = _minutes_from_hhmm(dep)
-        if dep_min < now_min:
-            continue
-        arr = _rail_time_label(op.arrival_actual or op.arrival_scheduled)
-        rows.append((dep_min, dep, arr, op.train_class or "Dirc"))
-    rows.sort(key=lambda row: row[0])
-    return [(dep, arr, cls) for _, dep, arr, cls in rows[:limit]]
-
-
-def _fetch_arex_operations_for_now(now: datetime) -> list[AirportRailroadOperation]:
-    client = IncheonAirportClient(timeout=8)
-    if not client.is_configured:
-        return []
-    return client.search_airport_railroad(
-        train_class="Dirc",
-        operation_date=now.strftime("%Y%m%d"),
-        station_code="100",
-        limit=200,
-    )
-
-
-def _arex_next_train_reply(
-    reply_language: str,
-    now: datetime | None = None,
-    operations: list[AirportRailroadOperation] | None = None,
-) -> str:
-    current = now or datetime.now()
-    api_rows: list[tuple[str, str, str]] = []
-    data_source = "official_static"
-    if operations is not None:
-        api_rows = _next_arex_rows_from_api(operations, current, limit=3)
-        if api_rows:
-            data_source = "api"
-    else:
-        try:
-            api_rows = _next_arex_rows_from_api(_fetch_arex_operations_for_now(current), current, limit=3)
-            if api_rows:
-                data_source = "api"
-        except Exception as exc:
-            logger.warning("AREX railroad API fallback: %s", exc)
-    fallback_rows = _next_arex_express_rows(current, terminal="T1", limit=3)
-    now_label = current.strftime("%H:%M")
-    rows = [(dep, arr) for dep, arr, _ in api_rows] if api_rows else fallback_rows
-    source_line_ko = "출처: 인천국제공항공사 공항철도 운행정보 API" if data_source == "api" else "출처: AREX 공식 시간표 기준"
-    source_line_ja = "出典: 仁川国際空港公社 空港鉄道運行情報API" if data_source == "api" else "出典: AREX公式時刻表ベース"
-    if reply_language == "日本語":
-        if not rows:
-            return (
-                f"現在時刻 {now_label} 以降、仁川空港T1発ソウル駅行きのAREX直通列車は本日分が終了しています。\n\n"
-                "一般列車または深夜バス・タクシーを検討してください。\n"
-                f"{source_line_ja}\n"
-                "AREX公式: https://www.airportrailroad.com/main"
-            )
-        lines = [f"現在時刻 {now_label} 以降、仁川空港T1からすぐ乗れるAREX直通列車です。", ""]
-        for i, (dep, arr) in enumerate(rows, 1):
-            lines.append(f"{i}. T1 {dep} 発 → ソウル駅 {arr} 着")
-        lines.extend([
-            "",
-            "T2から乗る場合は、T1発の約8分前がT2発時刻の目安です。",
-            "一般列車は直通より本数が多く、弘大入口・孔徳など途中駅で降りられます。",
-            _AREX_EXPRESS_FARE_JA,
-            _AREX_FARE_NOTE_JA,
-            source_line_ja,
-            "公式: https://www.airportrailroad.com/main",
-        ])
-        return "\n".join(lines)
-
-    if not rows:
-        return (
-            f"현재 시각 {now_label} 이후 인천공항 T1 출발 서울역행 AREX 직통열차는 오늘 운행분이 종료된 상태입니다.\n\n"
-            "이 경우 일반열차, 심야버스, 택시를 확인하는 쪽이 좋습니다.\n"
-            f"{source_line_ko}\n"
-            "AREX 공식: https://www.airportrailroad.com/main"
-        )
-    lines = [f"현재 시각 {now_label} 이후, 인천공항 T1에서 바로 탈 수 있는 AREX 직통열차입니다.", ""]
-    for i, (dep, arr) in enumerate(rows, 1):
-        lines.append(f"{i}. T1 {dep} 출발 → 서울역 {arr} 도착")
-    lines.extend([
-        "",
-        "T2에서 타는 경우에는 T1 출발보다 약 8분 빠른 시간이 T2 출발 기준입니다.",
-        "일반열차는 직통보다 배차가 더 많고, 홍대입구·공덕 등 중간역 하차가 가능합니다.",
-        _AREX_EXPRESS_FARE_KO,
-        _AREX_FARE_NOTE_KO,
-        source_line_ko,
-        "AREX 공식: https://www.airportrailroad.com/main",
-    ])
-    return "\n".join(lines)
-
-
-def _is_icn_to_seoul_transport_question(message: str, keyword: str = "") -> bool:
-    text = f"{message or ''} {keyword or ''}"
-    if not _ICN_SEOUL_TRANSPORT_RE.search(text):
-        return False
-    return bool(re.search(r"(교통|이동|가는|가려|방법|route|transport|アクセス|行き方|移動)", text, re.IGNORECASE))
-
-
-_CHAT_KBO_RE = re.compile(
-    r"\bKBO\b|프로야구|야구\s*(?:경기|일정)|野球|プロ野球",
-    re.IGNORECASE,
-)
-_CHAT_CONCERT_RE = re.compile(
-    r"콘서트|공연|티켓|예매|팬미팅|케이팝|k[-\s]?pop|idol|アイドル|コンサート|公演",
-    re.IGNORECASE,
-)
-_CHAT_CONCERT_STOPWORDS_RE = re.compile(
-    r"(콘서트|공연|정보|일정|알려|주세요|예매|티켓|팬미팅|내한|한국|대한민국|"
-    r"케이팝|아이돌|서울|인천|부산|대구|대전|광주|울산|제주|"
-    r"コンサート|公演|チケット|情報|教えて|日程|アイドル|k[-\s]?pop)",
-    re.IGNORECASE,
-)
-_CHAT_CONCERT_DATE_HINT_RE = re.compile(
-    r"(?:20\d{2}\s*년\s*)?\d{1,2}\s*월(?:\s*\d{1,2}\s*일)?|"
-    r"(?:20\d{2}\s*年\s*)?\d{1,2}\s*月(?:\s*\d{1,2}\s*日)?|"
-    r"20\d{2}[-./]\d{1,2}(?:[-./]\d{1,2})?|"
-    r"\d{1,2}[-./]\d{1,2}|"
-    r"오늘|내일|今日|明日|today|tomorrow",
-    re.IGNORECASE,
-)
-_CHAT_CONCERT_KPOP_RE = re.compile(
-    r"케이팝|k[-\s]?pop|아이돌|idol|アイドル",
-    re.IGNORECASE,
-)
-_CHAT_CONCERT_CONCERT_ONLY_RE = re.compile(
-    r"콘서트|티켓|예매|팬미팅|ケイポップ|コンサート|チケット|k[-\s]?pop|idol",
-    re.IGNORECASE,
-)
-_CHAT_CONCERT_NATIONWIDE_REGION_KEYS: tuple[str, ...] = (
-    "seoul",
-    "gyeonggi",
-    "incheon",
-    "busan",
-    "gyeongsang",
-    "jeolla",
-    "gangwon",
-    "chungcheong",
-    "jeju",
-)
-_CHAT_CONCERT_REGION_PATTERNS: tuple[tuple[str, str], ...] = (
-    (r"서울|ソウル|seoul", "seoul"),
-    (r"경기|수원|고양|일산|킨텍스|KINTEX|gyeonggi", "gyeonggi"),
-    (r"인천|仁川|incheon", "incheon"),
-    (r"부산|釜山|busan", "busan"),
-    (r"대구|울산|경북|경남|창원|포항|daegu|ulsan", "gyeongsang"),
-    (r"대전|충청|청주|천안|dajeon|daejeon", "chungcheong"),
-    (r"광주|전라|전주|목포|gwangju|jeolla", "jeolla"),
-    (r"강원|강릉|춘천|속초|gangwon", "gangwon"),
-    (r"제주|済州|jeju", "jeju"),
-)
-
-
-def _month_end(year: int, month: int) -> date:
-    if month == 12:
-        return date(year, 12, 31)
-    return date(year, month + 1, 1) - timedelta(days=1)
-
-
-def _near_future_month(year: int | None, month: int, today: date) -> int:
-    if year is not None:
-        return year
-    candidate_year = today.year
-    end_d = _month_end(candidate_year, month)
-    if end_d < today - timedelta(days=14):
-        candidate_year += 1
-    return candidate_year
-
-
-def _chat_concert_region_area_keys(message: str) -> list[str]:
-    found: list[str] = []
-    for pattern, key in _CHAT_CONCERT_REGION_PATTERNS:
-        if re.search(pattern, message or "", re.IGNORECASE) and key not in found:
-            found.append(key)
-    return found
-
-
-def _chat_lookup_date_window(message: str) -> tuple[date, date]:
-    """짧은 채팅 질문의 날짜를 추정. 연도 생략 시 가까운 미래 날짜로 해석."""
-    text = message or ""
-    today = date.today()
-    if re.search(r"오늘|今日|today", text, re.IGNORECASE):
-        return today, today
-    if re.search(r"내일|明日|tomorrow", text, re.IGNORECASE):
-        d = today + timedelta(days=1)
-        return d, d
-
-    m = re.search(r"(20\d{2})[-./년\s]+(\d{1,2})[-./월\s]+(\d{1,2})", text)
-    if m:
-        try:
-            d = date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-            return d, d
-        except ValueError:
-            pass
-
-    m = re.search(r"(\d{1,2})\s*(?:[./월])\s*(\d{1,2})\s*(?:일|日)?", text)
-    if m:
-        try:
-            d = date(today.year, int(m.group(1)), int(m.group(2)))
-            if d < today - timedelta(days=14):
-                d = date(today.year + 1, d.month, d.day)
-            return d, d
-        except ValueError:
-            pass
-
-    m = re.search(r"(20\d{2})\s*[년年]\s*(\d{1,2})\s*[월月]", text)
-    if m:
-        try:
-            y, mon = int(m.group(1)), int(m.group(2))
-            return date(y, mon, 1), _month_end(y, mon)
-        except ValueError:
-            pass
-
-    m = re.search(r"(?<!\d)(\d{1,2})\s*[월月](?!\s*\d{1,2}\s*[일日])", text)
-    if m:
-        try:
-            mon = int(m.group(1))
-            y = _near_future_month(None, mon, today)
-            return date(y, mon, 1), _month_end(y, mon)
-        except ValueError:
-            pass
-    return today, today + timedelta(days=180)
-
-
-def _stream_text(text: str):
-    return (text[i:i + 160] for i in range(0, len(text or ""), 160))
-
-
-def _chat_direct_sports_lookup(
-    message: str,
-    reply_language: str,
-    *,
-    stream: bool = False,
-) -> RouteResult | None:
-    if not _CHAT_KBO_RE.search(message or ""):
-        return None
-    start_d, end_d = _chat_lookup_date_window(message)
-    try:
-        matches = SportsScheduleClient().search(
-            leagues=["kbo"],
-            start=start_d,
-            end=end_d,
-            max_per_league=30,
-        )
-    except Exception as exc:
-        logger.warning("direct KBO chat lookup failed: %s", exc)
-        matches = []
-
-    if reply_language == "日本語":
-        reply = (
-            f"{start_d.isoformat()}のKBO公式日程を確認しました。"
-            "下のカードで試合時間・球場・公式リンクを確認できます。"
-            if matches else f"{start_d.isoformat()}のKBO試合データは見つかりませんでした。"
-        )
-    else:
-        reply = (
-            f"{start_d.isoformat()} KBO 공식 일정 기준으로 확인했습니다. "
-            "아래 카드에서 경기 시간, 구장, 공식 링크를 확인해 주세요."
-            if matches else f"{start_d.isoformat()} KBO 경기 데이터가 없습니다."
-        )
-    return RouteResult(
-        reply="" if stream else reply,
-        category="general",
-        keyword=f"KBO {start_d.isoformat()}",
-        sources_used=["sports"],
-        sports_events=matches,
-        token_stream=_stream_text(reply) if stream else None,
-    )
-
-
-def _concert_artist_query(message: str) -> str:
-    text = _CHAT_CONCERT_DATE_HINT_RE.sub(" ", message or "")
-    text = _CHAT_CONCERT_STOPWORDS_RE.sub(" ", text)
-    text = re.sub(r"\s+", " ", text).strip(" .,!?\t\r\n")
-    return text[:80]
-
-
-_CHAT_CONCERT_REGION_LABELS_KO: dict[str, str] = {
-    "seoul": "서울",
-    "gyeonggi": "경기",
-    "incheon": "인천",
-    "busan": "부산",
-    "gyeongsang": "경상권",
-    "jeolla": "전라권",
-    "gangwon": "강원권",
-    "chungcheong": "충청권",
-    "jeju": "제주",
-}
-_CHAT_CONCERT_REGION_LABELS_JA: dict[str, str] = {
-    "seoul": "ソウル",
-    "gyeonggi": "京畿",
-    "incheon": "仁川",
-    "busan": "釜山",
-    "gyeongsang": "慶尚圏",
-    "jeolla": "全羅圏",
-    "gangwon": "江原圏",
-    "chungcheong": "忠清圏",
-    "jeju": "済州",
-}
-
-
-def _concert_period_label(start_d: date, end_d: date) -> str:
-    if start_d == end_d:
-        return start_d.isoformat()
-    return f"{start_d.isoformat()}~{end_d.isoformat()}"
-
-
-def _concert_region_label(region_keys: list[str], reply_language: str) -> str:
-    if not region_keys:
-        return "全国" if reply_language == "日本語" else "전국"
-    labels = _CHAT_CONCERT_REGION_LABELS_JA if reply_language == "日本語" else _CHAT_CONCERT_REGION_LABELS_KO
-    return ", ".join(labels.get(k, k) for k in region_keys)
-
-
-def _concert_filter_label(message: str, artist: str, reply_language: str) -> str:
-    if artist:
-        return (
-            f"アーティスト/キーワード: {artist}"
-            if reply_language == "日本語"
-            else f"아티스트/키워드: {artist}"
-        )
-    if _CHAT_CONCERT_KPOP_RE.search(message or ""):
-        return (
-            "K-pop/大衆音楽コンサート"
-            if reply_language == "日本語"
-            else "K-pop/대중음악 콘서트"
-        )
-    if _CHAT_CONCERT_CONCERT_ONLY_RE.search(message or ""):
-        return "コンサート" if reply_language == "日本語" else "콘서트"
-    return "公演全体" if reply_language == "日本語" else "전체 공연"
-
-
-def _concert_lookup_reply(
-    *,
-    reply_language: str,
-    message: str,
-    artist: str,
-    region_keys: list[str],
-    start_d: date,
-    end_d: date,
-    events_count: int,
-    raw_count: int,
-    web_lines: list[str],
-) -> str:
-    period = _concert_period_label(start_d, end_d)
-    region = _concert_region_label(region_keys, reply_language)
-    filt = _concert_filter_label(message, artist, reply_language)
-
-    if reply_language == "日本語":
-        header = (
-            "KOPISで公演情報を確認しました。\n"
-            f"- 期間: {period}\n"
-            f"- 地域: {region}\n"
-            f"- 条件: {filt}\n"
-        )
-        if events_count:
-            return (
-                header
-                + f"- 結果: {events_count}件をカード表示\n\n"
-                "下のカードで日程・会場・詳細リンクを確認できます。"
-            )
-        if web_lines:
-            return (
-                header
-                + "- KOPIS結果: 条件に一致するカードなし\n\n"
-                "KOPISでは一致する公演を確認できませんでした。参考になる公式/ニュース検索結果です。\n\n"
-                + "\n".join(web_lines)
-            )
-        broader = (
-            f"\n同じ期間のKOPIS公演候補は{raw_count}件ありましたが、"
-            "K-pop/大衆音楽コンサート条件ではカード化できる一致がありませんでした。"
-            if raw_count and _CHAT_CONCERT_KPOP_RE.search(message or "")
-            else ""
-        )
-        return (
-            header
-            + "- KOPIS結果: 条件に一致するカードなし"
-            + broader
-            + "\n\n次は「7月 公演情報」「7月 ソウル コンサート」「アーティスト名 + 7月 コンサート」のように聞くと絞り込みやすいです。"
-        )
-
-    header = (
-        "KOPIS 기준으로 공연 정보를 확인했습니다.\n"
-        f"- 기간: {period}\n"
-        f"- 지역: {region}\n"
-        f"- 조건: {filt}\n"
-    )
-    if events_count:
-        return (
-            header
-            + f"- 결과: {events_count}건을 카드로 표시\n\n"
-            "아래 카드에서 일정, 장소, 상세 링크를 확인해 주세요."
-        )
-    if web_lines:
-        return (
-            header
-            + "- KOPIS 결과: 조건에 맞는 카드 없음\n\n"
-            "KOPIS에서는 일치하는 공연을 확인하지 못했습니다. 참고 가능한 공식/뉴스 검색 결과입니다.\n\n"
-            + "\n".join(web_lines)
-        )
-    broader = (
-        f"\n같은 기간의 KOPIS 공연 후보는 {raw_count}건 있었지만, "
-        "K-pop/대중음악 콘서트 조건으로 카드화할 일치 결과는 없었습니다."
-        if raw_count and _CHAT_CONCERT_KPOP_RE.search(message or "")
-        else ""
-    )
-    return (
-        header
-        + "- KOPIS 결과: 조건에 맞는 카드 없음"
-        + broader
-        + "\n\n다음에는 `7월 공연정보`, `7월 서울 콘서트`, `아티스트명 + 7월 콘서트`처럼 물으면 더 잘 좁힐 수 있습니다."
-    )
-
-
-def _chat_direct_concert_lookup(
-    message: str,
-    reply_language: str,
-    *,
-    stream: bool = False,
-) -> RouteResult | None:
-    if not _CHAT_CONCERT_RE.search(message or ""):
-        return None
-    artist = _concert_artist_query(message)
-    start_d, end_d = _chat_lookup_date_window(message)
-    if end_d < start_d:
-        end_d = start_d + timedelta(days=180)
-    region_keys = _chat_concert_region_area_keys(message)
-    profile = {
-        "activities": ["kpop"],
-        "hallyu": ["kpop"],
-        "regionAreaKeys": region_keys or list(_CHAT_CONCERT_NATIONWIDE_REGION_KEYS),
-        "flight": {
-            "depart": start_d.isoformat(),
-            "returnDate": end_d.isoformat(),
-        },
-    }
-    try:
-        events = fetch_ticket_platform_events(profile, max_total=80)
-    except Exception as exc:
-        logger.warning("direct KOPIS chat lookup failed: %s", exc)
-        events = []
-    raw_events_count = len(events)
-
-    if _CHAT_CONCERT_CONCERT_ONLY_RE.search(message or ""):
-        events = [ev for ev in events if getattr(ev, "genre_page", "") == "concert"]
-
-    if artist:
-        aliases = {artist.lower()}
-        if "세븐틴" in artist:
-            aliases.update({"seventeen", "svt", "세븐틴"})
-        events = [
-            ev for ev in events
-            if any(a and a in f"{ev.title} {ev.venue}".lower() for a in aliases)
-        ]
-
-    web_lines: list[str] = []
-    if not events and (artist or _CHAT_CONCERT_KPOP_RE.search(message or "")):
-        try:
-            wsc = WebSearchClient()
-            if wsc.is_available:
-                if artist:
-                    query = f"{artist} 콘서트 한국 일정 티켓 {start_d.year}"
-                else:
-                    area = " ".join(region_keys) if region_keys else "한국"
-                    if start_d.month == end_d.month:
-                        period = f"{start_d.year}년 {start_d.month}월"
-                    else:
-                        period = f"{start_d.isoformat()}~{end_d.isoformat()}"
-                    query = f"{area} K-pop 콘서트 일정 티켓 {period}"
-                for r in wsc.search(query, max_results=3):
-                    if r.title and r.url:
-                        web_lines.append(f"- {r.title}\n  {r.url}")
-        except Exception as exc:
-            logger.warning("direct concert web lookup failed: %s", exc)
-
-    reply = _concert_lookup_reply(
-        reply_language=reply_language,
-        message=message,
-        artist=artist,
-        region_keys=region_keys,
-        start_d=start_d,
-        end_d=end_d,
-        events_count=len(events),
-        raw_count=raw_events_count,
-        web_lines=web_lines,
-    )
-    return RouteResult(
-        reply="" if stream else reply,
-        category="general",
-        keyword=(artist or "K-pop 공연")[:80],
-        sources_used=["ticket_platform"] + (["web_search"] if web_lines else []),
-        ticket_platform_events=events[:12],
-        token_stream=_stream_text(reply) if stream else None,
-    )
-
-
-def _chat_direct_lookup(
-    message: str,
-    reply_language: str,
-    *,
-    stream: bool = False,
-) -> RouteResult | None:
-    return (
-        _chat_direct_sports_lookup(message, reply_language, stream=stream)
-        or _chat_direct_concert_lookup(message, reply_language, stream=stream)
-    )
-
-
-def _icn_to_seoul_transport_reply(reply_language: str) -> str:
-    if reply_language == "日本語":
-        return (
-            "仁川空港からソウル市内へ行くなら、まずはこの3択です。\n\n"
-            "1. AREX（空港鉄道）\n"
-            "おすすめ: ソウル駅・弘大入口・孔徳方面へ行く時\n"
-            "直通列車: T1/T2 → ソウル駅ノンストップ、約43分\n"
-            f"{_AREX_EXPRESS_FARE_JA}\n"
-            f"{_AREX_FARE_NOTE_JA}\n"
-            "一般列車: 弘大入口・孔徳・DMCなど途中駅で下車可能\n"
-            "時刻表・料金: AREX公式で確認\n"
-            "公式: https://www.airportrailroad.com/main\n\n"
-            "2. 空港リムジンバス\n"
-            "おすすめ: 明洞・市庁・東大門・江南など、ホテル近くまで行きたい時\n"
-            "料金目安: K Airport Limousineはソウル市内方面 大人18,000ウォン\n"
-            "時刻表: 路線別に公式ページで確認\n"
-            "公式: https://klimousine.com/EN/bus/bus.php\n\n"
-            "3. タクシー\n"
-            "おすすめ: 深夜到着・荷物が多い・ホテル前まで直接行きたい時\n"
-            "明洞まで: 約80〜90分 / 約47,000〜52,000ウォン + 空港高速道路通行料7,900ウォン目安\n"
-            "経路マップ: https://map.kakao.com/link/to/明洞,37.5638,126.9826\n"
-            "タクシーアプリ: Kakao T https://www.kakaomobility.com/service-kakaot/\n\n"
-            "迷ったら、ソウル駅方面はAREX、明洞・市庁・東大門のホテルならリムジンバス、深夜や大きな荷物がある時はタクシーが無難です。"
-        )
-
-    return (
-        "인천공항에서 서울시내로 갈 때는 아래 3가지 중에서 고르면 됩니다.\n\n"
-        "1. AREX(공항철도)\n"
-        "추천: 서울역, 홍대입구, 공덕 방면 이동\n"
-        "직통열차: 인천공항 T1/T2 → 서울역 논스톱, 약 43분\n"
-        f"{_AREX_EXPRESS_FARE_KO}\n"
-        f"{_AREX_FARE_NOTE_KO}\n"
-        "일반열차: 홍대입구, 공덕, 디지털미디어시티 등 중간 하차 가능\n"
-        "시간표/요금: AREX 공식에서 확인\n"
-        "공식: https://www.airportrailroad.com/main\n\n"
-        "2. 공항 리무진버스\n"
-        "추천: 명동, 시청, 동대문, 강남 등 호텔·도심 정류장까지 바로 가고 싶을 때\n"
-        "요금: K Airport Limousine 기준 서울시내 성인 18,000원\n"
-        "시간표: 노선별 공식 페이지에서 확인\n"
-        "공식: https://klimousine.com/KO/bus/bus.php\n"
-        "인천공항 버스 검색: https://www.airport.kr/ap/ko/tpt/busRouteList.do\n\n"
-        "3. 택시\n"
-        "추천: 심야 도착, 큰 짐, 호텔 앞 이동이 필요할 때\n"
-        "명동까지: 약 80~90분 / 약 47,000~52,000원 + 고속도로 통행료 7,900원 별도 기준\n"
-        "경로맵: https://map.kakao.com/link/to/명동,37.5638,126.9826\n"
-        "택시앱: Kakao T https://www.kakaomobility.com/service-kakaot/\n"
-        "택시요금 안내: https://english.seoul.go.kr/policy/transportation/modes-of-transport/taxi/\n\n"
-        "추천 기준: 서울역은 AREX, 명동·시청·동대문 호텔은 리무진버스, 심야나 큰 짐이 있으면 택시."
-    )
-
 
 # プラン再生成時: 候補プールを広げてシャッフル（毎回同じ店に偏らない）
 _FOOD_PREF_SEARCH: dict[str, list[str]] = {
@@ -1868,13 +1208,6 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
 
 # ─── RAG 검색 ──────────────────────────────────────────────────────────
 _rag_cache: list[dict] | None = None
-
-
-@dataclass
-class RagSearchBundle:
-    results: list[dict]
-    backend: str
-    area_filter: str = ""
 
 
 def _load_rag() -> list[dict]:
@@ -6293,36 +5626,6 @@ def _kto_candidate_queries(
         if len(out) >= limit:
             break
     return out
-
-
-@dataclass
-class RouteResult:
-    reply: str
-    category: str
-    keyword: str
-    sources_used: list[str] = field(default_factory=list)
-    rag_count: int = 0
-    places_count: int = 0
-    is_fallback: bool = False
-    rag_result_ids: list[str] = field(default_factory=list)
-    rag_area: str = ""
-    retrieval_backend: str = ""
-    places: list = field(default_factory=list)  # list[NearbyPlace]
-    itinerary_places: list = field(default_factory=list)
-    places_error: str = ""
-    sports_events: list = field(default_factory=list)  # list[SportsMatch]
-    flights: list = field(default_factory=list)  # list[FlightInfo]
-    flights_error: str = ""
-    airport: Any | None = None                   # AirportInfo | None
-    flight_subtype: str = ""                     # "route" | "flight_status" | "airport"
-    visitkorea_stays: list = field(default_factory=list)      # list[TourApiItem]
-    visitkorea_festivals: list = field(default_factory=list)  # list[TourApiItem]
-    visitkorea_attractions: list = field(default_factory=list)  # list[TourApiItem]
-    visitkorea_error: str = ""
-    gyeonggi_events: list = field(default_factory=list)        # list[GyeonggiEvent]
-    web_search_results: list = field(default_factory=list)     # list[WebSearchResult]
-    ticket_platform_events: list = field(default_factory=list)  # list[TicketPlatformEvent]
-    token_stream: Any | None = field(default=None, repr=False)  # Generator — streaming 모드 전용
 
 
 # ─── 위저드 플랜 생성 (분류 오류·general 폴백 방지) ─────────────────────
