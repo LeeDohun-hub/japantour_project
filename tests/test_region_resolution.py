@@ -20,6 +20,7 @@ try:
         _expanded_tourism_areas_for_plan,
         _fmt_itinerary_daily_area_binding,
         _has_itinerary_shopping_interest,
+        _merge_itinerary_places,
         _repair_wizard_itinerary_rules,
         _tourism_candidate_areas_for_plan,
     )
@@ -32,6 +33,7 @@ except ModuleNotFoundError as exc:
     _expanded_tourism_areas_for_plan = None
     _fmt_itinerary_daily_area_binding = None
     _has_itinerary_shopping_interest = None
+    _merge_itinerary_places = None
     _repair_wizard_itinerary_rules = None
     _tourism_candidate_areas_for_plan = None
     _ROUTER_IMPORT_ERROR = exc
@@ -364,6 +366,38 @@ class RouterItineraryPlaceBalanceTests(unittest.TestCase):
 
         self.assertEqual(len(combined), 8)
 
+    def test_merge_itinerary_places_avoids_previous_plan_places_when_possible(self) -> None:
+        if _merge_itinerary_places is None:
+            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
+        places = [
+            self._place("old-place", "restaurant"),
+            self._place("new-place-1", "restaurant"),
+            self._place("new-place-2", "restaurant"),
+        ]
+
+        merged = _merge_itinerary_places(
+            [places],
+            max_total=2,
+            avoid_names={"old-place"},
+            min_keep=2,
+        )
+
+        self.assertEqual([p.name for p in merged], ["new-place-1", "new-place-2"])
+
+    def test_cafe_candidates_survive_food_candidate_cap(self) -> None:
+        food = [self._place(f"restaurant-{i}", "restaurant") for i in range(20)]
+        cafes = [self._place(f"강남 카페 {i}", "카페,디저트") for i in range(6)]
+        attrs = [self._place(f"attraction-{i}", "tourist_attraction") for i in range(4)]
+
+        combined = _combine_itinerary_place_candidates(
+            food + cafes,
+            attrs,
+            traveler_profile={"days": 5, "activities": ["cafe"]},
+            max_total=30,
+        )
+
+        self.assertTrue(any("카페" in p.name for p in combined))
+
     def test_kpop_without_shopping_does_not_add_mall_queries(self) -> None:
         if _build_itinerary_attraction_queries is None or _has_itinerary_shopping_interest is None:
             self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
@@ -410,6 +444,59 @@ class RouterItineraryPlaceBalanceTests(unittest.TestCase):
 
         self.assertTrue(any("유명 카페" in q or "로컬 카페" in q for q in queries[:8]))
 
+    def test_no_food_preference_does_not_inject_bossam_queries(self) -> None:
+        if _build_itinerary_food_queries is None:
+            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
+        profile = {
+            "regions": ["seoul"],
+            "regionCities": "강남구 송파구",
+            "activities": ["shopping", "nightview", "tradition", "kpop", "cafe", "nature", "photo"],
+            "additional": {"foodPreferences": [], "travelStyles": []},
+        }
+
+        queries = _build_itinerary_food_queries("쇼핑 야경 전통문화 K-pop 카페순회 자연 포토스팟", "", profile)
+        joined = " ".join(queries)
+
+        self.assertNotIn("보쌈", joined)
+        self.assertNotIn("족발", joined)
+        self.assertNotIn("돼지국밥", joined)
+        self.assertTrue(any("카페" in q for q in queries))
+
+    def test_no_gourmet_interest_keeps_food_queries_route_basic(self) -> None:
+        if _build_itinerary_food_queries is None:
+            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
+        profile = {
+            "regions": ["seoul"],
+            "regionCities": "강남구 송파구",
+            "activities": ["shopping", "nightview", "tradition", "kpop", "cafe", "nature", "photo"],
+            "additional": {"foodPreferences": [], "travelStyles": []},
+        }
+
+        queries = _build_itinerary_food_queries("쇼핑 야경 전통문화 K-pop 카페순회 자연 포토스팟", "", profile)
+        joined = " ".join(queries)
+
+        self.assertIn("점심 맛집", joined)
+        self.assertIn("저녁 맛집", joined)
+        self.assertNotIn("유명 맛집", joined)
+        self.assertNotIn("현지인 맛집", joined)
+
+    def test_gourmet_interest_adds_signature_food_queries(self) -> None:
+        if _build_itinerary_food_queries is None:
+            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
+        profile = {
+            "regions": ["seoul"],
+            "regionCities": "강남구 송파구",
+            "activities": ["food", "shopping", "nightview"],
+            "additional": {"foodPreferences": [], "travelStyles": []},
+        }
+
+        queries = _build_itinerary_food_queries("グルメとショッピングをしたい", "", profile)
+        joined = " ".join(queries)
+
+        self.assertIn("유명 맛집", joined)
+        self.assertIn("현지인 맛집", joined)
+        self.assertIn("대표 음식 맛집", joined)
+
 
 class RouterItineraryRepairTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -455,6 +542,37 @@ class RouterItineraryRepairTests(unittest.TestCase):
         self.assertNotIn(far_url, repaired_far)
         self.assertIn("명동교자", repaired_stay)
         self.assertIn(stay_url, repaired_stay)
+
+    def test_repair_removes_civic_office_tourism_block(self) -> None:
+        profile = {
+            "plan_mode": True,
+            "days": 5,
+            "regions": ["gyeonggi"],
+            "regionCities": "고양시",
+        }
+        reply = "\n".join([
+            "4日目",
+            "午前",
+            "고양특례시청",
+            "https://www.goyang.go.kr/www/index.do",
+            "고양시의 문화와 행정의 중심입니다.",
+            "昼食",
+            "명가원설농탕",
+            "https://map.naver.com/p/search/%EB%AA%85%EA%B0%80%EC%9B%90%EC%84%A4%EB%86%8D%ED%83%95",
+        ])
+        places = [
+            self._restaurant(
+                "명가원설농탕",
+                "경기도 고양시 일산동구 일산로 438",
+                "https://map.naver.com/p/search/%EB%AA%85%EA%B0%80%EC%9B%90%EC%84%A4%EB%86%8D%ED%83%95",
+            )
+        ]
+
+        repaired = _repair_wizard_itinerary_rules(reply, places, profile, "旅行プラン")
+
+        self.assertNotIn("고양특례시청", repaired)
+        self.assertNotIn("goyang.go.kr", repaired)
+        self.assertIn("명가원설농탕", repaired)
 
 
 if __name__ == "__main__":

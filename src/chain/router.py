@@ -721,35 +721,45 @@ Real-time place search data is not available. Give a helpful answer using genera
         place_rule = """
 [ITINERARY PLACE RULE]
 STRICT SECTION USAGE — NON-NEGOTIABLE:
-  - [午前] and [午後] slots: ONLY use entries from 「観光スポット候補（食事には使わない）」. NEVER place any restaurant, cafe, food stall, bar, dessert shop, market-food stop, or eating/drinking venue in 午前 or 午後, even framed as "exterior viewing" or "photo stop." If 観光スポット候補 is insufficient for a day, reduce sightseeing count or use transport/rest — do NOT fill with food candidates and do NOT write vague walking placeholders.
+  - [午前] slots: ONLY use entries from 「観光スポット候補（食事には使わない）」. NEVER place any restaurant, cafe, food stall, bar, dessert shop, market-food stop, or eating/drinking venue in 午前.
+  - [午後] slots: use entries from 「観光スポット候補（食事には使わない）」, and when the traveler selected cafe/coffee/cafe hopping, add at most one concrete 「カフェ候補」 as an afternoon location-card stop after at least one non-food stop.
   - [昼食] and [夕食] slots: ONLY use entries from 「食事候補」. NEVER use 観光スポット候補 entries as meal items.
-  - These two sections are completely separate pools. Cross-section usage is absolutely forbidden.
+  - 「カフェ候補」 is a separate pool for itinerary rest/cafe time, not lunch/dinner. Never use cafe candidates as lunch/dinner unless no restaurant candidate exists.
 
 Restaurants / cafes:
   - Morning may include sightseeing/parks/viewpoints/experience facilities, but never schedule breakfast, brunch, morning cafe, restaurants, cafes, or any food venue before lunch.
   - On each usable sightseeing day, schedule food exactly twice: one Lunch and one Dinner. Assign a DIFFERENT verified candidate to each. These are the ONLY food stops for that day.
   - Do NOT schedule meals on an arrival day when arrival/check-in is too late, or on a departure day when the flight/check-in deadline is too early. In those cases, omit meal blocks rather than adding convenience stores, snacks, cafes, or generic nearby meals.
-  - Each lunch/dinner: ONE shop name from 「食事候補」+ google_maps_uri on the very next line (copy exactly).
-  - google_maps_uri must be copied verbatim from the candidate list — never omit or shorten it.
+  - Each lunch/dinner: ONE shop name from 「食事候補」+ the Reference Data map.naver.com URL on the very next line (copy exactly).
+  - The Naver map URL must be copied verbatim from the candidate list — never omit or shorten it.
   - NEVER use generic meal lines or fallback excuses (禁止: 「近郊で食事」「店名は記載しない」「한식店」「現地のレストラン」「韓国料理店で」「別の韓国料理店」「コンビニ」「軽食」「間食」「候補が足りない」「候補が全部終わった」).
   - If that day's 「食事候補」 is short, do not explain it to the user. Choose another verified restaurant from the same/nearest destination area. Use 「帰還日・宿泊エリア」 ONLY after an explicit return-to-accommodation block on the return day.
   - ABSOLUTE: after lunch is assigned, the IMMEDIATELY NEXT itinerary item must NOT be a restaurant, cafe, dessert, snack, market-food stop, or generic food/rest stop. This applies to afternoon labels AND numbered items such as ②/③/④.
   - The item right after lunch must be sightseeing, experience, nature, shopping, transport, or rest using non-food attraction candidates. Dinner is the next allowed food stop, separated from lunch by at least one non-food stop or a return/move/rest block.
-  - ABSOLUTE: never output consecutive food cards. A regular day has at most two food cards: one lunch and one dinner.
+  - Cafe interest exception: after the required non-food stop following lunch, add one named cafe from 「カフェ候補」 with its Naver map URL on the next line. This cafe stop does not count as lunch/dinner.
+  - Never output generic cafe text such as 「午後: カフェ休憩」, 「カフェタイム」, or 「周辺カフェで休憩」 without a cafe name and URL.
+  - ABSOLUTE: never output consecutive restaurant/cafe cards.
   - Do not duplicate the same restaurant/chain unless the whole Reference Data has only one verified restaurant.
+  - For cafes, prefer non-chain/local/famous cafes from 「カフェ候補」. Avoid chain cafes when local candidates exist.
+  - Gourmet interest selected → food remains lunch/dinner only, but choose stronger/signature/review-quality restaurants from 「食事候補」 and give a slightly richer reason tied to menu or local reputation.
+  - Gourmet interest not selected → lunch/dinner are still required, but keep meal descriptions brief and route-convenient. Do not make restaurants the main theme of the day.
   - No food preference selected → pick freely and diversely from the candidate list (any genre is fine).
 
 Evening / night:
-  - If a concrete night-friendly attraction candidate exists (night view, riverside walk, market, park, cultural street, light walk) and it is open/usable, recommend that exact candidate name + google_maps_uri.
-  - NEVER write vague walks such as 「〇〇周辺を散策」「近くを歩く」「ショッピングや散策」「롯데월드타워 주변 산책」 by themselves. Even for a walk, choose one verified candidate venue/park/street/mall from Reference Data and write its exact name + google_maps_uri so the UI can render a location card.
+  - If a concrete night-friendly attraction candidate exists (night view, riverside walk, market, park, cultural street, light walk) and it is open/usable, recommend that exact candidate name + Naver map URL.
+  - NEVER write vague walks such as 「〇〇周辺を散策」「近くを歩く」「ショッピングや散策」「롯데월드타워 주변 산책」 by themselves. Even for a walk, choose one verified candidate venue/park/street/mall from Reference Data and write its exact name + Naver map URL so the UI can render a location card.
   - Do NOT use generic text-only night lines when candidates exist (禁止: 「宿泊先で休息」「静かな夜を満喫」「宿泊先周辺のレストランやカフェで軽食・休息」「宿泊施設または民泊で宿泊・休息」).
   - If no suitable candidate is usable, end with lodging rest without explaining candidate shortage or open-hour risk. Never write 「時間外の可能性」 in the user-facing itinerary.
-  - ABSOLUTE: [夜] slot MUST NOT contain any restaurant, cafe, bar, food stall, or any eating/drinking venue. [夜] is reserved for non-food venues only (night view, walk, park, market stall-browsing, cultural street, etc.) or lodging rest. Dinner is already covered by [夕食]; a second food slot after dinner is FORBIDDEN.
+  - ABSOLUTE: [夜] slot MUST NOT contain any restaurant, cafe, bar, food stall, or any eating/drinking venue. [夜] is reserved for non-food venues only (night view, walk, park, market stall-browsing, cultural street, etc.) or lodging rest. Dinner is already covered by [夕食].
 
 Major malls / department stores (Lotte World Mall, Times Square, Starfield, Shinsegae, Hyundai):
   - Use malls/department stores ONLY when they appear in 「観光スポット候補」.
   - If they are not in the candidate list, do not add shopping malls from general knowledge.
   - When a listed mall is used, listing known brand tenants (Dior, Hermès, LV, Chanel, Olive Young, Aland, etc.) from training knowledge is ALLOWED.
+
+Government / civic offices:
+  - NEVER add city halls, ward offices, county offices, provincial offices, community service centers, police/fire stations, post offices, tax offices, courts, prosecutors' offices, public health centers, or government homepages as tourist stops.
+  - Even if an office is described as a local culture/administration center, it is not an itinerary attraction. Use a real park, museum, market, street, mall, temple, gallery, performance venue, cafe, or restaurant candidate instead.
 
 Area names:
   - ALWAYS use specific Korean neighborhood names (明洞メインストリート, 弘大 걷고싶은거리,
@@ -864,7 +874,7 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "- 本文に [HH:MM〜HH:MM] や [10:00] のような**時刻レンジ・時刻ブロックは一切書かない**。\n"
             "  （ユーザーに詰め込みすぎた日程に見えるため。移動の「約○分」は可）\n"
             "- 2日目以降は **① ② ③** の番号、または **午前 / 昼食 / 午後 / 夕食** の順序ラベルで構成。\n"
-            "- 各スポットは1行で名称＋（あれば）google_maps_uri。評価・住所・地図ボタン文言は書かない。\n"
+            "- 各スポットは1行で名称＋（あれば）Reference Dataの地図URL。評価・住所・地図ボタン文言は書かない。\n"
             "\n"
             "【1日目 到着動線 — 必須フォーマット】\n"
             "- 便到着時刻は内部計算のみ。出力は順序表現のみ（時刻レンジなし）。\n"
@@ -939,24 +949,24 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "【日程の見出し — マップ表示用】\n"
             "- 各日は必ず「1日目」「2日目」…「最終日」のような見出し行で区切る。\n"
             "- 店舗・観光地には [Verified Naver Place Results] または [観光スポット候補] の\n"
-            "  google_maps_uri を1行で必ず付ける（地図マーカー連携）。\n"
-            "- **観光スポットも必ず具体名＋google_maps_uri**: 「益善洞の路地を散策」「ギャラリー巡り」\n"
+            "  地図URL（map.naver.com）を1行で必ず付ける（地図マーカー連携）。\n"
+            "- **観光スポットも必ず具体名＋地図URL**: 「益善洞の路地を散策」「ギャラリー巡り」\n"
             "  「周辺カフェで休憩」のような抽象表現だけの予定は禁止。候補にある実在施設・店舗名を使う。\n"
             "- **カフェ巡りも店名必須**: 「カフェ巡り」「美術館周辺のカフェで休憩（店名は記載しない）」は禁止。\n"
-            "  Reference Dataにカフェ候補が1件でもあれば必ず具体的なカフェ名＋google_maps_uriを書く。\n"
+            "  Reference Dataにカフェ候補が1件でもあれば必ず具体的なカフェ名＋地図URLを書く。\n"
             "- 各スポットはカードUIで「外観写真・評価・住所・地図・経路」を表示するため、\n"
             "  本文では必ずカード化できる場所名とURLを出す。URLなしの観光/買い物/カフェ項目は禁止。\n"
             "- 本文に「外観写真」「評価」「営業中」「住所」「地図」「経路」「지도」「통로」\n"
             "  「この日の動線上の候補」等のカードUI文言を書かない。場所名の直後は\n"
-            "  google_maps_uri だけを書く（カード表示はシステム側で生成する）。\n"
+            "  地図URLだけを書く（カード表示はシステム側で生成する）。\n"
             "- 悪い例: 「明洞メインストリートでショッピング」「カフェタイム」「伝統雑貨ショッピング」。\n"
-            "  良い例: 「명동거리」改行 google_maps_uri、「쌈지길」改行 google_maps_uri、\n"
-            "  「경복궁」改行 google_maps_uri のように、必ず1つの実在地点へ落とし込む。\n"
+            "  良い例: 「명동거리」改行 map.naver.com URL、「쌈지길」改行 map.naver.com URL、\n"
+            "  「경복궁」改行 map.naver.com URL のように、必ず1つの実在地点へ落とし込む。\n"
             "- 各スポット名の直前または直後に、短い1行ガイドを添えること: 何が有名か、何を見るか、\n"
             "  何を食べるか、どんな写真が撮れるかを1文で説明する（評価・住所・地図ボタン文言は書かない）。\n"
-            "- **URLは必ず Reference Data に記載された map.naver.com 等のURLをそのままコピーすること。\n"
-            "  トレーニングデータ由来の短縮URLやGoogle URLを自己生成することは絶対禁止。\n"
-            "  google_maps_uri がない場合は URLを一切書かない（でたらめURL生成禁止）。**\n"
+            "- **URLは必ず Reference Data に記載された map.naver.com URLをそのままコピーすること。\n"
+            "  トレーニングデータ由来の短縮URLや外部地図URLを自己生成することは絶対禁止。\n"
+            "  Reference Dataに地図URLがない場合は URLを一切書かない（でたらめURL生成禁止）。**\n"
             "\n"
             "【2日目以降 — 構成ルール】\n"
             "- ①②③ または 午前・昼食・午後・夕食 の順序ラベル。各日末尾に【予算の目安】【旅行のポイント】を付記。\n"
@@ -987,7 +997,7 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "  「面類料理を提供する韓国料理店」「○○地域・차분한 분위기」のようなジャンル説明形式は\n"
             "  **食事候補セクションが完全に空のときのみ許可**。候補が1件でもあれば絶対に使用禁止。\n"
             "- **【食事回数】観光可能な旅行日は食事を昼食・夕食の2回だけ書く**:\n"
-            "  朝食・ブランチ・カフェ休憩・軽食・夜食は不可。昼食だけ/夕食だけにしない。ただし到着が遅い入国日、出国便が早い最終日は食事ブロック自体を書かない。\n"
+            "  朝食・ブランチ・軽食・夜食は不可。昼食だけ/夕食だけにしない。ただし到着が遅い入国日、出国便が早い最終日は食事ブロック自体を書かない。カフェ巡り希望時の午後カフェ候補は食事回数に含めず、必ず店名＋地図URLで場所カード化する。\n"
             "  書き方の優先順位:\n"
             "  ① 候補リストに未使用の店が2件以上ある → 昼食と夕食にそれぞれ別の店を使う\n"
             "    （例）昼食\n"
@@ -1028,10 +1038,10 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "  散策でも必ず観光スポット候補の具体施設名・公園名・通り名・モール名とURLを使う。\n"
             "- **夜の抽象文禁止**: 候補があるのに「宿泊先で休息」「静かな夜を満喫」「宿泊先周辺のレストランやカフェで軽食・休息」\n"
             "  「宿泊施設または民泊で宿泊・休息」だけで済ませない。利用可能な候補がない場合のみ、理由を書かず宿泊先で休息にする。「時間外の可能性」は本文に書かない。\n"
-            "- 選んだ店は「店名」の直後に **google_maps_uri を1行だけ** 記載。google_maps_uriは必ず\n"
+            "- 選んだ店は「店名」の直後に **Reference Dataの地図URLを1行だけ** 記載。地図URLは必ず\n"
             "  食事候補リストの値をそのままコピーすること（URL省略・改変禁止）。\n"
             "- 本文に ★評価・(○○件)・営業中・¥・住所・「地図」「経路」「지도」「통로」は **書かない**\n"
-            "  （ただし場所名＋google_maps_uriは必須。システムが外観写真・評価・住所・地図・経路カードを自動表示する）。\n"
+            "  （ただし場所名＋地図URLは必須。システムが外観写真・評価・住所・地図・経路カードを自動表示する）。\n"
             "- 【食事で避ける】・アレルギー・辛味苦手等と矛盾する店は禁止。\n"
             "\n"
             "【チケット・イベントURL】\n"
@@ -1099,10 +1109,10 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
 - Lunch and dinner: Korean restaurants (한식) where the user's preferred menu types can be eaten in-house — never wedding halls, delivery-only, or takeaway-only venues.
 - Use only verified venue candidates from Naver Local/Blog Search or 「観光スポット候補」.
 - Prefer venues with higher Naver quality score, stronger blog reference count, recent blog evidence, and review_keywords matching the traveler preference.
-- Put the exact google_maps_uri on its own line immediately after the restaurant name (or "Name: URL" on one line). The URL may be a map.naver.com URL.
-- Sightseeing, shopping, cafe, and meal stops must be concrete venue names from [Verified Naver Place Results] or [観光スポット候補], with the exact google_maps_uri on the next line.
+- Put the exact Naver map URL on its own line immediately after the restaurant name (or "Name: URL" on one line). The URL must be copied from Reference Data.
+- Sightseeing, shopping, cafe, and meal stops must be concrete venue names from [Verified Naver Place Results] or [観光スポット候補], with the exact Naver map URL on the next line.
 - Do NOT write vague standalone activities such as "益善洞の路地を散策", "ギャラリー巡り", "周辺カフェで休憩", or "ショップ巡り" unless they are attached to a verified venue card URL.
-- Cafe hopping is not allowed as an unnamed generic activity. If any cafe candidate exists, name the specific cafe and copy its google_maps_uri.
+- Cafe hopping is not allowed as an unnamed generic activity. If any cafe candidate exists, name the specific cafe and copy its Naver map URL.
 - Add one short guide sentence around each venue: what it is known for, what to see, what to eat, or what photo/experience to expect.
 - Do NOT paste rating, review count, address, open hours, or button labels (地図/経路) — the app renders photo, address, map, and route cards automatically from the URL.
 - Do not mention legacy providers, star ratings, or rating requirements.
@@ -1124,6 +1134,8 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
 - The user asked for a NEW plan variant. Build a noticeably DIFFERENT schedule from a typical first draft.
 - Pick DIFFERENT restaurants and attractions from [Reference Data] (use alternate search_area groups, not only the first entries).
 - Vary daily themes (parks, cafes, exhibitions, shopping streets) while keeping the same trip constraints (dates, transport, accommodation).
+- Prioritize unused venues from the same or nearby area. Avoid the same Naver/Maps URL, same branch name, and same exact place name when alternatives exist.
+- If enough candidates exist, make most venue choices different from the previous plan; only reuse a previous venue when the candidate pool is genuinely too small.
 - Do not repeat the same venue across lunch/dinner or multiple days unless Reference Data offers only one option.{avoid_line}
 """
     elif has_places or has_visitkorea:
@@ -1163,7 +1175,8 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
         ticket_guidance = """
 [TICKET PLATFORM — KOPIS OpenAPI]
 - The reference block 「KOPIS 공연예술통합전산망」lists performances/exhibitions with run dates and official/detail URLs.
-- If any item overlaps the user's trip dates and is geographically feasible from their lodging/region, add at least one concrete itinerary time block (evening or half-day) unless it conflicts with arrival/departure timing.
+- If any item overlaps the user's trip dates and is geographically feasible from their lodging/region, add at least one concrete itinerary time block in the main daily plan text unless it conflicts with arrival/departure timing.
+- If an event has an explicit time, place it in the matching slot: before 12:00 = 午前, 12:00-17:00 = 午後, after 17:00 = 夕方/夜. If no time is available, use evening for concerts/music and afternoon half-day for exhibitions/festivals.
 - For K-pop/music interests, prioritize genres/titles that are music, concert, 대중음악, コンサート, or idol-related.
 - For drama/culture interests, musical/theater/Daehak-ro performances are valid itinerary items; cite title, venue, run dates, and URL from the KOPIS block only.
 - If Waterbomb or a major festival appears there, prioritize it over generic "check local events" text.
@@ -2319,7 +2332,7 @@ def _fmt_penultimate_day_return_rule(
         f"▶ 귀환 당일 저녁【절대 엄수】: {dest_str} 지역 식당 사용 완전 금지. "
         f"반드시 「食事候補【帰還日・宿泊エリア】」 목록에서 숙소 근처(수도권) 식당 1건만 배치. "
         f"귀환 이동 블록 이후에 {dest_str} 지역 음식점이 등장하면 오류.\n"
-        f"▶ 귀환일을 '휴식/주변에서 식사' 같은 추상 문장만으로 끝내지 말 것. 반드시 구체 식당명과 google_maps_uri를 포함.\n"
+        f"▶ 귀환일을 '휴식/주변에서 식사' 같은 추상 문장만으로 끝내지 말 것. 반드시 구체 식당명과 네이버 지도 URL을 포함.\n"
         f"▶ 최종일(마지막 날): {dest_str} 재방문 없이 숙소 주변 또는 공항 방면 일정으로 마무리."
     )
 
@@ -2652,7 +2665,7 @@ def _fmt_daejeon_seongsimdang_hint(traveler_profile: dict | None) -> str:
         "=== 大田（대전）名物 — ソンシムダン（성심당）===\n"
         "・このプランでは **성심당（ソンシムダン）** を必ず1回以上日程に入れること"
         "（パン・軽食・お土産の定番）。\n"
-        "・食事候補リストに 성심당 がある日はその google_maps_uri を優先使用。\n"
+        "・食事候補リストに 성심당 がある日はその地図URLを優先使用。\n"
         "・リストに無い場合のみ、大田市内の実在ベーカリーとして記載可。\n"
     )
 
@@ -2808,7 +2821,7 @@ def _fmt_itinerary_daily_area_binding(traveler_profile: dict | None) -> str:
 
     lines.append(
         "※ 2日目以降は上記の希望エリア順に日程を組む。"
-        "各日の食事は該当セクションの google_maps_uri のみ。他エリアの候補を別日に流用しない。"
+        "各日の食事は該当セクションの地図URLのみ。他エリアの候補を別日に流用しない。"
     )
     return "\n".join(lines) + "\n"
 
@@ -3331,6 +3344,27 @@ def _has_cafe_hopping_interest(traveler_profile: dict | None, text: str = "") ->
     )
 
 
+def _has_gourmet_interest(traveler_profile: dict | None, text: str = "") -> bool:
+    profile = traveler_profile or {}
+    tokens: list[str] = []
+    tokens.extend(str(a).lower() for a in profile.get("activities") or [])
+    add = profile.get("additional") or {}
+    tokens.extend(str(s).lower() for s in add.get("travelStyles") or [])
+    blob = " ".join(tokens + [text.lower()])
+    return any(
+        key in blob
+        for key in (
+            "food",
+            "gourmet",
+            "グルメ",
+            "미식",
+            "구루메",
+            "맛집",
+            "food_first",
+        )
+    )
+
+
 def _fmt_food_preference_hint(traveler_profile: dict | None) -> str:
     prefs, avoid = _food_preferences_from_profile(traveler_profile)
     lines: list[str] = []
@@ -3432,6 +3466,28 @@ def _place_matches_food_pref(place: NearbyPlace, pref: str) -> bool:
     return any(kw.lower() in blob for kw in _FOOD_PREF_MATCH_KEYWORDS.get(pref, []))
 
 
+def _is_cafe_candidate_place(place: NearbyPlace) -> bool:
+    blob = _place_blob(place).lower()
+    return any(
+        kw in blob
+        for kw in (
+            "카페",
+            "커피",
+            "coffee",
+            "cafe",
+            "베이커리",
+            "디저트",
+            "빙수",
+            "スイーツ",
+            "ベーカリー",
+        )
+    )
+
+
+def _is_naver_cafe_place(place: NearbyPlace) -> bool:
+    return _is_korea_place(place) and _is_cafe_candidate_place(place)
+
+
 def _place_conflicts_unselected_prefs(place: NearbyPlace, prefs: list[str]) -> bool:
     """선택하지 않은 장르의 하드 키워드가 식당명에 강하게 나타날 경우 제외.
     soft match(_place_matches_food_pref)는 선택 pref와 겹치는 식당을 오거부하므로 제거."""
@@ -3523,19 +3579,32 @@ _ATTRACTION_NAME_EXCLUDE_RE = re.compile(
     r"관광정보센터|관광정보센타|관광안내소|관광안내센터|관광안내센타|"
     r"여행자센터|여행자센타|방문자센터|방문자센타|"
     r"협회|지부|연합회|재단|센터|지원센터|사무소|관리사무소|"
-    r"시청|군청|구청|읍사무소|면사무소|동사무소|주민센터|행정복지센터|"
-    r"경찰서|소방서|우체국|병원|약국|요양원|"
+    r"특례시청|시청(?!역)|군청(?!역)|구청(?!역)|도청(?!역)|"
+    r"시의회|도의회|군의회|구의회|의회청사|"
+    r"읍사무소|면사무소|동사무소|주민센터|행정복지센터|"
+    r"경찰서|소방서|우체국|병원|약국|요양원|보건소|세무서|교육청|법원|검찰청|"
     r"観光情報センター|観光案内所|ツーリストインフォメーション|"
+    r"市役所|区役所|郡庁|道庁|役場|住民センター|行政福祉センター|警察署|消防署|郵便局|保健所|税務署|裁判所|検察庁|"
     r"tourist\s*information|visitor\s*center|information\s*center|"
-    r"association|organization|office|senior|welfare|community\s*center|city\s*hall",
+    r"association|organization|office|senior|welfare|community\s*center|city\s*hall|district\s*office|county\s*office|"
+    r"police\s*station|fire\s*station|post\s*office|public\s*health\s*center|tax\s*office|court|prosecutor",
     re.IGNORECASE,
 )
+_CIVIC_OFFICE_URL_RE = re.compile(
+    r"https?://(?:www\.)?[^/\s]*(?:go\.kr|police\.go\.kr|fire\.[^/\s]+|court\.go\.kr|spo\.go\.kr|nts\.go\.kr)[^\s]*",
+    re.IGNORECASE,
+)
+
+
+def _is_civic_office_text(text: str | None) -> bool:
+    blob = str(text or "")
+    return bool(_ATTRACTION_NAME_EXCLUDE_RE.search(blob) or _CIVIC_OFFICE_URL_RE.search(blob))
 
 
 def _is_itinerary_attraction_candidate(place: NearbyPlace) -> bool:
     cat = (place.category or "").lower().strip()
     blob = _place_blob(place).lower()
-    if _ATTRACTION_NAME_EXCLUDE_RE.search(blob):
+    if _is_civic_office_text(blob):
         return False
     if cat in _ATTRACTION_TYPE_EXCLUDE:
         return False
@@ -3752,6 +3821,9 @@ def _build_itinerary_food_queries(
     has_cafe_interest = _has_cafe_hopping_interest(
         traveler_profile, f"{user_message} {keyword}"
     )
+    has_gourmet_interest = _has_gourmet_interest(
+        traveler_profile, f"{user_message} {keyword}"
+    )
     for q in _food_queries_from_preferences(traveler_profile, areas):
         add(q)
 
@@ -3767,11 +3839,17 @@ def _build_itinerary_food_queries(
         add(f"{area} 한식 맛집")
         add(f"{area} 점심 맛집")    # 점심 전용 쿼리
         add(f"{area} 저녁 맛집")    # 저녁 전용 쿼리
-        add(f"{area} 해장국 국밥")
-        add(f"{area} 아침식사")
-        add(f"{area} 브런치 카페")
-        # 선호 미선택 시 다양한 장르 보강
-        if not prefs:
+        if has_gourmet_interest:
+            add(f"{area} 유명 맛집")
+            add(f"{area} 현지인 맛집")
+            add(f"{area} 대표 음식 맛집")
+        # 구루메 미선택 시에도 점심/저녁 후보는 확보하되, 메뉴 테마를 과하게 주도하지 않게 한다.
+        if prefs or has_gourmet_interest:
+            add(f"{area} 해장국 국밥")
+            add(f"{area} 아침식사")
+            add(f"{area} 브런치 카페")
+        # 선호/구루메 미선택 시 다양한 장르 보강은 최소화
+        if not prefs and has_gourmet_interest:
             add(f"{area} 고기 맛집")
             add(f"{area} 한정식")
             add(f"{area} 분식")
@@ -4125,6 +4203,9 @@ def _build_itinerary_attraction_queries(
     has_shopping_interest = _has_itinerary_shopping_interest(
         traveler_profile, f"{user_message} {keyword}"
     )
+    has_cafe_interest = _has_cafe_hopping_interest(
+        traveler_profile, f"{user_message} {keyword}"
+    )
 
     for q in priority_queries or []:
         add(q)
@@ -4139,11 +4220,19 @@ def _build_itinerary_attraction_queries(
             add(f"{area} 쇼핑몰")
             for spot in _AREA_SHOPPING_ANCHORS.get(area, []):
                 add(spot)
+        if has_cafe_interest:
+            add(f"{area} 유명 카페")
+            add(f"{area} 로컬 카페")
+            add(f"{area} 감성 카페")
+            add(f"{area} 디저트 카페")
 
     if _needs_accommodation_buffer_candidates(traveler_profile, areas):
         for area in _accommodation_food_areas(traveler_profile)[:2]:
             add(f"{area} 산책")
             add(f"{area} 카페")
+            if has_cafe_interest:
+                add(f"{area} 유명 카페")
+                add(f"{area} 로컬 카페")
             if has_shopping_interest:
                 add(f"{area} 쇼핑")
                 for spot in _AREA_SHOPPING_ANCHORS.get(area, []):
@@ -4166,17 +4255,28 @@ def _merge_itinerary_places(
     *,
     max_total: int,
     shuffle_seed: int = 0,
+    avoid_names: set[str] | None = None,
+    min_keep: int = 0,
 ) -> list[NearbyPlace]:
     all_places: list[NearbyPlace] = []
+    avoided_places: list[NearbyPlace] = []
     seen: set[str] = set()
     for results in batches:
         for p in results:
             key = f"{p.name}|{p.address}"
             if key not in seen:
                 seen.add(key)
-                all_places.append(p)
+                name_key = _norm_plan_place_name(p.name)
+                url_key = _norm_plan_place_name(p.google_maps_uri)
+                if avoid_names and (name_key in avoid_names or url_key in avoid_names):
+                    avoided_places.append(p)
+                else:
+                    all_places.append(p)
     if shuffle_seed:
         all_places = _shuffled_copy(all_places, shuffle_seed)
+        avoided_places = _shuffled_copy(avoided_places, shuffle_seed + 17)
+    if len(all_places) < min_keep:
+        all_places.extend(avoided_places[: max(0, min_keep - len(all_places))])
     return all_places[:max_total]
 
 
@@ -4219,6 +4319,8 @@ def _fallback_anchor_attraction_places(
         if has_shopping_interest:
             anchor_names.extend(_AREA_SHOPPING_ANCHORS.get(area, []))
         for name in anchor_names:
+            if _is_civic_office_text(name):
+                continue
             key = _norm_plan_place_name(name)
             if not key or key in seen:
                 continue
@@ -4262,6 +4364,15 @@ def _combine_itinerary_place_candidates(
     max_total: int,
 ) -> list[NearbyPlace]:
     food_limit = _itinerary_food_candidate_limit(traveler_profile, max_total)
+    cafe_limit = 0
+    if _has_cafe_hopping_interest(traveler_profile):
+        try:
+            days = int((traveler_profile or {}).get("days") or 3)
+        except (TypeError, ValueError):
+            days = 3
+        cafe_limit = min(12, max(4, days * 2))
+    cafe_places = [p for p in food_places if _is_cafe_candidate_place(p)]
+    meal_places = [p for p in food_places if not _is_cafe_candidate_place(p)]
     combined: list[NearbyPlace] = []
     seen: set[str] = set()
 
@@ -4273,7 +4384,9 @@ def _combine_itinerary_place_candidates(
 
     for place in attr_places:
         add(place)
-    for place in food_places[:food_limit]:
+    for place in meal_places[:food_limit]:
+        add(place)
+    for place in cafe_places[:cafe_limit]:
         add(place)
     return combined
 
@@ -4394,26 +4507,57 @@ def _search_naver_places_for_itinerary(
     has_shopping_interest = _has_itinerary_shopping_interest(
         traveler_profile, f"{user_message} {keyword}"
     )
+    has_cafe_interest = _has_cafe_hopping_interest(
+        traveler_profile, f"{user_message} {keyword}"
+    )
     limits = _itinerary_place_limits(traveler_profile)
     seed = _plan_diversity_seed(traveler_profile)
     reroll = int((traveler_profile or {}).get("plan_reroll") or 0)
+    avoid_keys = _used_plan_place_avoid_keys(traveler_profile)
     areas = _detect_itinerary_areas(user_message, keyword, traveler_profile)
     food_queries = _build_itinerary_food_queries(user_message, keyword, traveler_profile)
     attr_queries = _build_itinerary_attraction_queries(
         user_message, keyword, traveler_profile, priority_attr_queries
     )
+    cafe_queries: list[str] = []
+    if has_cafe_interest:
+        seen_cafe_q: set[str] = set()
+        for q in food_queries + attr_queries:
+            if any(token in q for token in ("카페", "커피", "cafe", "coffee")) and q not in seen_cafe_q:
+                seen_cafe_q.add(q)
+                cafe_queries.append(q)
+        cafe_area_sources: list[str] = []
+        for area in (_expanded_tourism_areas_for_plan(traveler_profile) or []) + areas:
+            if area and area not in cafe_area_sources:
+                cafe_area_sources.append(area)
+        for tok in _parse_region_city_tokens(_region_cities_text(traveler_profile)):
+            if tok and tok not in cafe_area_sources:
+                cafe_area_sources.append(tok)
+        for area in _accommodation_food_areas(traveler_profile):
+            if area and area not in cafe_area_sources:
+                cafe_area_sources.append(area)
+        for area in cafe_area_sources[:8]:
+            for suffix in ("카페", "유명 카페", "로컬 카페", "디저트 카페", "감성 카페"):
+                q = f"{area} {suffix}"
+                if q not in seen_cafe_q:
+                    seen_cafe_q.add(q)
+                    cafe_queries.append(q)
     # Reserve separate slots so food queries don't crowd out attraction queries.
     # Food: up to 10 queries (5 results each). Attractions: up to 8 queries (3 results each).
-    _food_cap = 10
-    _attr_cap = 12
+    _food_cap = 14 if reroll > 0 or avoid_keys else 10
+    _attr_cap = 18 if reroll > 0 or avoid_keys else 12
+    _cafe_cap = 10 if has_cafe_interest else 0
     if reroll > 0:
         food_queries = _shuffled_copy(food_queries, seed)
         attr_queries = _shuffled_copy(attr_queries, seed)
+        cafe_queries = _shuffled_copy(cafe_queries, seed + 5)
     food_batch_queries = food_queries[:_food_cap]
     attr_batch_queries = attr_queries[:_attr_cap]
+    cafe_batch_queries = cafe_queries[:_cafe_cap]
 
     food_batches = []
     attr_batches = []
+    cafe_batches = []
     for q in food_batch_queries:
         area_hint = ""
         for area in areas:
@@ -4423,16 +4567,36 @@ def _search_naver_places_for_itinerary(
         try:
             places = client.search_places(
                 q,
-                display=min(5, limits["max_food_per_area"]),
+                display=min(7 if (reroll > 0 or avoid_keys) else 5, limits["max_food_per_area"] + 2),
                 area_hint=area_hint,
             )
             food_batches.append([
                 replace(p, search_area=area_hint or q[:40])
                 for p in places
-                if _is_korea_place(p) and _is_naver_food_place(p)
+                if _is_korea_place(p) and _is_naver_food_place(p) and not _is_cafe_candidate_place(p)
             ])
         except Exception as exc:
             logger.warning("Naver itinerary food search [%r]: %s", q, exc)
+
+    for q in cafe_batch_queries:
+        area_hint = ""
+        for area in areas:
+            if area and area in q:
+                area_hint = area
+                break
+        try:
+            places = client.search_places(
+                q,
+                display=7 if (reroll > 0 or avoid_keys) else 5,
+                area_hint=area_hint,
+            )
+            cafe_batches.append([
+                replace(p, search_area=area_hint or q[:40])
+                for p in places
+                if _is_naver_cafe_place(p)
+            ])
+        except Exception as exc:
+            logger.warning("Naver itinerary cafe search [%r]: %s", q, exc)
 
     for q in attr_batch_queries:
         area_hint = ""
@@ -4443,7 +4607,7 @@ def _search_naver_places_for_itinerary(
         try:
             places = client.search_places(
                 q,
-                display=5,
+                display=7 if (reroll > 0 or avoid_keys) else 5,
                 area_hint=area_hint,
                 geocode=False,
             )
@@ -4460,6 +4624,8 @@ def _search_naver_places_for_itinerary(
         food_batches,
         max_total=_itinerary_food_candidate_limit(traveler_profile, limits["max_total"]),
         shuffle_seed=seed if reroll > 0 else 0,
+        avoid_names=avoid_keys,
+        min_keep=8,
     )
     attr_merged = _merge_itinerary_places(
         attr_batches,
@@ -4469,6 +4635,15 @@ def _search_naver_places_for_itinerary(
             limits["max_nearby_attr"],
         ),
         shuffle_seed=seed if reroll > 0 else 0,
+        avoid_names=avoid_keys,
+        min_keep=limits["max_nearby_attr"],
+    )
+    cafe_merged = _merge_itinerary_places(
+        cafe_batches,
+        max_total=min(limits["max_total"], max(8, int((traveler_profile or {}).get("days") or 3) * 3)),
+        shuffle_seed=seed if reroll > 0 else 0,
+        avoid_names=avoid_keys,
+        min_keep=min(6, max(1, int((traveler_profile or {}).get("days") or 3))),
     )
     min_attr = min(
         _itinerary_attr_candidate_limit(
@@ -4485,7 +4660,7 @@ def _search_naver_places_for_itinerary(
             shuffle_seed=0,
         )
     merged = _combine_itinerary_place_candidates(
-        food_merged,
+        food_merged + cafe_merged,
         attr_merged,
         traveler_profile=traveler_profile,
         max_total=limits["max_total"],
@@ -4935,6 +5110,26 @@ def _norm_plan_place_name(text: str | None) -> str:
     return re.sub(r"\s+", "", str(text or "").strip().lower().strip("「」『』\"'`"))
 
 
+def _used_plan_place_avoid_keys(traveler_profile: dict | None) -> set[str]:
+    profile = traveler_profile or {}
+    out: set[str] = set()
+    for raw in profile.get("avoid_place_names") or []:
+        key = _norm_plan_place_name(str(raw))
+        if key:
+            out.add(key)
+    for item in profile.get("used_plan_places") or []:
+        vals: tuple[object | None, object | None]
+        if isinstance(item, dict):
+            vals = (item.get("name"), item.get("url"))
+        else:
+            vals = (item, None)
+        for val in vals:
+            key = _norm_plan_place_name(str(val or ""))
+            if key:
+                out.add(key)
+    return out
+
+
 def _repair_itinerary_place_urls(reply: str, places: list[NearbyPlace]) -> str:
     """LLM이 장소명은 썼지만 maps URL을 누락한 경우, 검증済み 후보 URL을 복구한다.
 
@@ -5152,11 +5347,31 @@ def _repair_wizard_itinerary_rules(
             idx += 1
             continue
 
+        next_line = lines[idx + 1] if idx + 1 < len(lines) else ""
+        if stripped and not _itinerary_slot_from_line(stripped) and not _ITINERARY_DAY_RE.match(stripped):
+            civic_block = _is_civic_office_text(stripped) or _is_civic_office_text(next_line)
+            if civic_block:
+                idx += 1
+                if idx < len(lines) and (
+                    _MAPS_URL_IN_TEXT_RE.search(lines[idx])
+                    or _CIVIC_OFFICE_URL_RE.search(lines[idx])
+                ):
+                    idx += 1
+                if idx < len(lines):
+                    tail = lines[idx].strip()
+                    if (
+                        tail
+                        and not _MAPS_URL_IN_TEXT_RE.search(tail)
+                        and not _ITINERARY_DAY_RE.match(tail)
+                        and not _itinerary_slot_from_line(tail)
+                    ):
+                        idx += 1
+                continue
+
         if stripped and not _MAPS_URL_IN_TEXT_RE.search(stripped) and _ITINERARY_BAD_PLACEHOLDER_RE.search(stripped):
             idx += 1
             continue
 
-        next_line = lines[idx + 1] if idx + 1 < len(lines) else ""
         url_match = _MAPS_URL_IN_TEXT_RE.search(next_line)
         if stripped and url_match and not _MAPS_URL_IN_TEXT_RE.search(stripped):
             url_key = _plan_maps_url_key(url_match.group(0))
@@ -6517,11 +6732,22 @@ def route_and_answer(
     rag_results = rag_bundle.results
 
     plan_reroll = int((traveler_profile or {}).get("plan_reroll") or 0)
-    avoid_place_names = [
-        str(n).strip()
-        for n in (traveler_profile or {}).get("avoid_place_names") or []
-        if str(n).strip()
-    ]
+    avoid_place_names: list[str] = []
+    seen_avoid_names: set[str] = set()
+    for n in (traveler_profile or {}).get("avoid_place_names") or []:
+        name = str(n).strip()
+        key = _norm_plan_place_name(name)
+        if name and key not in seen_avoid_names:
+            seen_avoid_names.add(key)
+            avoid_place_names.append(name)
+    for item in (traveler_profile or {}).get("used_plan_places") or []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        key = _norm_plan_place_name(name)
+        if name and key not in seen_avoid_names:
+            seen_avoid_names.add(key)
+            avoid_place_names.append(name)
     if plan_reroll > 0:
         div_seed = _plan_diversity_seed(traveler_profile)
         visitkorea_festivals = _shuffled_copy(visitkorea_festivals, div_seed)
@@ -6559,6 +6785,26 @@ def route_and_answer(
     # ── 5단계: 컨텍스트 조립 ──────────────────────────────────────────
     ctx_parts: list[str] = [_PROJECT_CHAT_CONTEXT]
     if category == "itinerary":
+        used_places = [
+            item for item in (traveler_profile or {}).get("used_plan_places") or []
+            if isinstance(item, dict) and str(item.get("name") or "").strip()
+        ]
+        if used_places:
+            rows = []
+            for item in used_places[-40:]:
+                parts = [str(item.get("name") or "").strip()]
+                if item.get("category"):
+                    parts.append(f"type={item.get('category')}")
+                if item.get("area"):
+                    parts.append(f"area={str(item.get('area'))[:40]}")
+                if item.get("url"):
+                    parts.append(f"url={item.get('url')}")
+                rows.append(" | ".join(parts))
+            ctx_parts.append(
+                "=== Used Plan Places Memory — avoid for this regeneration ===\n"
+                + "\n".join(rows)
+                + "\n※ 同じ旅行条件で以前の日程本文に使われた場所。候補が十分ある場合は同じ店名・同じURL・同じ支店を使わず、未使用の同一/近接エリア候補を優先する。候補不足の説明は本文に出さない。\n"
+            )
         flight_constraints = _fmt_traveler_flight_constraints(traveler_profile)
         if flight_constraints:
             ctx_parts.append(
@@ -6584,6 +6830,16 @@ def route_and_answer(
         food_pref_hint = _fmt_food_preference_hint(traveler_profile)
         if food_pref_hint:
             ctx_parts.append(food_pref_hint)
+        if _has_gourmet_interest(traveler_profile, user_message):
+            ctx_parts.append(
+                "=== 食事方針 ===\n"
+                "グルメ希望あり: 昼食・夕食は必須のまま、候補内で代表メニュー・レビュー品質・地域らしさが強い店を優先し、理由を少し詳しく書く。\n"
+            )
+        else:
+            ctx_parts.append(
+                "=== 食事方針 ===\n"
+                "グルメ希望なし: 昼食・夕食は必須。ただし食事説明は短く、移動導線に合う実在店を選び、観光・買い物・自然・K-pop等の選択済み目的を日程の主役にする。\n"
+            )
         budget_hint = _fmt_budget_hint(traveler_profile)
         if budget_hint:
             ctx_parts.append(budget_hint)
@@ -6607,12 +6863,12 @@ def route_and_answer(
         ctx_parts.append(
             "=== Daily itinerary skeleton — meals are limited to lunch and dinner ===\n"
             "For each usable sightseeing day, use this order: "
-            "Morning sightseeing/experience 1 stop -> Lunch with one verified restaurant name + google_maps_uri -> "
-            "Afternoon sightseeing/experience 1-2 stops -> Dinner with a different verified restaurant name + google_maps_uri -> "
+            "Morning sightseeing/experience 1 stop -> Lunch with one verified restaurant name + Naver map URL -> "
+            "Afternoon sightseeing/experience 1-2 stops -> Dinner with a different verified restaurant name + Naver map URL -> "
             "Return to lodging OR one night-view/light-walk stop.\n"
             "Arrival/departure days are exceptions: if arrival/check-in is too late or departure/check-in is too early, do not output lunch/dinner for that day.\n"
-            "The first item after Lunch must never be food: no restaurant, cafe, dessert, snack, bakery, market-food, or another meal stop. Insert a non-food attraction/experience/nature/shopping/transport/rest item before any later dinner.\n"
-            "Never output more than two meal stops in one day. The only meal slots are Lunch and Dinner. If meal candidates are limited, reduce sightseeing stops before adding extra food.\n"
+            "The first item after Lunch must never be food: no restaurant, cafe, dessert, snack, bakery, market-food, or another meal stop. Insert a non-food attraction/experience/nature/shopping/transport/rest item before any cafe or dinner.\n"
+            "Never output more than two meal stops in one day. The only meal slots are Lunch and Dinner. A cafe-time stop is allowed only from 「カフェ候補」 when cafe interest exists, and never as lunch/dinner.\n"
             "Never write generic meal placeholders such as nearby meal, find locally, restaurant not specified, local restaurant, or another Korean restaurant.\n"
         )
         prefs, _ = _food_preferences_from_profile(traveler_profile)
@@ -6621,7 +6877,11 @@ def route_and_answer(
         has_shopping_interest = _has_itinerary_shopping_interest(
             traveler_profile, user_message
         )
-        food_places = [p for p in itinerary_places if _is_meal_candidate_place(p)]
+        cafe_places = [p for p in itinerary_places if _is_cafe_candidate_place(p)]
+        food_places = [
+            p for p in itinerary_places
+            if _is_meal_candidate_place(p) and not _is_cafe_candidate_place(p)
+        ]
         if prefs:
             # _refine_itinerary_food_places 에서 이미 선호+소프트폴백을 처리했으므로
             # 여기서 재필터 하지 않음 → 소프트폴백 식당이 소멸되는 이중필터 버그 방지.
@@ -6640,10 +6900,12 @@ def route_and_answer(
                 p for p in food_places if _place_in_stay_zone(p, stay_areas)
             ]
         # 목적 관광지 기반 관광 스팟 필터 (식사와 동일 기준)
+        cafe_keys = {f"{p.name}|{p.address}" for p in cafe_places}
         attr_all_places = [
             p for p in itinerary_places
             if not _is_meal_candidate_place(p)
             and not _foodish_signal(p)
+            and f"{p.name}|{p.address}" not in cafe_keys
             and (has_shopping_interest or not _is_shopping_mall_place(p))
         ]
         stay_attr_places: list[NearbyPlace] = []
@@ -6670,7 +6932,7 @@ def route_and_answer(
                 "=== 食事候補（優先: ユーザーの好みメニュー → 次点: その他韓国料理）===\n"
                 + _fmt_itinerary_food_by_day_zones(food_places, traveler_profile)
                 + "\n※ 各日は見出しエリアのセクションの店のみ使用。リスト外の店名創作禁止。\n"
-                + "※ 昼食・夕食は各1店（異なる店）。店名の直後の行に google_maps_uri を必ずコピー。\n"
+                + "※ 昼食・夕食は各1店（異なる店）。店名の直後の行に地図URL（map.naver.com）を必ずコピー。\n"
                 + "※ 観光可能な旅行日は昼食・夕食を各1店だけ書く。入国が遅い日・出国が早い日は食事ブロックを書かない。\n"
                 + "※ 名洞・弘大など日別見出しに具体エリアがある日は、ソウル詳細エリアの該当店を昼食・夕食に必ず使用。候補があるのに「店名は記載しない」は禁止。\n"
                 + "※ 該当日の候補が足りない場合も本文では説明しない。同一エリア/近接エリアの検証済み候補から選ぶ。帰還日・宿泊エリア候補は帰還後の夕食だけ使用可。「近郊で食事」「店名は記載しない」「コンビニ」「軽食」「間食」は禁止。\n"
@@ -6692,11 +6954,22 @@ def route_and_answer(
                 "Naver場所検索で検証済みの飲食店リストがありません。\n"
                 "【厳守】店名創作は禁止。本文では候補不足・取得不可・再検索必要・現地確認などの事情を説明しない。\n"
             )
+        if cafe_places and _has_cafe_hopping_interest(traveler_profile, user_message):
+            ctx_parts.append(
+                "=== カフェ候補（昼食・夕食には使わない／午後の休憩用）===\n"
+                + _fmt_places(
+                    _dedup_food_by_chain(cafe_places[:12], max_per_chain=1, seen={}),
+                    group_by_area=True,
+                )
+                + "\n※ カフェ好き・カフェ巡り希望がある場合、観光可能日の午後に1件まで具体店名＋地図URL（map.naver.com）で組み込む。これは「カフェ休憩」という文字だけではなく、必ず位置情報カードになる店名とURLにする。\n"
+                + "※ 昼食直後には置かず、必ず観光/体験/買い物/移動など非飲食スポットを1つ挟んでから入れる。\n"
+                + "※ チェーン店より、ローカル・有名・雰囲気のあるカフェを優先。候補があるのに抽象的な「カフェ休憩」「カフェタイム」「周辺カフェで休憩」だけで済ませない。\n"
+            )
         if attr_places:
             ctx_parts.append(
                 "=== 観光スポット候補（食事には使わない）===\n"
                 + _fmt_places(attr_places, group_by_area=True)
-                + "\n※ 観光はこのリストの名称＋google_maps_uriのみ。リスト外の創作禁止。\n"
+                + "\n※ 観光はこのリストの名称＋地図URL（map.naver.com）のみ。リスト外の創作禁止。\n"
             )
         if stay_attr_places:
             ctx_parts.append(
@@ -6717,14 +6990,16 @@ def route_and_answer(
                 "- 見出しは「1日目」「2日目」…「最終日」。■1일째・Day1英語のみは不可。\n"
                 "- 各ブロックは ①②③ または 午前・昼食・午後・夕食。\n"
                 "- 午前は観光地・公園・展望台・体験施設なら可。朝食・朝ごはん・朝カフェ・ブランチ・食堂・レストラン・カフェは書かない。\n"
+                "- カフェ好き/カフェ巡り希望があり「カフェ候補」がある場合、観光可能日の午後に1件まで具体店名＋地図URL（map.naver.com）を入れる。チェーンよりローカル・有名カフェを優先。「午後: カフェ休憩」だけのテキストは禁止。\n"
                 "- 食事候補に載った店のみ店名可。載っていなければ店名禁止。\n"
-                "- 観光可能な旅行日は昼食・夕食とも具体店名＋google_maps_uriを使う。食事はこの2回だけ。入国が遅い日・出国が早い日は食事ブロックを書かない。「近郊で食事」「店名は記載しない」「コンビニ」「軽食」「間食」「候補が足りない」「候補が全部終わった」は禁止。\n"
-                "- 昼食の直後は食堂・レストラン・カフェ・デザート・軽食店・市場グルメ禁止。午後ラベルだけでなく、②③④など番号付きの次項目も禁止。必ず観光/体験/自然/買い物/移動/休憩を1つ挟む。\n"
-                "- 飲食店カードを連続させない。1日の飲食店カードは昼食1件＋夕食1件の最大2件だけ。午前・午後・夜に食事候補を出さない。\n"
+                "- 観光可能な旅行日は昼食・夕食とも具体店名＋地図URL（map.naver.com）を使う。食事はこの2回だけ。入国が遅い日・出国が早い日は食事ブロックを書かない。「近郊で食事」「店名は記載しない」「コンビニ」「軽食」「間食」「候補が足りない」「候補が全部終わった」は禁止。\n"
+                "- 昼食の直後は食堂・レストラン・カフェ・デザート・軽食店・市場グルメ禁止。午後ラベルだけでなく、②③④など番号付きの次項目も禁止。必ず観光/体験/自然/買い物/移動/休憩を1つ挟む。その後ならカフェ候補を1件だけ入れてよい。\n"
+                "- 飲食店カードを連続させない。午前・夜に食事候補やカフェ候補を出さない。\n"
                 "- 午後・夜の「周辺散策」「近くを歩く」「ショッピングや散策」は禁止。散策でも必ず候補リスト内の具体地点名＋URLで出す。\n"
                 "- 夜は夜景・散策・市場・公園など夜向きの具体候補が利用可能な場合だけ場所名＋URLで出す。使える候補がない場合だけ理由を書かず宿泊先で休息。\n"
+                "- 旅行期間中の公演・展示・イベント候補がReference Dataにある場合、下部カードだけに任せず本文の日別プランへ入れる。明示時刻があれば午前/午後/夕方夜に合わせ、時刻がなければコンサートは夕方〜夜、展示・フェスは午後半日ブロックに置く。\n"
                 "- 候補があるのに「宿泊先で休息」「静かな夜を満喫」「宿泊先周辺のレストランやカフェで軽食・休息」だけで済ませない。\n"
-                "- 場所を書く形式は必ず2行: 1行目=候補リストと完全一致する場所名、2行目=その候補のgoogle_maps_uri。説明文や評価はその後に1文だけ。\n"
+                "- 場所を書く形式は必ず2行: 1行目=候補リストと完全一致する場所名、2行目=その候補の地図URL（map.naver.com）。説明文や評価はその後に1文だけ。\n"
                 "- 「外観写真」「評価」「営業中」「住所」「地図」「経路」「지도」「통로」等のカードUI文言は本文に書かない。\n"
                 "- 同じ場所名を同じ日や別日に再利用しない。選択肢が限られる場合は、その日のスポット数を減らして移動・休憩に回す。\n"
                 "- Reference Data不足、食事候補リスト不足、候補が足りない、候補が全部終わった、時間外の可能性、現地で探す、当日確認、店名未記載という説明を本文に出さない。\n"
@@ -6778,6 +7053,7 @@ def route_and_answer(
     if gyeonggi_events:
         ctx_parts.append(
             "=== 전국공연행사정보표준데이터 — 行事・フェスティバル ===\n"
+            "※ 旅行期間に合う行事は、下部カードだけでなく日程本文の午前/午後/夕方夜ブロックにも組み込む。明示時刻がない場合、フェス・展示・地域行事は午後半日、音楽・公演系は夕方〜夜を優先。\n"
             + fmt_gyeonggi_events(gyeonggi_events, lang)
         )
     if ticket_platform_events:
@@ -6880,6 +7156,11 @@ def route_and_answer(
                 traveler_profile,
                 user_message,
             )
+            if not final.strip():
+                return (
+                    "プラン本文を生成できませんでした。候補の絞り込みが強すぎる可能性があります。\n"
+                    "「別のプランを生成」を押して、もう一度作成してください。"
+                )
         return final
 
     # ── streaming 모드: token generator를 RouteResult에 포함해 반환 ──────

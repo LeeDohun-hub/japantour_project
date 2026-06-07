@@ -266,14 +266,34 @@ function mapOpenUrl(p) {
   return q ? `https://map.naver.com/p/search/${q}` : "#";
 }
 
-function directionsUrl(p) {
-  const raw = p?.maps_url || p?.google_maps_uri || "";
-  if (/map\.naver\.com|naver\.me/i.test(raw)) return raw;
-  if (p?.latitude != null && p?.longitude != null) {
-    const q = encodeURIComponent(p.name || `${p.latitude},${p.longitude}`);
-    return `https://map.naver.com/p/search/${q}?c=${p.longitude},${p.latitude},16,0,0,0,dh`;
+function naverCoordsFromPlaceOrUrl(p) {
+  const lat = p?.latitude != null && p.latitude !== "" ? Number(p.latitude) : null;
+  const lng = p?.longitude != null && p.longitude !== "" ? Number(p.longitude) : null;
+  if (lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng)) {
+    return { lat, lng };
   }
-  const q = encodeURIComponent(p?.name || p?.address || "");
+  const raw = String(p?.maps_url || p?.google_maps_uri || "");
+  const m = raw.match(/[?&]c=([0-9.]+),([0-9.]+),/);
+  if (!m) return null;
+  const parsedLng = Number(m[1]);
+  const parsedLat = Number(m[2]);
+  if (Number.isNaN(parsedLat) || Number.isNaN(parsedLng)) return null;
+  return { lat: parsedLat, lng: parsedLng };
+}
+
+function directionsUrl(p) {
+  const label = String(p?.name || p?.address || "").trim();
+  const coords = naverCoordsFromPlaceOrUrl(p);
+  if (coords) {
+    const q = encodeURIComponent(label || `${coords.lat},${coords.lng}`);
+    return `https://map.naver.com/p/directions/-/${coords.lng},${coords.lat},${q},PLACE_POI/-/transit?c=${coords.lng},${coords.lat},15,0,0,0,dh`;
+  }
+  const raw = String(p?.maps_url || p?.google_maps_uri || "");
+  if (/map\.naver\.com|naver\.me/i.test(raw)) {
+    const q = encodeURIComponent(`${label} 경로`.trim());
+    return q ? `https://map.naver.com/p/search/${q}` : raw;
+  }
+  const q = encodeURIComponent(`${label} 경로`.trim());
   return q ? `https://map.naver.com/p/search/${q}` : "#";
 }
 

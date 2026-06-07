@@ -1605,6 +1605,7 @@ function _buildAccomDisplayBase() {
 
 // ── PLAN GENERATION ───────────────────────────────────────────────────────
 let _planRerollCount = 0;
+const _USED_PLAN_PLACE_LIMIT = 80;
 
 const PLAN_MSGS = [
   "情報を整理しています...",
@@ -1626,6 +1627,48 @@ function _collectPlanPlaceNames(reply, places) {
   return [...names].slice(0, 30);
 }
 
+function _collectUsedPlanPlaces(reply, places) {
+  const now = new Date().toISOString();
+  const linked = _placesLinkedInPlan(reply, places);
+  const byName = new Map();
+  for (const p of linked) {
+    const name = (p.name || "").trim();
+    if (!name) continue;
+    const key = _normalizePlaceName(name);
+    if (!key || byName.has(key)) continue;
+    byName.set(key, {
+      name,
+      url: p.google_maps_uri || p.maps_url || "",
+      category: _isMealPlaceForRefs(p) ? "meal" : _isCafePlaceForRefs(p) ? "cafe" : "place",
+      area: p.search_area || p.address || "",
+      used_at: now,
+    });
+  }
+  const existing = Array.isArray(wizardData.used_plan_places)
+    ? wizardData.used_plan_places
+    : [];
+  const merged = new Map();
+  for (const item of existing) {
+    const name = (item?.name || "").trim();
+    if (!name) continue;
+    const key = _normalizePlaceName(name) || name.toLowerCase();
+    if (key) merged.set(key, item);
+  }
+  for (const [key, item] of byName.entries()) merged.set(key, item);
+  return [...merged.values()].slice(-_USED_PLAN_PLACE_LIMIT);
+}
+
+function _planMemoryAvoidNames() {
+  const names = new Set();
+  for (const item of wizardData.used_plan_places || []) {
+    if (item?.name) names.add(String(item.name).trim());
+  }
+  for (const name of wizardData.avoid_place_names || []) {
+    if (name) names.add(String(name).trim());
+  }
+  return [...names].filter(Boolean).slice(-_USED_PLAN_PLACE_LIMIT);
+}
+
 function _collectLockedPlanItems() {
   if (!window.PlanMapView?.getLockedItems) return [];
   return window.PlanMapView.getLockedItems()
@@ -1635,28 +1678,6 @@ function _collectLockedPlanItems() {
 
 function _buildPlanAutoDefaults(d) {
   const days = Math.max(1, Number(d.days || 3));
-  const seedText = [
-    ...(d.regions || []),
-    d.regionCities || "",
-    d.regionCitiesOther || "",
-    String(days),
-  ].join("|");
-  let seed = 0;
-  for (const ch of seedText) seed = (seed + ch.charCodeAt(0)) % 997;
-
-  const foodSets = [
-    ["grilled_meat", "soup", "cafe"],
-    ["bossam", "noodles", "cafe"],
-    ["chicken", "snack", "soup"],
-    ["seafood", "grilled_meat", "cafe"],
-  ];
-  const styleSets = [
-    ["must_see", "food_first", "local_vibe"],
-    ["sns_hot", "culture", "food_first"],
-    ["healing", "nature", "cafe"],
-    ["experience", "local_vibe", "food_first"],
-  ];
-  const idx = seed % foodSets.length;
   const dailyJpy = days >= 5 ? 12000 : 10000;
   return {
     budget: {
@@ -1669,8 +1690,8 @@ function _buildPlanAutoDefaults(d) {
     additional: {
       companion: "friends",
       pace: days >= 4 ? "relaxed" : "packed",
-      foodPreferences: foodSets[idx],
-      travelStyles: styleSets[idx],
+      foodPreferences: [],
+      travelStyles: [],
       auto: true,
     },
   };
@@ -1714,10 +1735,11 @@ async function generatePlan(isReroll = false) {
     wizardData.plan_reroll = _planRerollCount;
     wizardData.plan_variant_seed = Date.now();
   } else {
-    _planRerollCount = 0;
-    wizardData.plan_reroll = 0;
+    const hasUsedMemory = Array.isArray(wizardData.used_plan_places) && wizardData.used_plan_places.length > 0;
+    _planRerollCount = hasUsedMemory ? Math.max(_planRerollCount, 1) : 0;
+    wizardData.plan_reroll = hasUsedMemory ? _planRerollCount : 0;
     delete wizardData.plan_variant_seed;
-    delete wizardData.avoid_place_names;
+    wizardData.avoid_place_names = _planMemoryAvoidNames();
   }
 
   const autoDefaults = _buildPlanAutoDefaults(wizardData);
@@ -1745,6 +1767,8 @@ async function generatePlan(isReroll = false) {
     arrival_airport: wizardData.flight?.arrival_airport || getArrivalAirportIata(),
     departure_airport: wizardData.flight?.departure_airport || getDepartureAirportIata(),
     locked_plan_items: _collectLockedPlanItems(),
+    used_plan_places: wizardData.used_plan_places || [],
+    avoid_place_names: _planMemoryAvoidNames(),
   };
 
   try {
@@ -1804,6 +1828,10 @@ async function generatePlan(isReroll = false) {
           throw new Error(msg.message || "stream error");
         }
       }
+    }
+
+    if (!fullReply.trim()) {
+      throw new Error("プラン本文が空でした。もう一度生成してください。");
     }
 
     setTimeout(async () => {
@@ -2242,6 +2270,26 @@ function buildPrompt(isReroll = false) {
   const sportParts = (d.sports || []).map((s) => spMap[s] || s);
   if (activityParts.length) {
     lines.push(`【やりたいこと】${activityParts.join("・")}`);
+    const actSet = new Set(actMerged);
+    const activityIntents = [
+      actSet.has("shopping") && "shopping",
+      actSet.has("nightview") && "nightview",
+      actSet.has("tradition") && "tradition",
+      actSet.has("drama") && "drama",
+      actSet.has("nature") && "nature",
+      actSet.has("photo") && "photo",
+    ].filter(Boolean);
+    const timedEventIntents = [
+      actSet.has("kpop") && "kpop",
+      (actSet.has("sports") || (d.sports || []).length > 0) && "sports",
+      actSet.has("vacation") && "vacation",
+    ].filter(Boolean);
+    const mealDetailLevel = actSet.has("food") ? "high" : "normal";
+    lines.push(
+      `【内部方針 meal_policy】lunch_required=true / dinner_required=true / gourmet_selected=${actSet.has("food")} / meal_detail_level=${mealDetailLevel} / cafe_as_afternoon_stop=${actSet.has("cafe")}`,
+      `【内部方針 activity_intents】${activityIntents.length ? activityIntents.join(", ") : "none"}`,
+      `【内部方針 timed_event_intents】${timedEventIntents.length ? timedEventIntents.join(", ") : "none"}`
+    );
   }
   if (sportParts.length) {
     lines.push(`【スポーツ観戦】${sportParts.join("・")} — Reference Dataの試合日程をプランに組み込むこと`);
@@ -2341,18 +2389,19 @@ function buildPrompt(isReroll = false) {
     "【表示形式】時刻レンジ（例:[10:00〜11:00]）は書かない。各日は「1日目」「2日目」見出し＋「①②③」または「午前」「昼食」「午後」「夕食」。",
     "【日程密度】観光可能な旅行日は、観光/体験2〜3件＋昼食1件＋夕食1件を基本上限にする。食事は昼食・夕食の2回だけ。車移動でも同一市内という理由だけで観光地・イベント・食事を詰め込みすぎない。イベント/スポーツ観戦日は観光を1〜2件に減らす。",
     "【夜スロット絶対禁止】[夜]スロットには飲食店・カフェ・バー・屋台・食事場所を一切置かない。[夜]は夜景・散歩・公園・文化エリア・宿泊休憩のみ。夕食は[夕食]スロットで済ませる。夕食後の追加飲食は禁止。",
-    "【カード表示用ノイズ禁止】本文に「外観写真」「評価」「営業中」「住所」「地図」「経路」「지도」「통로」「この日の動線上の候補」「予算の目安」を場所名の直前直後に書かない。場所名の直後は google_maps_uri だけを書く。",
-    "【食事 — 厳守】Reference Dataの「食事候補」リストの実在店のみ。朝食は入れない。観光可能な旅行日の食事は昼食1件・夕食1件の2回だけ。昼食・夕食は店名＋次行に google_maps_uri を書く。到着が遅い入国日・出国が早い最終日は食事ブロックを書かない。食事候補は昼食・夕食スロット以外で絶対に使わない。午前・午後・夜に食堂/レストラン/カフェ/デザート/市場グルメ/軽食/屋台/バーを置くことは禁止。「近郊で食事」「店名は記載しない」「한식店」「現地のレストラン」「別の韓国料理店」「コンビニ」「軽食」「間食」「候補が足りない/全部終わった」は禁止。該当日の候補が足りない場合は、本文で説明せず、同一エリアまたは近接する目的地エリアの検証済み候補から選ぶ。帰還日・宿泊エリア候補は帰還後の夕食だけ使用可。",
-    "【観光】「観光スポット候補」リストの施設名＋URLのみ。リスト外の創作禁止。「〇〇周辺を散策」「〇〇 일대/주변 산책」「近くを歩く」「ショッピングや散策」だけの抽象予定は禁止。散策でも必ず候補リスト内の具体施設名・公園名・通り名・モール名＋google_maps_uriを書き、UIカード化できる位置情報にする。",
+    "【カード表示用ノイズ禁止】本文に「外観写真」「評価」「営業中」「住所」「地図」「経路」「지도」「통로」「この日の動線上の候補」「予算の目安」を場所名の直前直後に書かない。場所名の直後はReference Dataの地図URL（map.naver.com）だけを書く。",
+    "【食事 — 厳守】Reference Dataの「食事候補」リストの実在店のみ。朝食は入れない。観光可能な旅行日の食事は昼食1件・夕食1件の2回だけ。昼食・夕食は店名＋次行にReference Dataの地図URL（map.naver.com）を書く。到着が遅い入国日・出国が早い最終日は食事ブロックを書かない。食事候補は昼食・夕食スロット以外で絶対に使わない。午前・夜に食堂/レストラン/カフェ/デザート/市場グルメ/軽食/屋台/バーを置くことは禁止。午後はカフェ巡り希望かつReference Dataに「カフェ候補」がある場合のみ、カフェ候補の実在店名＋地図URLを1件入れてよい。「近郊で食事」「店名は記載しない」「한식店」「現地のレストラン」「別の韓国料理店」「コンビニ」「軽食」「間食」「候補が足りない/全部終わった」は禁止。該当日の候補が足りない場合は、本文で説明せず、同一エリアまたは近接する目的地エリアの検証済み候補から選ぶ。帰還日・宿泊エリア候補は帰還後の夕食だけ使用可。",
+    "【観光】「観光スポット候補」リストの施設名＋URLのみ。リスト外の創作禁止。「〇〇周辺を散策」「〇〇 일대/주변 산책」「近くを歩く」「ショッピングや散策」だけの抽象予定は禁止。散策でも必ず候補リスト内の具体施設名・公園名・通り名・モール名＋地図URLを書き、UIカード化できる位置情報にする。",
     "【スポーツ】Sports Schedule Resultsの試合またはオフシーズン案内をそのまま記載。ジム・ストリートへの置き換え禁止。",
     "営業時間・料金・チケットは必要な場合だけ文末で一言。本文に「時間外の可能性」「営業時間外かもしれません」は書かない。",
     "【朝の扱い】午前に観光地・公園・展望台・体験施設を入れるのは可。ただし朝食・朝ごはん・朝カフェ・ブランチ・食堂・レストラン・カフェは入れない。朝の飲食店訪問は禁止。食事店は昼食と夕食だけ。"
   );
   lines.push(
-    "【食事込みの1日構成 — 絶対】観光可能な旅行日は必ずこの順番で作る: 午前=観光/体験1件（飲食店不可） → 昼食=実在店名+google_maps_uri → 午後=観光/体験1〜2件 → 夕食=昼食と別の実在店名+google_maps_uri → 夜=宿泊先へ戻る、または夜景/軽い散策1件。入国が遅い日・出国が早い日はこの食事構成を使わず、移動・休息だけにする。",
-    "【昼食直後の飲食店禁止 — 最重要】昼食を入れたら、その次の予定（午後ブロック、②③などの番号付き次項目、昼食直後の行）に食堂・レストラン・カフェ・デザート・軽食店・市場グルメを絶対に置かない。昼食の次は必ず観光スポット候補の施設、体験、自然、買い物、移動、または休憩にする。カフェ巡り希望・グルメ希望があっても昼食直後は飲食店禁止。",
-    "【飲食店連続禁止】昼食と夕食の間には必ず非飲食の観光/体験/自然/買い物/移動/休憩を1件以上挟む。飲食店・カフェ・デザート・屋台・市場グルメを2件以上連続させない。1日に飲食店カードは昼食1件＋夕食1件の最大2件だけ。",
-    "【夕方・夜の具体スポット】夕食後または夜ブロックは、候補に夜景・川沿い散策・市場・公園・文化通りなど夜に向く具体スポットがあり、利用可能と判断できる場合だけ、場所名＋google_maps_uriで推薦する。「ロッテワールドタワー周辺を散策」のような周辺散策文だけで終わらせず、必ず具体地点を出す。",
+    "【食事込みの1日構成 — 絶対】観光可能な旅行日は必ずこの順番で作る: 午前=観光/体験1件（飲食店不可） → 昼食=実在店名+地図URL → 午後=観光/体験1〜2件 → 夕食=昼食と別の実在店名+地図URL → 夜=宿泊先へ戻る、または夜景/軽い散策1件。入国が遅い日・出国が早い日はこの食事構成を使わず、移動・休息だけにする。",
+    "【昼食直後の飲食店禁止 — 最重要】昼食を入れたら、その次の予定（午後ブロック、②③などの番号付き次項目、昼食直後の行）に食堂・レストラン・カフェ・デザート・軽食店・市場グルメを絶対に置かない。昼食の次は必ず観光スポット候補の施設、体験、自然、買い物、移動、または休憩にする。その後ならカフェ巡り希望時に限り、カフェ候補の具体店名＋地図URLを1件入れてよい。",
+    "【カフェ巡り — 位置情報UI必須】「午後: カフェ休憩」「カフェタイム」「周辺カフェで休憩」だけのテキストは禁止。必ずReference Dataの「カフェ候補」から店名を1つ選び、直後の行に地図URL（map.naver.com）を書く。これによりカフェも場所カード/UIとして表示される。",
+    "【飲食店連続禁止】昼食と夕食の間には必ず非飲食の観光/体験/自然/買い物/移動/休憩を1件以上挟む。飲食店・カフェ・デザート・屋台・市場グルメを2件以上連続させない。カフェ候補は昼食/夕食とは別の午後スポット扱いで、午前・夜には置かない。",
+    "【夕方・夜の具体スポット】夕食後または夜ブロックは、候補に夜景・川沿い散策・市場・公園・文化通りなど夜に向く具体スポットがあり、利用可能と判断できる場合だけ、場所名＋地図URLで推薦する。「ロッテワールドタワー周辺を散策」のような周辺散策文だけで終わらせず、必ず具体地点を出す。",
     "【夜の抽象文禁止】候補があるのに『宿泊先で休息』『静かな夜を満喫』『宿泊先周辺のレストランやカフェで軽食・休息』『宿泊施設または民泊で宿泊・休息』だけで済ませない。使える候補がない場合だけ、理由を説明せず宿泊先で休息にする。",
     "観光可能な日に昼食・夕食を抜くのは不完全。ただし入国が遅い日・出国が早い日は食事を出さない。『近郊で食事』『現地で探す』『店名は記載しない』『候補が足りない』『候補が全部終わった』『コンビニ』『軽食』『間食』は禁止。候補が少ない日は観光数を減らしてでも昼食と夕食だけを入れる。",
     "夜景や宿泊先復帰は夕食の後に置く。食事前に宿泊先へ戻ってその日の夕食を省略しない。"
@@ -2716,7 +2765,7 @@ function _renderHotelPage(page) {
         ? `<span class="hotel-price">${escHtml(p.price_level)}</span>`
         : "";
       const mapsHtml = p.maps_url
-        ? `<a href="${escHtml(p.maps_url)}" target="_blank" rel="noopener" class="hotel-maps-link">📍 Googleマップで見る</a>`
+        ? `<a href="${escHtml(p.maps_url)}" target="_blank" rel="noopener" class="hotel-maps-link">📍 地図で見る</a>`
         : "";
       return `
       <div class="hotel-card">
@@ -3371,15 +3420,33 @@ function _placeRenderKey(place) {
   return uri ? _mapsUrlKey(uri) : _normalizePlaceName(place?.name);
 }
 
+function _naverCoordsFromPlaceOrUrl(p) {
+  const lat = p?.latitude != null && p.latitude !== "" ? Number(p.latitude) : null;
+  const lng = p?.longitude != null && p.longitude !== "" ? Number(p.longitude) : null;
+  if (lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng)) {
+    return { lat, lng };
+  }
+  const raw = String(p?.maps_url || p?.google_maps_uri || "");
+  const m = raw.match(/[?&]c=([0-9.]+),([0-9.]+),/);
+  if (!m) return null;
+  const parsedLng = Number(m[1]);
+  const parsedLat = Number(m[2]);
+  if (Number.isNaN(parsedLat) || Number.isNaN(parsedLng)) return null;
+  return { lat: parsedLat, lng: parsedLng };
+}
+
 function _directionsUrl(p) {
-  if (p?.source === "naver_maps_geocode" || p?.source === "naver_maps_search_url" || /map\.naver\.com/i.test(p?.maps_url || p?.google_maps_uri || "")) {
-    return p.maps_url || p.google_maps_uri || "#";
+  const label = String(p?.name || p?.address || "").trim();
+  const coords = _naverCoordsFromPlaceOrUrl(p);
+  if (coords) {
+    const q = encodeURIComponent(label || `${coords.lat},${coords.lng}`);
+    return `https://map.naver.com/p/directions/-/${coords.lng},${coords.lat},${q},PLACE_POI/-/transit?c=${coords.lng},${coords.lat},15,0,0,0,dh`;
   }
-  if (p.latitude != null && p.longitude != null) {
-    const q = encodeURIComponent(p.name || `${p.latitude},${p.longitude}`);
-    return `https://map.naver.com/p/search/${q}?c=${p.longitude},${p.latitude},16,0,0,0,dh`;
+  if (/map\.naver\.com|naver\.me/i.test(p?.maps_url || p?.google_maps_uri || "")) {
+    const q = encodeURIComponent(`${label} 경로`.trim());
+    return q ? `https://map.naver.com/p/search/${q}` : (p.maps_url || p.google_maps_uri || "#");
   }
-  const q = encodeURIComponent(p.name || p.address || "");
+  const q = encodeURIComponent(`${label} 경로`.trim());
   return q ? `https://map.naver.com/p/search/${q}` : "#";
 }
 
@@ -3752,6 +3819,17 @@ const _FOOD_PREF_KW = {
   cafe: ["카페", "커피", "coffee", "베이커리"],
 };
 
+function _isCafePlaceForRefs(place) {
+  const blob = `${place?.name || ""} ${place?.address || ""} ${place?.category || ""} ${place?.primary_type || ""}`.toLowerCase();
+  return /카페|커피|coffee|cafe|베이커리|디저트|빙수|スイーツ|ベーカリー/.test(blob);
+}
+
+function _isMealPlaceForRefs(place) {
+  if (_isCafePlaceForRefs(place)) return false;
+  const blob = `${place?.name || ""} ${place?.address || ""} ${place?.category || ""} ${place?.primary_type || ""}`.toLowerCase();
+  return /식당|맛집|restaurant|한식|국밥|보쌈|족발|치킨|갈비|냉면|국수|분식|고기|해물|회\b/.test(blob);
+}
+
 function _placeMatchesUserFoodPref(place) {
   const prefs = wizardData.additional?.foodPreferences || [];
   if (!prefs.length) return true;
@@ -3774,8 +3852,8 @@ function _renderPlanPlacesRefSection(places, reply) {
       <p class="plan-refs-note">Naver quality is scored from official Local/Blog Search signals: blog volume, recency, and keyword matches.</p></div>`;
   }
   const note = linked.length
-    ? "※ 本文で引用された店舗。評価・写真は Google データです。"
-    : "※ エリア周辺の検索候補。評価・写真は Google データです。";
+    ? "※ 本文で引用された店舗。写真・住所・地図リンクは参照データです。"
+    : "※ エリア周辺の検索候補。写真・住所・地図リンクは参照データです。";
   return `<div class="plan-refs-section"><h3 class="plan-refs-title">📍 エリア周辺のスポット</h3>
     <div class="plan-place-grid">${cards}</div>
     <p class="plan-refs-note">${note}</p></div>`;
@@ -4062,7 +4140,7 @@ async function _displayPlanOutput(data) {
   $("planContent").innerHTML = _renderPlanHtml(reply, placeIndexes, initialTicketIdx);
 
   const refsEmptyInitial = $("planRefsEmpty");
-  if (refsEmptyInitial) refsEmptyInitial.style.display = "block";
+  if (refsEmptyInitial) refsEmptyInitial.style.display = "none";
 
   const missing = [];
   for (const url of _extractMapsUrlsFromPlan(reply)) {
@@ -4178,15 +4256,16 @@ async function _displayPlanOutput(data) {
   }
 
   const places = data.places || [];
+  const showReferenceSections = false;
   const placesEl = $("planPlacesArea");
-  const placesHtml = _renderPlanPlacesRefSection(places, reply);
+  const placesHtml = showReferenceSections ? _renderPlanPlacesRefSection(places, reply) : "";
   if (placesEl) {
     placesEl.innerHTML = placesHtml;
     placesEl.style.display = placesHtml ? "block" : "none";
   }
 
   const vkEl = $("planVisitKoreaArea");
-  const vkHtml = vkEl
+  const vkHtml = vkEl && showReferenceSections
     ? _renderVisitKoreaCards(
         data.visitkorea_stays || [],
         data.visitkorea_festivals || [],
@@ -4199,14 +4278,14 @@ async function _displayPlanOutput(data) {
   }
 
   const eventsEl = $("planEventsArea");
-  const eventsHtml = eventsEl ? _renderPlanEventsCards(data.gyeonggi_events || []) : "";
+  const eventsHtml = eventsEl && showReferenceSections ? _renderPlanEventsCards(data.gyeonggi_events || []) : "";
   if (eventsEl) {
     eventsEl.innerHTML = eventsHtml;
     eventsEl.style.display = eventsHtml ? "block" : "none";
   }
 
   const ticketEl = $("planTicketArea");
-  const ticketHtml = ticketEl ? _renderTicketPlatformCards(data.ticket_platform_events || []) : "";
+  const ticketHtml = ticketEl && showReferenceSections ? _renderTicketPlatformCards(data.ticket_platform_events || []) : "";
   if (ticketEl) {
     ticketEl.innerHTML = ticketHtml;
     ticketEl.style.display = ticketHtml ? "block" : "none";
@@ -4229,12 +4308,15 @@ async function _displayPlanOutput(data) {
   }
 
   const refsEmpty = $("planRefsEmpty");
+  const refsBlock = $("planRefsBlock");
   if (refsEmpty) {
     const hasRefs = Boolean(placesHtml || vkHtml || eventsHtml || ticketHtml || sportsHtml);
-    refsEmpty.style.display = hasRefs ? "none" : "block";
+    refsEmpty.style.display = "none";
+    if (refsBlock) refsBlock.style.display = hasRefs ? "block" : "none";
   }
 
   wizardData.avoid_place_names = _collectPlanPlaceNames(reply, places);
+  wizardData.used_plan_places = _collectUsedPlanPlaces(reply, places);
   await hydratePromise;
 }
 
