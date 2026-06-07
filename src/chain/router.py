@@ -1178,7 +1178,7 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
 - If any item overlaps the user's trip dates and is geographically feasible from their lodging/region, add at least one concrete itinerary time block in the main daily plan text unless it conflicts with arrival/departure timing.
 - If an event has an explicit time, place it in the matching slot: before 12:00 = 午前, 12:00-17:00 = 午後, after 17:00 = 夕方/夜. If no time is available, use evening for concerts/music and afternoon half-day for exhibitions/festivals.
 - For K-pop/music interests, prioritize genres/titles that are music, concert, 대중음악, コンサート, or idol-related.
-- For drama/culture interests, musical/theater/Daehak-ro performances are valid itinerary items; cite title, venue, run dates, and URL from the KOPIS block only.
+- For performance/culture interests, musical/theater/Daehak-ro performances are valid itinerary items; cite title, venue, run dates, and URL from the KOPIS block only.
 - If Waterbomb or a major festival appears there, prioritize it over generic "check local events" text.
 - Do NOT invent show names, venues, or URLs not present in that block.
 """
@@ -2863,6 +2863,12 @@ _SHOPPING_MALL_TEXT_RE = re.compile(
     re.IGNORECASE,
 )
 
+_NON_RESTAURANT_VENUE_TEXT_RE = re.compile(
+    r"(쇼핑몰|백화점|아울렛|패션몰|복합쇼핑몰|스퀘어|스트리트|트리플스트리트|"
+    r"shopping\s*mall|department\s*store|outlet|square|street)",
+    re.IGNORECASE,
+)
+
 
 def _is_chain_place(place: NearbyPlace) -> bool:
     """체인점 여부 판정 — 지점 접미사 또는 알려진 프랜차이즈명 기준."""
@@ -3461,13 +3467,45 @@ def _place_blob(place: NearbyPlace) -> str:
     return f"{place.name} {place.address} {place.category} {place.search_area or ''}"
 
 
+def _place_identity_blob(place: NearbyPlace) -> str:
+    return f"{place.name} {place.address} {place.category}"
+
+
 def _place_matches_food_pref(place: NearbyPlace, pref: str) -> bool:
     blob = _place_blob(place).lower()
     return any(kw.lower() in blob for kw in _FOOD_PREF_MATCH_KEYWORDS.get(pref, []))
 
 
+_FORTUNE_TELLING_PLACE_RE = re.compile(
+    r"(점집|유명한점집|사주|신점|무당|보살|선녀|만신|철학관|작명|타로|운세|굿당|"
+    r"천궁|신궁|용궁|산신|도사|법사|무속|애동제자|연화암|천신암|선녀암)",
+    re.I,
+)
+_AM_SHRINE_NAME_RE = re.compile(r"(?:^|[\s,·/])[\w가-힣]{1,12}암(?:$|[\s,·/])", re.I)
+
+
+def _is_fortune_telling_place(place: NearbyPlace) -> bool:
+    identity = _place_identity_blob(place).lower()
+    if _FORTUNE_TELLING_PLACE_RE.search(identity):
+        return True
+    # "○○암" is often a shrine/fortune-telling result in Naver Local. Do not let
+    # it pass as cafe merely because the search query was "지역 카페".
+    if _AM_SHRINE_NAME_RE.search(identity):
+        cafe_identity = any(
+            kw in identity
+            for kw in ("카페", "커피", "coffee", "cafe", "베이커리", "디저트")
+        )
+        if not cafe_identity:
+            return True
+    return False
+
+
 def _is_cafe_candidate_place(place: NearbyPlace) -> bool:
-    blob = _place_blob(place).lower()
+    if _is_fortune_telling_place(place):
+        return False
+    # Do not use search_area here. A query like "강남 카페" must not turn an
+    # unrelated Naver result (e.g. 점집/연화암) into a cafe candidate.
+    blob = _place_identity_blob(place).lower()
     return any(
         kw in blob
         for kw in (
@@ -3664,6 +3702,29 @@ def _is_korea_place(place: "NearbyPlace") -> bool:
     return not any(m.lower() in addr for m in _NON_KR_ADDR_MARKERS)
 
 
+def _place_matches_destination_profile(place: "NearbyPlace", traveler_profile: dict | None) -> bool:
+    if not traveler_profile:
+        return True
+    ids = region_resolver.region_city_ids_from_profile(traveler_profile)
+    region_keys = (
+        traveler_profile.get("regionAreaKeys")
+        or traveler_profile.get("region_area_keys")
+        or traveler_profile.get("regions")
+        or []
+    )
+    if not ids and not region_keys:
+        return True
+    blob = " ".join(
+        str(x or "")
+        for x in (place.address, place.name, getattr(place, "search_area", ""))
+    )
+    return region_resolver.address_matches_destination(
+        blob,
+        region_city_ids=ids,
+        dest_regions=[str(r).lower() for r in region_keys],
+    )
+
+
 def _refine_itinerary_food_places(
     places: list[NearbyPlace],
     traveler_profile: dict | None,
@@ -3674,7 +3735,12 @@ def _refine_itinerary_food_places(
     max_total: int,
 ) -> list[NearbyPlace]:
     prefs, _ = _food_preferences_from_profile(traveler_profile)
-    meal = [p for p in places if _is_meal_candidate_place(p) and _is_korea_place(p)]
+    meal = [
+        p for p in places
+        if _is_meal_candidate_place(p)
+        and _is_korea_place(p)
+        and _place_matches_destination_profile(p, traveler_profile)
+    ]
     min_food = min(max_total, 8)
     if len(meal) < min_food:
         extra_batches: list[NearbyPlace] = []
@@ -3696,7 +3762,7 @@ def _refine_itinerary_food_places(
                     extra_batches.extend(
                         replace(p, search_area=area)
                         for p in filter_meal_places(results)
-                        if _is_korea_place(p)
+                        if _is_korea_place(p) and _place_matches_destination_profile(p, traveler_profile)
                     )
                 except Exception as exc:
                     logger.warning("fallback food fetch [%r]: %s", q, exc)
@@ -3731,7 +3797,7 @@ def _refine_itinerary_food_places(
                 extra_batches.extend(
                     replace(p, search_area=label)
                     for p in filter_meal_places(results)
-                    if _is_korea_place(p)
+                    if _is_korea_place(p) and _place_matches_destination_profile(p, traveler_profile)
                 )
             except Exception as exc:
                 logger.warning("pref food fetch [%r]: %s", q, exc)
@@ -3742,7 +3808,12 @@ def _refine_itinerary_food_places(
         # 2차 필터 후에도 부족하면 일반 한식당을 소프트 폴백으로 추가
         # max_total 전체까지 채워서 context에 충분한 식당 후보가 공급되도록 한다
         if len(matched) < max_total:
-            kr_meal = [p for p in (meal + extra_batches) if _is_meal_candidate_place(p) and _is_korea_place(p)]
+            kr_meal = [
+                p for p in (meal + extra_batches)
+                if _is_meal_candidate_place(p)
+                and _is_korea_place(p)
+                and _place_matches_destination_profile(p, traveler_profile)
+            ]
             seen = {f"{p.name}|{p.address}" for p in matched}
             for p in kr_meal:
                 if len(matched) >= max_total:
@@ -4215,6 +4286,27 @@ def _build_itinerary_attraction_queries(
         add(f"{area} 명소")
         for spot in _AREA_FAMOUS_SPOTS.get(area, []):
             add(spot)
+        acts = {str(a).lower() for a in (traveler_profile or {}).get("activities") or []}
+        if "nature" in acts:
+            add(f"{area} 공원")
+            add(f"{area} 산책로")
+            add(f"{area} 자연 명소")
+            add(f"{area} 전망대")
+        if "photo" in acts:
+            add(f"{area} 포토스팟")
+            add(f"{area} 사진 명소")
+            add(f"{area} SNS 명소")
+            add(f"{area} 야경 포토스팟")
+        if "tradition" in acts:
+            add(f"{area} 전통문화")
+            add(f"{area} 한옥")
+            add(f"{area} 박물관")
+            add(f"{area} 문화예술")
+        if any(a in acts for a in ("drama", "performance", "performances", "theater", "musical", "kpop")):
+            add(f"{area} 공연장")
+            add(f"{area} 문화공간")
+            add(f"{area} 라이브 공연")
+            add(f"{area} 대학로 공연")
         if has_shopping_interest:
             add(f"{area} 쇼핑")
             add(f"{area} 쇼핑몰")
@@ -4295,6 +4387,25 @@ def _anchor_place_from_query(query: str, *, area: str) -> NearbyPlace:
         is_open_now=None,
         distance_meters=None,
         place_id=f"anchor:{area}:{clean}",
+        search_area=area,
+    )
+
+
+def _anchor_cafe_from_query(query: str, *, area: str) -> NearbyPlace:
+    clean = " ".join(str(query or "").split()).strip()
+    encoded = urllib.parse.quote(clean)
+    return NearbyPlace(
+        name=clean,
+        category="카페",
+        address=area,
+        latitude=None,
+        longitude=None,
+        rating=None,
+        user_rating_count=None,
+        google_maps_uri=f"https://map.naver.com/p/search/{encoded}",
+        is_open_now=None,
+        distance_meters=None,
+        place_id=f"cafe-anchor:{area}:{clean}",
         search_area=area,
     )
 
@@ -4382,11 +4493,11 @@ def _combine_itinerary_place_candidates(
             seen.add(key)
             combined.append(place)
 
+    for place in cafe_places[:cafe_limit]:
+        add(place)
     for place in attr_places:
         add(place)
     for place in meal_places[:food_limit]:
-        add(place)
-    for place in cafe_places[:cafe_limit]:
         add(place)
     return combined
 
@@ -4453,6 +4564,13 @@ _FOODISH_NAME_MARKERS = (
 )
 
 
+_EXPLICIT_FOOD_TEXT_RE = re.compile(
+    r"(음식점|식당|맛집|한식|중식|일식|양식|분식|국밥|갈비|고기|회\b|해물|"
+    r"레스토랑|비스트로|그릴|브런치|카페|커피|디저트|베이커리|restaurant|bistro|grill|cafe|coffee|bakery)",
+    re.I,
+)
+
+
 def _foodish_signal(place: NearbyPlace) -> bool:
     blob = " ".join(
         str(x or "")
@@ -4465,7 +4583,31 @@ def _foodish_signal(place: NearbyPlace) -> bool:
     return any(m in blob for m in _FOODISH_REVIEW_MARKERS + _FOODISH_NAME_MARKERS)
 
 
+def _has_explicit_naver_food_signal(place: NearbyPlace) -> bool:
+    blob = " ".join(
+        str(x or "")
+        for x in (
+            place.name,
+            place.address,
+            place.category,
+            " ".join(getattr(place, "review_keywords", None) or []),
+        )
+    )
+    cat = str(getattr(place, "category", "") or "")
+    if _NON_RESTAURANT_VENUE_TEXT_RE.search(blob) and not _EXPLICIT_FOOD_TEXT_RE.search(cat):
+        return False
+    return (
+        any(marker in cat for marker in _NAVER_FOOD_CATEGORY_MARKERS)
+        or bool(_EXPLICIT_FOOD_TEXT_RE.search(blob))
+        or _foodish_signal(place)
+    )
+
+
 def _is_naver_food_place(place: NearbyPlace) -> bool:
+    if _is_fortune_telling_place(place):
+        return False
+    if not _has_explicit_naver_food_signal(place):
+        return False
     cat = str(getattr(place, "category", "") or "")
     if any(marker in cat for marker in _NAVER_ATTR_CATEGORY_MARKERS) and not any(
         marker in cat for marker in _NAVER_FOOD_CATEGORY_MARKERS
@@ -4477,6 +4619,8 @@ def _is_naver_food_place(place: NearbyPlace) -> bool:
 
 
 def _is_naver_attr_place(place: NearbyPlace) -> bool:
+    if _is_fortune_telling_place(place):
+        return False
     cat = str(getattr(place, "category", "") or "")
     if _foodish_signal(place):
         return False
@@ -4573,7 +4717,10 @@ def _search_naver_places_for_itinerary(
             food_batches.append([
                 replace(p, search_area=area_hint or q[:40])
                 for p in places
-                if _is_korea_place(p) and _is_naver_food_place(p) and not _is_cafe_candidate_place(p)
+                if _is_korea_place(p)
+                and _place_matches_destination_profile(p, traveler_profile)
+                and _is_naver_food_place(p)
+                and not _is_cafe_candidate_place(p)
             ])
         except Exception as exc:
             logger.warning("Naver itinerary food search [%r]: %s", q, exc)
@@ -4594,6 +4741,7 @@ def _search_naver_places_for_itinerary(
                 replace(p, search_area=area_hint or q[:40])
                 for p in places
                 if _is_naver_cafe_place(p)
+                and _place_matches_destination_profile(p, traveler_profile)
             ])
         except Exception as exc:
             logger.warning("Naver itinerary cafe search [%r]: %s", q, exc)
@@ -4614,7 +4762,9 @@ def _search_naver_places_for_itinerary(
             attr_batches.append([
                 replace(p, search_area=area_hint or q[:40])
                 for p in places
-                if _is_korea_place(p) and _is_naver_attr_place(p)
+                if _is_korea_place(p)
+                and _place_matches_destination_profile(p, traveler_profile)
+                and _is_naver_attr_place(p)
                 and (has_shopping_interest or not _is_shopping_mall_place(p))
             ])
         except Exception as exc:
@@ -4645,6 +4795,24 @@ def _search_naver_places_for_itinerary(
         avoid_names=avoid_keys,
         min_keep=min(6, max(1, int((traveler_profile or {}).get("days") or 3))),
     )
+    if has_cafe_interest and len(cafe_merged) < min(4, max(1, int((traveler_profile or {}).get("days") or 3))):
+        anchors: list[NearbyPlace] = []
+        seen_anchor_names: set[str] = set()
+        for q in cafe_queries:
+            if q in seen_anchor_names:
+                continue
+            seen_anchor_names.add(q)
+            area = next((a for a in areas if a and a in q), "") or q.split()[0]
+            anchors.append(_anchor_cafe_from_query(q, area=area))
+            if len(anchors) >= 6:
+                break
+        cafe_merged = _merge_itinerary_places(
+            [cafe_merged, anchors],
+            max_total=min(limits["max_total"], max(8, int((traveler_profile or {}).get("days") or 3) * 3)),
+            shuffle_seed=0,
+            avoid_names=avoid_keys,
+            min_keep=min(4, max(1, int((traveler_profile or {}).get("days") or 3))),
+        )
     min_attr = min(
         _itinerary_attr_candidate_limit(
             traveler_profile,
@@ -4731,7 +4899,7 @@ def _search_places_for_itinerary(
                 [
                     replace(p, search_area=label)
                     for p in filter_meal_places(nearby_food)
-                    if _is_korea_place(p)
+                    if _is_korea_place(p) and _place_matches_destination_profile(p, traveler_profile)
                 ]
             )
         except Exception as exc:
@@ -4752,6 +4920,7 @@ def _search_places_for_itinerary(
                 and _is_itinerary_attraction_candidate(p)
                 and (has_shopping_interest or not _is_shopping_mall_place(p))
                 and _is_korea_place(p)
+                and _place_matches_destination_profile(p, traveler_profile)
             ]
             attr_batches.append(
                 [replace(p, search_area=f"{label}周辺") for p in nearby_attr_filtered]
@@ -4773,7 +4942,10 @@ def _search_places_for_itinerary(
                 included_type="restaurant",
                 location_restriction=KR_LOCATION_RESTRICTION,
             )
-            filtered = [p for p in filter_meal_places(results) if _is_korea_place(p)]
+            filtered = [
+                p for p in filter_meal_places(results)
+                if _is_korea_place(p) and _place_matches_destination_profile(p, traveler_profile)
+            ]
             query_areas = _areas_from_region_cities(text_query)
             if query_areas:
                 area_matched = [
@@ -4809,6 +4981,7 @@ def _search_places_for_itinerary(
                 and _is_itinerary_attraction_candidate(p)
                 and (has_shopping_interest or not _is_shopping_mall_place(p))
                 and _is_korea_place(p)
+                and _place_matches_destination_profile(p, traveler_profile)
             ]
             query_areas = _areas_from_region_cities(text_query)
             if query_areas:
@@ -5172,10 +5345,38 @@ _ITINERARY_SLOT_MARKERS = {
 _ITINERARY_DAY_RE = re.compile(r"^\s*(?:#{1,6}\s*)?(?:\d+\s*日目|\d+\s*일째|Day\s*\d+|最終日)", re.I)
 _ITINERARY_BAD_PLACEHOLDER_RE = re.compile(
     r"(?:周辺を散策|周辺散策|近くを歩く|쇼핑이나\s*산책|주변(?:을|에서)?\s*산책|일대\s*산책|"
-    r"롯데월드타워\s*주변|宿泊先周辺のレストラン|カフェで軽食|候補が(?:足りない|全部終わった)|"
+    r"롯데월드타워\s*주변|宿泊先周辺のレストラン|カフェで軽食|カフェタイム|카페\s*타임|"
+    r"候補が(?:足りない|全部終わった)|"
     r"候補不足|時間外の可能性|現地で探す|店名は記載しない|コンビニ|軽食|間食)",
     re.I,
 )
+
+_CAFE_SLOT_ONLY_RE = re.compile(
+    r"^\s*(?:\[?\s*(?:カフェ(?:タイム|巡り|休憩)?|카페\s*(?:타임|순회|휴식)?)\s*\]?|"
+    r"(?:☕\s*)?(?:カフェ(?:タイム|休憩)?|카페\s*(?:타임|휴식)?))\s*$",
+    re.I,
+)
+_EMPTY_COMBINED_SLOT_RE = re.compile(r"^\s*(?:夕食|저녁)\s*(?:夜|밤)\s*$")
+
+
+def _queue_places_for_repair(
+    places: list[NearbyPlace],
+    predicate,
+) -> list[NearbyPlace]:
+    out: list[NearbyPlace] = []
+    seen: set[str] = set()
+    for p in places or []:
+        if not predicate(p):
+            continue
+        uri = p.google_maps_uri or ""
+        if not uri:
+            continue
+        key = f"{_norm_plan_place_name(p.name)}|{_plan_maps_url_key(uri)}"
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(p)
+    return out
 
 
 def _plan_maps_url_key(url: str | None) -> str:
@@ -5260,6 +5461,15 @@ def _repair_wizard_itinerary_rules(
     food_names: set[str] = set()
     food_place_by_url: dict[str, NearbyPlace] = {}
     food_place_by_name: dict[str, NearbyPlace] = {}
+    cafe_queue = _queue_places_for_repair(places, _is_cafe_candidate_place)
+    attr_queue = _queue_places_for_repair(
+        places,
+        lambda p: not _is_cafe_candidate_place(p)
+        and not _is_meal_candidate_place(p)
+        and not _foodish_signal(p),
+    )
+    cafe_idx = 0
+    attr_idx = 0
     for p in places or []:
         uri = p.google_maps_uri or ""
         key = _plan_maps_url_key(uri)
@@ -5318,6 +5528,20 @@ def _repair_wizard_itinerary_rules(
             )
         return True
 
+    def next_place_line(kind: str) -> list[str]:
+        nonlocal cafe_idx, attr_idx
+        queue = cafe_queue if kind == "cafe" else attr_queue
+        start = cafe_idx if kind == "cafe" else attr_idx
+        for idx2 in range(start, len(queue)):
+            p = queue[idx2]
+            if kind == "cafe":
+                cafe_idx = idx2 + 1
+            else:
+                attr_idx = idx2 + 1
+            if p.name and p.google_maps_uri:
+                return [p.name, p.google_maps_uri]
+        return []
+
     idx = 0
     while idx < len(lines):
         line = lines[idx]
@@ -5340,10 +5564,31 @@ def _repair_wizard_itinerary_rules(
                 continue
             slot = new_slot
             out.append(line)
+            if new_slot == "afternoon" and _has_cafe_hopping_interest(traveler_profile, user_message):
+                lookahead = "\n".join(lines[idx + 1: idx + 5])
+                if _CAFE_SLOT_ONLY_RE.search(lookahead) and not _MAPS_URL_IN_TEXT_RE.search(lookahead):
+                    inserted = next_place_line("cafe")
+                    if inserted:
+                        out.extend(inserted)
             idx += 1
             continue
 
         if slot == "blocked_meal":
+            idx += 1
+            continue
+
+        if _EMPTY_COMBINED_SLOT_RE.match(stripped):
+            out.append("夕食")
+            slot = "dinner"
+            idx += 1
+            continue
+
+        if _CAFE_SLOT_ONLY_RE.match(stripped):
+            if _has_cafe_hopping_interest(traveler_profile, user_message):
+                out.append(line)
+                inserted = next_place_line("cafe")
+                if inserted:
+                    out.extend(inserted)
             idx += 1
             continue
 
@@ -5689,6 +5934,39 @@ def _wants_festival_search(category: str, user_message: str, keyword: str) -> bo
         return True
     text = f"{user_message} {keyword}".lower()
     return any(k.lower() in text for k in _FESTIVAL_INTENT_KEYWORDS)
+
+
+_KPOP_WEB_ALLOW_RE = re.compile(
+    r"(k[-\s]?pop|케이팝|아이돌|콘서트|공연|티켓|예매|팬미팅|페스티벌|축제|"
+    r"concert|ticket|festival|fan\s?meeting|idol|コンサート|公演|チケット|アイドル)",
+    re.I,
+)
+_KPOP_WEB_BLOCK_RE = re.compile(
+    r"(나무위키|위키백과|wikipedia|namu\.wiki|visit\s*seoul|official travel guide|"
+    r"서울특별시(?:\s*-\s*)?$|동행.?매력|주요뉴스|시민참여|주요서비스|관광안내|"
+    r"travel guide|encyclopedia)",
+    re.I,
+)
+_KPOP_WEB_TICKET_HOST_RE = re.compile(
+    r"(kopis|interpark|ticketlink|yes24|melon|ticket|nol|globalinterpark|ticketmaster)",
+    re.I,
+)
+
+
+def _is_reliable_kpop_web_result(result: WebSearchResult) -> bool:
+    blob = f"{result.title} {result.snippet} {result.url}".strip()
+    if not blob:
+        return False
+    if _KPOP_WEB_BLOCK_RE.search(blob):
+        return False
+    url = (result.url or "").lower()
+    if _KPOP_WEB_TICKET_HOST_RE.search(url) and _KPOP_WEB_ALLOW_RE.search(blob):
+        return True
+    # General web results must have at least two event signals so city guides do not
+    # become fake performance cards.
+    signals = len(_KPOP_WEB_ALLOW_RE.findall(blob))
+    has_dateish = bool(re.search(r"20\d{2}|티켓|예매|ticket|schedule|일정|日時|日程", blob, re.I))
+    return signals >= 2 and has_dateish
 
 
 def _festival_date_range(
@@ -6606,6 +6884,8 @@ def route_and_answer(
                         )
                         existing_names = {e.name for e in events}
                         for r in ws_results:
+                            if not _is_reliable_kpop_web_result(r):
+                                continue
                             ev_name = (r.title or "")[:80].strip()
                             if not ev_name or ev_name in existing_names:
                                 continue
@@ -6663,10 +6943,23 @@ def route_and_answer(
         activities = list(prof.get("activities") or [])
         hallyu = list(prof.get("hallyu") or [])
         wants_kpop = "kpop" in activities or "hallyu" in activities or "kpop" in hallyu
-        if not (wants_kpop or _env_flag("ENABLE_EVENT_ENRICHMENT", "0")):
+        wants_performance = any(
+            a in activities
+            for a in ("drama", "performance", "performances", "theater", "musical")
+        )
+        if not (wants_kpop or wants_performance or _env_flag("ENABLE_EVENT_ENRICHMENT", "0")):
             return []
+        genre_slugs: list[str] = []
+        if wants_kpop:
+            genre_slugs.append("concert")
+        if wants_performance:
+            genre_slugs.extend(["play", "musical"])
         try:
-            return fetch_ticket_platform_events(traveler_profile, max_total=36)
+            return fetch_ticket_platform_events(
+                traveler_profile,
+                max_total=36,
+                genre_slugs=genre_slugs or None,
+            )
         except Exception as exc:
             logger.warning("ticket platform events worker failed: %s", exc)
             return []
@@ -7060,7 +7353,7 @@ def route_and_answer(
         ctx_parts.append(
             "=== KOPIS 공연예술통합전산망 — 공연·전시·축제 메타 ===\n"
             "※ 日程本文に組み込み可: 旅行期間・目的地と合う公演は、夕方〜夜または半日ブロックとして使う。\n"
-            "※ K-pop/music希望は音楽・コンサート系を優先。ドラマ/文化希望はミュージカル・大学路/劇場公演も有効。\n"
+            "※ K-pop/music希望は音楽・コンサート系を優先。公演/文化希望はミュージカル・大学路/劇場公演も有効。\n"
             "※ 本文にはタイトル、会場、期間、URLをこのブロックからそのまま使う。創作URL禁止。\n"
             + fmt_ticket_platform_events(ticket_platform_events, lang)
         )

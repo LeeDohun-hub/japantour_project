@@ -123,6 +123,12 @@ _MEAL_TYPE_ALLOW = frozenset({
     "brunch_restaurant",
 })
 
+_NON_RESTAURANT_VENUE_RE = re.compile(
+    r"(쇼핑몰|백화점|아울렛|복합쇼핑몰|패션몰|몰\b|스퀘어|스트리트|"
+    r"shopping\s*mall|department\s*store|outlet|square|street)",
+    re.I,
+)
+
 
 def _min_meal_place_rating() -> float:
     raw = os.getenv("MIN_MEAL_PLACE_RATING", "4.0").strip()
@@ -159,6 +165,8 @@ def is_suitable_meal_place(place: NearbyPlace) -> bool:
 
     cat = (place.category or "").strip().lower()
     if cat in _MEAL_TYPE_EXCLUDE:
+        return False
+    if _NON_RESTAURANT_VENUE_RE.search(f"{name} {addr} {cat}") and cat not in _MEAL_TYPE_ALLOW:
         return False
 
     if cat and cat not in _MEAL_TYPE_ALLOW:

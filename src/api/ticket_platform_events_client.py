@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
@@ -18,20 +19,28 @@ import requests
 logger = logging.getLogger(__name__)
 
 _KOPIS_BASE = "http://www.kopis.or.kr/openApi/restful"
+_KOPIS_BASE_URLS = (
+    "https://www.kopis.or.kr/openApi/restful",
+    "http://www.kopis.or.kr/openApi/restful",
+)
 _KOPIS_PUBLIC_PAGE = "https://www.kopis.or.kr/por/db/pblprfr/pblprfrView.do?mt20Id="
 
 # KOPIS 장르코드: 연극/뮤지컬/클래식/국악/대중음악/무용/대중무용/서커스·마술/복합
 _KOPIS_GENRES: tuple[tuple[str, str, str], ...] = (
-    ("DDDD", "concert", "대중음악"),
+    ("CCCD", "concert", "대중음악"),
     ("GGGA", "musical", "뮤지컬"),
     ("CCCA", "classic", "서양음악(클래식)"),
     ("AAAA", "play", "연극"),
-    ("CADA", "korean_music", "한국음악(국악)"),
+    ("CCCC", "korean_music", "한국음악(국악)"),
     ("BBBC", "dance", "무용"),
     ("BBBE", "popular_dance", "대중무용"),
-    ("EEEA", "magic", "서커스/마술"),
-    ("EEEB", "mixed", "복합"),
+    ("EEEB", "magic", "서커스/마술"),
+    ("EEEA", "mixed", "복합"),
 )
+
+_KOPIS_GENRE_BY_SLUG = {slug: item for item in _KOPIS_GENRES for slug in (item[1],)}
+_KOPIS_KPOP_SLUGS = ("concert",)
+_KOPIS_PERFORMANCE_SLUGS = ("play", "musical")
 
 _JEJU_REGION_MARKERS: tuple[str, ...] = (
     "제주",
@@ -115,6 +124,9 @@ _MAJOR_EVENT_SUBSTRINGS: tuple[str, ...] = (
     "페스티벌",
     "festival",
     "rock fest",
+    "대학로",
+    "大学路",
+    "daehakro",
 )
 
 _REGION_HINTS_DEFAULT: tuple[str, ...] = (
@@ -345,6 +357,33 @@ def _kopis_api_key() -> str:
     return (os.getenv("KOPIS_API_KEY") or "").strip()
 
 
+def _kopis_genres_for_profile(
+    profile: dict | None,
+    genre_slugs: list[str] | tuple[str, ...] | None = None,
+) -> tuple[tuple[str, str, str], ...]:
+    """Return the KOPIS genre codes to query for the selected itinerary intent."""
+    if genre_slugs:
+        selected: list[tuple[str, str, str]] = []
+        for slug in genre_slugs:
+            item = _KOPIS_GENRE_BY_SLUG.get(str(slug))
+            if item and item not in selected:
+                selected.append(item)
+        return tuple(selected) or _KOPIS_GENRES
+
+    prof = profile or {}
+    activities = {str(a).lower() for a in prof.get("activities") or []}
+    hallyu = {str(a).lower() for a in prof.get("hallyu") or []}
+    slugs: list[str] = []
+    if "kpop" in activities or "hallyu" in activities or "kpop" in hallyu:
+        slugs.extend(_KOPIS_KPOP_SLUGS)
+    # Legacy key "drama" now represents the UI label 公演.
+    if any(a in activities for a in ("drama", "performance", "performances", "theater", "musical")):
+        slugs.extend(_KOPIS_PERFORMANCE_SLUGS)
+    if not slugs:
+        return _KOPIS_GENRES
+    return _kopis_genres_for_profile(None, slugs)
+
+
 def _xml_text(node: ET.Element | None, name: str) -> str:
     if node is None:
         return ""
@@ -356,6 +395,33 @@ def _parse_xml(content: bytes | str) -> ET.Element:
     if isinstance(content, bytes):
         content = content.decode("utf-8", errors="replace")
     return ET.fromstring(content)
+
+
+def _kopis_get(
+    path: str,
+    *,
+    params: dict[str, Any],
+    timeout: int,
+    attempts: int = 2,
+) -> requests.Response:
+    last_exc: Exception | None = None
+    clean_path = "/" + path.lstrip("/")
+    for attempt in range(max(1, attempts)):
+        for base in _KOPIS_BASE_URLS:
+            try:
+                resp = requests.get(
+                    f"{base}{clean_path}",
+                    params=params,
+                    timeout=timeout,
+                )
+                resp.raise_for_status()
+                return resp
+            except Exception as exc:
+                last_exc = exc
+        if attempt + 1 < attempts:
+            time.sleep(0.35 * (attempt + 1))
+    assert last_exc is not None
+    raise last_exc
 
 
 def _kopis_detail_url(mt20id: str) -> str:
@@ -429,12 +495,11 @@ def _fetch_kopis_detail(mt20id: str, *, api_key: str, timeout: int) -> ET.Elemen
     if not mt20id:
         return None
     try:
-        resp = requests.get(
-            f"{_KOPIS_BASE}/pblprfr/{mt20id}",
+        resp = _kopis_get(
+            f"/pblprfr/{mt20id}",
             params={"service": api_key},
             timeout=timeout,
         )
-        resp.raise_for_status()
         root = _parse_xml(resp.content)
         return root.find(".//db")
     except Exception as exc:
@@ -454,8 +519,8 @@ def _fetch_kopis_genre(
     timeout: int,
 ) -> list[TicketPlatformEvent]:
     try:
-        resp = requests.get(
-            f"{_KOPIS_BASE}/pblprfr",
+        resp = _kopis_get(
+            "/pblprfr",
             params={
                 "service": api_key,
                 "stdate": start_d.strftime("%Y%m%d"),
@@ -466,7 +531,6 @@ def _fetch_kopis_genre(
             },
             timeout=timeout,
         )
-        resp.raise_for_status()
         root = _parse_xml(resp.content)
     except Exception as exc:
         logger.warning("KOPIS list fetch failed [%s]: %s", genre_code, exc)
@@ -547,6 +611,7 @@ def fetch_ticket_platform_events(
     *,
     max_total: int = 36,
     timeout_per_genre: int = 14,
+    genre_slugs: list[str] | tuple[str, ...] | None = None,
 ) -> list[TicketPlatformEvent]:
     """여행 기간과 겹치는 공연·전시 — KOPIS OpenAPI 기반."""
     api_key = _kopis_api_key()
@@ -563,8 +628,9 @@ def fetch_ticket_platform_events(
         end_d = start_d
 
     merged: list[TicketPlatformEvent] = []
-    rows_per_genre = max(8, min(18, max_total))
-    for genre_code, genre_slug, genre_label in _KOPIS_GENRES:
+    genres = _kopis_genres_for_profile(traveler_profile, genre_slugs)
+    rows_per_genre = max(8, min(30, max_total))
+    for genre_code, genre_slug, genre_label in genres:
         merged.extend(
             _fetch_kopis_genre(
                 genre_code,
@@ -609,7 +675,7 @@ def fetch_ticket_platform_events(
             "KOPIS: no events for regions %s",
             sorted(_trip_active_region_keys(traveler_profile)),
         )
-    selected = filtered[:max_total]
+    selected = (filtered or [ev for _, ev in scored])[:max_total]
     return [
         _enrich_kopis_event(ev, api_key=api_key, timeout=timeout_per_genre)
         for ev in selected

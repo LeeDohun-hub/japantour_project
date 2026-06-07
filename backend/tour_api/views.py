@@ -799,8 +799,8 @@ def _naver_place_photo_proxy(
 ) -> str:
     """Build /api/naver-photo/ URL for a NaverPlace result.
 
-    Always includes q= (place name) and image_fallback=1 so the image search
-    fallback is tried when pcmap SSR scraping finds nothing.
+    Always includes q= (place name), but keeps image search fallback disabled by
+    default so unrelated web images are not shown as place exterior photos.
     """
     _lat, _lng = lat, lng
     if _lat is None or _lng is None:
@@ -810,7 +810,7 @@ def _naver_place_photo_proxy(
                 _lng, _lat = rx / 1e7, ry / 1e7
         except (TypeError, ValueError):
             pass
-    name_q = f"&q={urllib.parse.quote(name)}&image_fallback=1" if name else "&image_fallback=1"
+    name_q = f"&q={urllib.parse.quote(name)}" if name else ""
 
     # Prefer individual place page (/place/{id}/home) when we have a place ID —
     # these pages have og:image set server-side, unlike list pages which require JS.

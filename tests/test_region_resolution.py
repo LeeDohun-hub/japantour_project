@@ -11,7 +11,7 @@ from src.api.region_resolver import (
 )
 
 try:
-    from src.api.google_places_client import NearbyPlace
+    from src.api.google_places_client import NearbyPlace, is_suitable_meal_place
     from src.chain.router import (
         _build_itinerary_attraction_queries,
         _build_itinerary_food_queries,
@@ -20,10 +20,18 @@ try:
         _expanded_tourism_areas_for_plan,
         _fmt_itinerary_daily_area_binding,
         _has_itinerary_shopping_interest,
+        _is_reliable_kpop_web_result,
+        _is_cafe_candidate_place,
+        _is_naver_attr_place,
+        _is_naver_cafe_place,
+        _is_naver_food_place,
         _merge_itinerary_places,
+        _place_matches_destination_profile,
         _repair_wizard_itinerary_rules,
         _tourism_candidate_areas_for_plan,
     )
+    from src.api.ticket_platform_events_client import _kopis_genres_for_profile
+    from src.api.web_search_client import WebSearchResult
 except ModuleNotFoundError as exc:
     NearbyPlace = None
     _build_itinerary_attraction_queries = None
@@ -33,9 +41,17 @@ except ModuleNotFoundError as exc:
     _expanded_tourism_areas_for_plan = None
     _fmt_itinerary_daily_area_binding = None
     _has_itinerary_shopping_interest = None
+    _is_reliable_kpop_web_result = None
+    _is_cafe_candidate_place = None
+    _is_naver_attr_place = None
+    _is_naver_cafe_place = None
+    _is_naver_food_place = None
     _merge_itinerary_places = None
+    _place_matches_destination_profile = None
     _repair_wizard_itinerary_rules = None
     _tourism_candidate_areas_for_plan = None
+    _kopis_genres_for_profile = None
+    WebSearchResult = None
     _ROUTER_IMPORT_ERROR = exc
 else:
     _ROUTER_IMPORT_ERROR = None
@@ -398,6 +414,104 @@ class RouterItineraryPlaceBalanceTests(unittest.TestCase):
 
         self.assertTrue(any("카페" in p.name for p in combined))
 
+    def test_cafe_candidates_are_reserved_when_total_cap_is_tight(self) -> None:
+        food = [self._place(f"restaurant-{i}", "restaurant") for i in range(20)]
+        cafes = [self._place(f"성수 카페 {i}", "카페,디저트") for i in range(6)]
+        attrs = [self._place(f"attraction-{i}", "tourist_attraction") for i in range(12)]
+
+        combined = _combine_itinerary_place_candidates(
+            food + cafes,
+            attrs,
+            traveler_profile={"days": 5, "activities": ["cafe"]},
+            max_total=10,
+        )
+
+        self.assertTrue(any("카페" in p.name for p in combined))
+
+    def test_fortune_telling_place_is_not_cafe_or_activity_candidate(self) -> None:
+        if _is_cafe_candidate_place is None or _is_naver_cafe_place is None or _is_naver_attr_place is None:
+            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
+        bad = self._place("서울유명한점집,연화암", "점집")
+        bad = bad.__class__(
+            **{
+                **bad.__dict__,
+                "search_area": "강남 카페",
+                "google_maps_uri": "https://map.naver.com/p/search/bad",
+            }
+        )
+        good = self._place("로칼커피 삼성점", "카페,디저트")
+
+        self.assertFalse(_is_cafe_candidate_place(bad))
+        self.assertFalse(_is_naver_cafe_place(bad))
+        self.assertFalse(_is_naver_attr_place(bad))
+        self.assertTrue(_is_cafe_candidate_place(good))
+
+    def test_shopping_square_is_not_meal_candidate(self) -> None:
+        if _is_naver_food_place is None:
+            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
+        mall = self._place("LF스퀘어 인천점", "쇼핑몰")
+        mall = mall.__class__(
+            **{
+                **mall.__dict__,
+                "address": "인천광역시 연수구 청능대로 23번길 11",
+            }
+        )
+        self.assertFalse(is_suitable_meal_place(mall))
+        self.assertFalse(_is_naver_food_place(mall))
+
+    def test_selected_incheon_destination_rejects_jeju_place(self) -> None:
+        if _place_matches_destination_profile is None:
+            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
+        profile = {
+            "regionAreaKeys": ["incheon"],
+            "regions": ["incheon"],
+            "regionCityIds": ["incheon:yeonsu"],
+        }
+        jeju = self._place("제주 카페", "카페")
+        jeju = jeju.__class__(**{**jeju.__dict__, "address": "제주특별자치도 제주시 애월읍"})
+        incheon = self._place("송도 식당", "음식점")
+        incheon = incheon.__class__(**{**incheon.__dict__, "address": "인천광역시 연수구 송도동"})
+
+        self.assertFalse(_place_matches_destination_profile(jeju, profile))
+        self.assertTrue(_place_matches_destination_profile(incheon, profile))
+
+    def test_kopis_kpop_uses_popular_music_genre(self) -> None:
+        if _kopis_genres_for_profile is None:
+            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
+
+        genres = _kopis_genres_for_profile({"activities": ["kpop"]})
+
+        self.assertEqual([g[1] for g in genres], ["concert"])
+        self.assertEqual([g[0] for g in genres], ["CCCD"])
+        self.assertEqual([g[2] for g in genres], ["대중음악"])
+
+    def test_kopis_performance_uses_play_and_musical_genres(self) -> None:
+        if _kopis_genres_for_profile is None:
+            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
+
+        genres = _kopis_genres_for_profile({"activities": ["drama"]})
+
+        self.assertEqual([g[1] for g in genres], ["play", "musical"])
+
+    def test_kpop_web_filter_rejects_generic_city_pages(self) -> None:
+        if _is_reliable_kpop_web_result is None or WebSearchResult is None:
+            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
+
+        bad_results = [
+            WebSearchResult("동행·매력 특별시 서울 | 서울특별시", "https://www.seoul.go.kr", "주요뉴스 시민참여 행사 및 축제"),
+            WebSearchResult("서울특별시 - 나무위키", "https://namu.wiki/w/서울특별시", "일상적으로 서울이라고 하면..."),
+            WebSearchResult("Welcome to Seoul - Visit Seoul", "https://english.visitseoul.net", "Official Travel Guide"),
+            WebSearchResult("서울특별시 - 위키백과", "https://ko.wikipedia.org/wiki/서울특별시", "위키백과"),
+        ]
+        good = WebSearchResult(
+            "2026 Seoul K-pop Concert Tickets",
+            "https://tickets.interpark.com/goods/123",
+            "K-pop concert ticket schedule 2026",
+        )
+
+        self.assertTrue(_is_reliable_kpop_web_result(good))
+        self.assertTrue(all(not _is_reliable_kpop_web_result(r) for r in bad_results))
+
     def test_kpop_without_shopping_does_not_add_mall_queries(self) -> None:
         if _build_itinerary_attraction_queries is None or _has_itinerary_shopping_interest is None:
             self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
@@ -429,6 +543,23 @@ class RouterItineraryPlaceBalanceTests(unittest.TestCase):
         queries = _build_itinerary_attraction_queries("K-pop 쇼핑", "", profile)
 
         self.assertTrue(any("쇼핑" in q or "코엑스몰" in q for q in queries))
+
+    def test_activity_selection_adds_location_queries_for_ui_refs(self) -> None:
+        if _build_itinerary_attraction_queries is None:
+            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
+        profile = {
+            "regions": ["seoul"],
+            "regionCities": "강북구",
+            "activities": ["nature", "photo", "tradition", "kpop", "drama"],
+        }
+
+        queries = _build_itinerary_attraction_queries("자연 포토스팟 K-pop 공연", "", profile)
+        joined = " ".join(queries)
+
+        self.assertIn("공원", joined)
+        self.assertIn("포토스팟", joined)
+        self.assertIn("전통문화", joined)
+        self.assertIn("공연장", joined)
 
     def test_cafe_hopping_prioritizes_cafe_queries(self) -> None:
         if _build_itinerary_food_queries is None:
@@ -517,6 +648,20 @@ class RouterItineraryRepairTests(unittest.TestCase):
             distance_meters=None,
         )
 
+    def _cafe(self, name: str, address: str, url: str) -> NearbyPlace:
+        return NearbyPlace(
+            name=name,
+            category="카페,디저트",
+            address=address,
+            latitude=37.5,
+            longitude=127.0,
+            rating=4.5,
+            user_rating_count=100,
+            google_maps_uri=url,
+            is_open_now=None,
+            distance_meters=None,
+        )
+
     def test_penultimate_return_day_removes_far_destination_dinner(self) -> None:
         profile = {
             "plan_mode": True,
@@ -573,6 +718,23 @@ class RouterItineraryRepairTests(unittest.TestCase):
         self.assertNotIn("고양특례시청", repaired)
         self.assertNotIn("goyang.go.kr", repaired)
         self.assertIn("명가원설농탕", repaired)
+
+    def test_repair_fills_empty_cafe_time_with_candidate(self) -> None:
+        profile = {
+            "plan_mode": True,
+            "days": 5,
+            "regions": ["seoul"],
+            "activities": ["cafe"],
+        }
+        cafe_url = "https://map.naver.com/p/search/%EC%84%B1%EC%88%98%EC%B9%B4%ED%8E%98"
+        reply = "\n".join(["2日目", "午後", "カフェタイム", "夕食"])
+        places = [self._cafe("성수카페", "서울 성동구 성수동", cafe_url)]
+
+        repaired = _repair_wizard_itinerary_rules(reply, places, profile, "カフェ巡り 旅行プラン")
+
+        self.assertIn("성수카페", repaired)
+        self.assertIn(cafe_url, repaired)
+        self.assertLess(repaired.index("성수카페"), repaired.index("夕食"))
 
 
 if __name__ == "__main__":

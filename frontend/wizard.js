@@ -2146,7 +2146,7 @@ function buildPrompt(isReroll = false) {
   const lockedItems = _collectLockedPlanItems();
   const sym = d.budget?.currency === "KRW" ? "₩" : "¥";
   const aMap = { food:"グルメ", shopping:"ショッピング", nightview:"夜景", tradition:"伝統文化",
-                 hallyu:"韓流・K-pop", drama:"ドラマ", kpop:"K-pop", cafe:"カフェ巡り",
+                 hallyu:"韓流・K-pop", drama:"公演", kpop:"K-pop", cafe:"カフェ巡り",
                  nature:"自然", photo:"フォトスポット", sports:"スポーツ観戦", vacation:"バカンス" };
   const vacMap = { poolvilla:"プールヴィラ", camping:"キャンピング" };
   const tsMap = {
@@ -2275,7 +2275,7 @@ function buildPrompt(isReroll = false) {
       actSet.has("shopping") && "shopping",
       actSet.has("nightview") && "nightview",
       actSet.has("tradition") && "tradition",
-      actSet.has("drama") && "drama",
+      actSet.has("drama") && "performance",
       actSet.has("nature") && "nature",
       actSet.has("photo") && "photo",
     ].filter(Boolean);
@@ -3502,9 +3502,9 @@ function _renderInlinePlaceCard(p) {
     : "";
   const naverPhotoUrl = p.photo_url || p.naver_photo_url
     || ((p.maps_url || p.google_maps_uri || "").includes("map.naver.com")
-      ? `/api/naver-photo/?url=${encodeURIComponent(p.maps_url || p.google_maps_uri)}&q=${encodeURIComponent(naverQuery)}${naverCoord}&image_fallback=1`
+      ? `/api/naver-photo/?url=${encodeURIComponent(p.maps_url || p.google_maps_uri)}&q=${encodeURIComponent(naverQuery)}${naverCoord}`
       : "")
-    || (naverQuery ? `/api/naver-photo/?q=${encodeURIComponent(naverQuery)}${naverCoord}&image_fallback=1` : "");
+    || (naverQuery ? `/api/naver-photo/?q=${encodeURIComponent(naverQuery)}${naverCoord}` : "");
   const fallbackThumb = '<span class="plan-place-card__img plan-place-card__img--fallback" aria-hidden="true">📍</span>';
   const fallbackThumbAttr = fallbackThumb.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   const thumb = naverPhotoUrl
@@ -3819,15 +3819,31 @@ const _FOOD_PREF_KW = {
   cafe: ["카페", "커피", "coffee", "베이커리"],
 };
 
+const _FORTUNE_PLACE_RE = /(점집|유명한점집|사주|신점|무당|보살|선녀|만신|철학관|작명|타로|운세|굿당|천궁|신궁|용궁|산신|도사|법사|무속|애동제자|연화암|천신암|선녀암)/i;
+const _AM_SHRINE_RE = /(?:^|[\s,·/])[\w가-힣]{1,12}암(?:$|[\s,·/])/i;
+
+function _isFortunePlaceForRefs(place) {
+  const blob = `${place?.name || ""} ${place?.address || ""} ${place?.category || ""} ${place?.primary_type || ""}`.toLowerCase();
+  if (_FORTUNE_PLACE_RE.test(blob)) return true;
+  if (_AM_SHRINE_RE.test(blob) && !/카페|커피|coffee|cafe|베이커리|디저트/.test(blob)) return true;
+  return false;
+}
+
 function _isCafePlaceForRefs(place) {
+  if (_isFortunePlaceForRefs(place)) return false;
   const blob = `${place?.name || ""} ${place?.address || ""} ${place?.category || ""} ${place?.primary_type || ""}`.toLowerCase();
   return /카페|커피|coffee|cafe|베이커리|디저트|빙수|スイーツ|ベーカリー/.test(blob);
 }
 
 function _isMealPlaceForRefs(place) {
+  if (_isFortunePlaceForRefs(place)) return false;
   if (_isCafePlaceForRefs(place)) return false;
   const blob = `${place?.name || ""} ${place?.address || ""} ${place?.category || ""} ${place?.primary_type || ""}`.toLowerCase();
   return /식당|맛집|restaurant|한식|국밥|보쌈|족발|치킨|갈비|냉면|국수|분식|고기|해물|회\b/.test(blob);
+}
+
+function _isActivityPlaceForRefs(place) {
+  return !_isFortunePlaceForRefs(place) && !_isMealPlaceForRefs(place) && !_isCafePlaceForRefs(place);
 }
 
 function _placeMatchesUserFoodPref(place) {
@@ -3841,22 +3857,63 @@ function _placeMatchesUserFoodPref(place) {
 }
 
 function _renderPlanPlacesRefSection(places, reply) {
-  const foodPlaces = (places || []).filter((p) => _placeMatchesUserFoodPref(p));
-  if (!foodPlaces.length) return "";
-  const linked = _placesLinkedInPlan(reply, foodPlaces);
-  const toShow = (linked.length ? linked : foodPlaces).slice(0, 6);
-  const cards = toShow.map((p) => _renderInlinePlaceCard(p)).join("");
-  if (toShow.some((p) => p.source === "naver_search" || p.naver_score)) {
-    return `<div class="plan-refs-section"><h3 class="plan-refs-title">Naver Local/Blog Picks</h3>
+  const allPlaces = places || [];
+  if (!allPlaces.length) return "";
+  const linked = _placesLinkedInPlan(reply, allPlaces);
+  const linkedKeys = new Set(linked.map((p) => `${p.name || ""}|${p.address || ""}`));
+  const preferLinked = (list) => {
+    const linkedSubset = list.filter((p) => linkedKeys.has(`${p.name || ""}|${p.address || ""}`));
+    return linkedSubset.length ? linkedSubset.concat(list.filter((p) => !linkedKeys.has(`${p.name || ""}|${p.address || ""}`))) : list;
+  };
+  const acts = new Set((wizardData.activities || []).map((a) => String(a).toLowerCase()));
+  const sections = [];
+  const pushSection = (title, list, note, limit = 8) => {
+    const seen = new Set();
+    const toShow = preferLinked(list).filter((p) => {
+      const key = `${p.name || ""}|${p.address || ""}`;
+      if (!p.name || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, limit);
+    if (!toShow.length) return;
+    const cards = toShow.map((p) => _renderInlinePlaceCard(p)).join("");
+    sections.push(`<div class="plan-refs-section"><h3 class="plan-refs-title">${title}</h3>
       <div class="plan-place-grid">${cards}</div>
-      <p class="plan-refs-note">Naver quality is scored from official Local/Blog Search signals: blog volume, recency, and keyword matches.</p></div>`;
+      <p class="plan-refs-note">${note}</p></div>`);
+  };
+
+  if (acts.has("food")) {
+    pushSection(
+      "🍜 グルメ位置情報",
+      allPlaces.filter((p) => _isMealPlaceForRefs(p) && _placeMatchesUserFoodPref(p)),
+      "※ 選択したグルメ希望に合わせた昼食・夕食候補です。カードの地図リンクから位置を確認できます。"
+    );
   }
-  const note = linked.length
-    ? "※ 本文で引用された店舗。写真・住所・地図リンクは参照データです。"
-    : "※ エリア周辺の検索候補。写真・住所・地図リンクは参照データです。";
-  return `<div class="plan-refs-section"><h3 class="plan-refs-title">📍 エリア周辺のスポット</h3>
-    <div class="plan-place-grid">${cards}</div>
-    <p class="plan-refs-note">${note}</p></div>`;
+  if (acts.has("cafe") || (wizardData.additional?.foodPreferences || []).includes("cafe")) {
+    pushSection(
+      "☕ カフェ位置情報",
+      allPlaces.filter(_isCafePlaceForRefs),
+      "※ カフェ巡り用の候補です。本文に入らなかった候補も、位置情報カードとして確認できます。"
+    );
+  }
+  if (["shopping", "nightview", "tradition", "nature", "photo", "kpop", "drama"].some((a) => acts.has(a))) {
+    pushSection(
+      "📍 やりたいこと周辺スポット",
+      allPlaces.filter(_isActivityPlaceForRefs),
+      "※ 選択した観光テーマに使える周辺スポットです。自然・フォト・文化・K-pop/公演系の動線確認に使えます。",
+      10
+    );
+  }
+  if (!sections.length) {
+    pushSection(
+      "📍 エリア周辺のスポット",
+      allPlaces,
+      linked.length
+        ? "※ 本文で引用された場所を優先表示しています。"
+        : "※ エリア周辺の検索候補です。写真・住所・地図リンクは参照データです。"
+    );
+  }
+  return sections.join("");
 }
 
 function _dateLabelJa(dateStr) {
@@ -4256,7 +4313,7 @@ async function _displayPlanOutput(data) {
   }
 
   const places = data.places || [];
-  const showReferenceSections = false;
+  const showReferenceSections = true;
   const placesEl = $("planPlacesArea");
   const placesHtml = showReferenceSections ? _renderPlanPlacesRefSection(places, reply) : "";
   if (placesEl) {
@@ -4285,7 +4342,9 @@ async function _displayPlanOutput(data) {
   }
 
   const ticketEl = $("planTicketArea");
-  const ticketHtml = ticketEl && showReferenceSections ? _renderTicketPlatformCards(data.ticket_platform_events || []) : "";
+  const ticketHtml = ticketEl && showReferenceSections
+    ? (_renderTicketPlatformCards(data.ticket_platform_events || []) || _renderSelectedKpopNotice(data))
+    : "";
   if (ticketEl) {
     ticketEl.innerHTML = ticketHtml;
     ticketEl.style.display = ticketHtml ? "block" : "none";
@@ -4294,7 +4353,7 @@ async function _displayPlanOutput(data) {
   const sportsEl = $("planSportsArea");
   const lckHtml = _renderLckVenueCard();
   const sportsCardsHtml = sportsEl ? _renderPlanSportsCards(data.sports_events || []) : "";
-  const sportsHtml = lckHtml + sportsCardsHtml;
+  const sportsHtml = lckHtml + sportsCardsHtml + (sportsCardsHtml || lckHtml ? "" : _renderSelectedSportsNotice(data));
   if (sportsEl) {
     sportsEl.innerHTML = sportsHtml;
     sportsEl.style.display = sportsHtml ? "block" : "none";
@@ -4371,6 +4430,43 @@ function _renderPlanEventsCards(events) {
   return `<div class="plan-refs-section">
     <h3 class="plan-refs-title">🎪 旅行期間中の公演・行事</h3>
     <div class="plan-vk-grid">${cards}</div>
+  </div>`;
+}
+
+function _selectedActivitiesSet() {
+  return new Set((wizardData.activities || []).map((a) => String(a).toLowerCase()));
+}
+
+function _renderSelectedKpopNotice(data) {
+  const acts = _selectedActivitiesSet();
+  if (!acts.has("kpop")) return "";
+  const hasEvents = (data?.ticket_platform_events || []).length || (data?.gyeonggi_events || []).length;
+  if (hasEvents) return "";
+  return `<div class="plan-refs-section">
+    <h3 class="plan-refs-title">🎵 K-pop・公演情報</h3>
+    <div class="sport-event-card sport-event-card--notice">
+      <span class="sport-league">KOPIS</span>
+      <p class="sport-notice-title">K-popが選択されています</p>
+      <p class="sport-notice-body">旅行期間・地域に一致するKOPIS大衆音楽候補を取得できませんでした。一般の都市案内やWikiページは公演カードとして表示しません。</p>
+    </div>
+  </div>`;
+}
+
+function _renderSelectedSportsNotice(data) {
+  const acts = _selectedActivitiesSet();
+  const selectedSports = wizardData.sports || [];
+  if (!acts.has("sports") && !selectedSports.length) return "";
+  if ((data?.sports_events || []).length) return "";
+  const sportText = selectedSports.length
+    ? selectedSports.map((s) => _LEAGUE_LABELS[s] || String(s)).join(" / ")
+    : "KBO / K League / KBL / KOVO";
+  return `<div class="plan-refs-section">
+    <h3 class="plan-refs-title">🏟 スポーツ観戦</h3>
+    <div class="sport-event-card sport-event-card--notice">
+      <span class="sport-league">${_escapeHtml(sportText)}</span>
+      <p class="sport-notice-title">スポーツ観戦が選択されています</p>
+      <p class="sport-notice-body">旅行期間・地域に一致する公式試合候補を取得できませんでした。条件に合う試合がない場合でも、この選択状態は結果画面に残します。</p>
+    </div>
   </div>`;
 }
 
