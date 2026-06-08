@@ -644,7 +644,14 @@ def api_places_enrich(request):
                 continue
             url = str(raw.get("url") or "").strip()
             query = normalize_plan_query_label(str(raw.get("query") or ""))
-            if not url or not query:
+            if not url:
+                continue
+            if not query:
+                # Naver search URL: extract term from path so enrich can still run
+                m = re.search(r"/search/([^?#]+)", url)
+                if m:
+                    query = urllib.parse.unquote_plus(m.group(1)).strip()
+            if not query:
                 continue
             scored = sclient.search_places(query, display=1, area_hint=region_cities) if sclient.is_configured else []
             if scored:

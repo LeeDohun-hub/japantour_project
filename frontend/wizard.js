@@ -3427,9 +3427,20 @@ function _mapOpenUrl(p) {
   return p?.google_maps_uri || p?.maps_url || "#";
 }
 
+function _naverSearchTermFromUrl(url) {
+  try {
+    const m = String(url).match(/\/search\/([^?#]+)/i);
+    return m ? decodeURIComponent(m[1].replace(/\+/g, " ")).trim() : "";
+  } catch { return ""; }
+}
+
 function _renderMapsUnresolvedFallback(url, queryLabel) {
-  const q = _normalizeQueryLabelForEnrich(queryLabel);
+  const q = _normalizeQueryLabelForEnrich(queryLabel) || _naverSearchTermFromUrl(url);
   console.debug?.("Plan place link omitted: unresolved place detail", { url, query: q });
+  // For Naver search URLs show a minimal clickable link so the user can still find the place
+  if (q && /map\.naver\.com[^\s]*\/search\//i.test(url)) {
+    return `<a class="plan-place-search-link" href="${_escapeHtml(url)}" target="_blank" rel="noopener">🔍 ${_escapeHtml(q)}</a>`;
+  }
   return "";
 }
 
@@ -3582,6 +3593,11 @@ function _tryRenderPlaceCard(indexes, rendered, url, renderedScope) {
   const pid = place.place_id || "";
   if (pid.startsWith("anchor:") || pid.startsWith("cafe-anchor:")) {
     rendered.add(key); // mark consumed so the fallback link is also skipped
+    return false;
+  }
+  // LLM-generated generic placeholder names ("광주광역시의 실재점" etc.) are not real places
+  if (/의\s*실재[점店]?$|の実在[店점]?$|실재점$|実在店$/i.test(place.name || "")) {
+    rendered.add(key);
     return false;
   }
   // Personal care businesses (hair salons, nail salons, etc.) are not tourist spots
@@ -3737,6 +3753,8 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
       const url = trimmed.split(/\s/)[0];
       if (isUnresolvedMapsUrl(url)) {
         rendered.add(_mapsUrlKey(url));
+        const fallback = _renderMapsUnresolvedFallback(url, placeIndexes.unresolved?.[_mapsUrlKey(url)]);
+        if (fallback) pushStep(fallback);
         return;
       }
       const place = _lookupPlace(placeIndexes, url);
@@ -4251,6 +4269,8 @@ async function _displayPlanOutput(data) {
     const rawQ = _queryLabelForUrl(lines, url, idx >= 0 ? idx : undefined);
     const query = _normalizeQueryLabelForEnrich(rawQ);
     placeIndexes.unresolved[_mapsUrlKey(url)] = query || rawQ;
+    // "광주광역시의 실재점" etc. — LLM-generated generic placeholder that can't be enriched
+    if (/의\s*실재[점店]?$|の実在[店점]?$|실재점$|実在店$/i.test(query || "")) continue;
     const matched = _findPlaceByName(placeIndexes, query);
     if (matched) {
       placeIndexes.byUrl[_mapsUrlKey(url)] = {
