@@ -180,6 +180,7 @@ function setupNavigation() {
   });
 
   $("btnSavedPlans")?.addEventListener("click", () => openSavedPlansPanel());
+  $("ddSavedPlans")?.addEventListener("click", () => openSavedPlansPanel());
   $("btnOpenSavedPlans")?.addEventListener("click", () => openSavedPlansPanel());
   $("btnSavePlan")?.addEventListener("click", () => saveCurrentPlanManually());
   $("btnClearSavedPlans")?.addEventListener("click", clearSavedPlans);
@@ -415,18 +416,110 @@ function switchAuthTab(tab) {
 }
 
 function setupNavPlanMode() {
-  $("btnNavPlanMode")?.addEventListener("click", (e) => {
+  const planModeHandler = (e) => {
     const path = (window.location.pathname || "/").replace(/\/$/, "") || "/";
     if (path !== "/") return;
     e.preventDefault();
     goToStep(1);
-  });
+  };
+  $("btnNavPlanMode")?.addEventListener("click", planModeHandler);
+  $("ddPlanMode")?.addEventListener("click", planModeHandler);
+}
+
+// ── 네비게이션 드롭다운 ──────────────────────────────────────
+function openNavDropdown() {
+  $("navDropdown")?.classList.add("open");
+  $("navProfileBtn")?.setAttribute("aria-expanded", "true");
+}
+function closeNavDropdown() {
+  $("navDropdown")?.classList.remove("open");
+  $("navProfileBtn")?.setAttribute("aria-expanded", "false");
+}
+function toggleNavDropdown() {
+  $("navDropdown")?.classList.contains("open") ? closeNavDropdown() : openNavDropdown();
+}
+
+// ── 회원탈퇴 모달 ────────────────────────────────────────────
+function openDeleteModal() {
+  const modal = $("deleteAccountModal");
+  if (!modal) return;
+  const isOAuth = (currentUser?.username || "").startsWith("google_") ||
+                  (currentUser?.username || "").startsWith("line_");
+  const pwField = $("deletePasswordField");
+  if (pwField) pwField.style.display = isOAuth ? "none" : "block";
+  const pwInput = $("deletePasswordInput");
+  if (pwInput) pwInput.value = "";
+  const errEl = $("deleteAccountError");
+  if (errEl) errEl.textContent = "";
+  modal.style.display = "flex";
+  document.body.style.overflow = "hidden";
+}
+function closeDeleteModal() {
+  const modal = $("deleteAccountModal");
+  if (!modal) return;
+  modal.style.display = "none";
+  document.body.style.overflow = "";
+}
+async function handleDeleteAccount() {
+  const errEl = $("deleteAccountError");
+  const btn = $("btnDeleteConfirm");
+  const isOAuth = (currentUser?.username || "").startsWith("google_") ||
+                  (currentUser?.username || "").startsWith("line_");
+  const password = isOAuth ? undefined : $("deletePasswordInput")?.value;
+  if (!isOAuth && !password) {
+    if (errEl) errEl.textContent = "パスワードを入力してください";
+    return;
+  }
+  if (errEl) errEl.textContent = "";
+  btn.disabled = true;
+  const origText = btn.textContent;
+  btn.textContent = "...";
+  try {
+    const res = await fetch("/api/auth/delete-account/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrfToken() },
+      credentials: "same-origin",
+      body: JSON.stringify(isOAuth ? {} : { password }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      closeDeleteModal();
+      window.location.reload();
+    } else {
+      if (errEl) errEl.textContent = data.detail || "退会処理に失敗しました";
+    }
+  } catch (_) {
+    if (errEl) errEl.textContent = "ネットワークエラーが発生しました";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origText;
+  }
 }
 
 function setupStep1() {
   setupNavPlanMode();
   $("btnLogout")?.addEventListener("click", handleLogout);
-  $("btnNavLogout")?.addEventListener("click", handleLogout);
+  $("ddLogout")?.addEventListener("click", handleLogout);
+
+  // 드롭다운 토글
+  $("navProfileBtn")?.addEventListener("click", (e) => { e.stopPropagation(); toggleNavDropdown(); });
+  document.addEventListener("click", (e) => {
+    if (!$("navProfileMenu")?.contains(e.target)) closeNavDropdown();
+  });
+
+  // 드롭다운 내 버튼
+  $("ddDeleteAccount")?.addEventListener("click", () => { closeNavDropdown(); openDeleteModal(); });
+  $("btnDeleteAccount")?.addEventListener("click", openDeleteModal);
+
+  // 퇴회 모달
+  $("btnDeleteConfirm")?.addEventListener("click", handleDeleteAccount);
+  $("btnDeleteCancel")?.addEventListener("click", closeDeleteModal);
+  $("deleteAccountModal")?.addEventListener("click", (e) => {
+    if (e.target === $("deleteAccountModal")) closeDeleteModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { closeNavDropdown(); closeDeleteModal(); }
+  });
 
   document.querySelectorAll(".auth-panel-tab").forEach((btn) => {
     btn.addEventListener("click", () => switchAuthTab(btn.dataset.authTab || "login"));
@@ -577,10 +670,15 @@ function setLoggedIn(user) {
   $("loggedInSection").style.display = "block";
   $("s1Avatar").textContent = name[0].toUpperCase();
   $("s1Name").textContent = `${name} さん`;
-  const lbl = $("navUserLabel");
-  if (lbl) lbl.textContent = name;
-  const navLogout = $("btnNavLogout");
-  if (navLogout) navLogout.style.display = "inline-flex";
+  // 네비게이션: 드롭다운 표시, 게스트 버튼 숨김
+  const navUsername = $("navUsername");
+  if (navUsername) navUsername.textContent = name;
+  const navAvatar = $("navAvatar");
+  if (navAvatar) navAvatar.textContent = name[0].toUpperCase();
+  const profileMenu = $("navProfileMenu");
+  if (profileMenu) profileMenu.style.display = "flex";
+  const guestBtns = $("navGuestBtns");
+  if (guestBtns) guestBtns.style.display = "none";
 }
 
 async function handleLogout() {
@@ -598,10 +696,12 @@ async function handleLogout() {
   const loggedSec = $("loggedInSection");
   if (authSec) authSec.style.display = "block";
   if (loggedSec) loggedSec.style.display = "none";
-  const lbl = $("navUserLabel");
-  if (lbl) lbl.textContent = "";
-  const navLogout = $("btnNavLogout");
-  if (navLogout) navLogout.style.display = "none";
+  // 네비게이션: 게스트 버튼 복원, 드롭다운 숨김
+  closeNavDropdown();
+  const profileMenu = $("navProfileMenu");
+  if (profileMenu) profileMenu.style.display = "none";
+  const guestBtns = $("navGuestBtns");
+  if (guestBtns) guestBtns.style.display = "flex";
   ["s1LoginForm", "s1SignupForm"].forEach((id) => $(id)?.reset());
   switchAuthTab("login");
   goToStep(1);

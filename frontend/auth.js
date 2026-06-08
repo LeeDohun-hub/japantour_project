@@ -29,13 +29,18 @@ const Auth = (() => {
   function renderUser() {
     const guestEl = $('authGuest');
     const userEl = $('authUser');
-    const nameEl = $('navUsername');
-    const avatarEl = $('navAvatar');
     if (guestEl) guestEl.style.display = 'none';
     if (userEl) userEl.style.display = 'flex';
     const name = (currentUser.display_name || currentUser.username || '').trim();
+    const nameEl = $('navUsername');
+    const avatarEl = $('navAvatar');
     if (nameEl) nameEl.textContent = name;
     if (avatarEl) avatarEl.textContent = name.charAt(0).toUpperCase();
+    // 드롭다운 표시, 게스트 버튼 숨김
+    const profileMenu = $('navProfileMenu');
+    const guestBtns = $('navGuestBtns');
+    if (profileMenu) profileMenu.style.display = 'flex';
+    if (guestBtns) guestBtns.style.display = 'none';
   }
 
   function renderGuest() {
@@ -43,6 +48,31 @@ const Auth = (() => {
     const userEl = $('authUser');
     if (guestEl) guestEl.style.display = 'flex';
     if (userEl) userEl.style.display = 'none';
+    // 게스트 버튼 표시, 드롭다운 숨김
+    const profileMenu = $('navProfileMenu');
+    const guestBtns = $('navGuestBtns');
+    if (profileMenu) { profileMenu.style.display = 'none'; closeDropdown(); }
+    if (guestBtns) guestBtns.style.display = 'flex';
+  }
+
+  function openDropdown() {
+    const dd = $('navDropdown');
+    const btn = $('navProfileBtn');
+    if (dd) dd.classList.add('open');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeDropdown() {
+    const dd = $('navDropdown');
+    const btn = $('navProfileBtn');
+    if (dd) dd.classList.remove('open');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+
+  function toggleDropdown() {
+    const dd = $('navDropdown');
+    if (dd?.classList.contains('open')) closeDropdown();
+    else openDropdown();
   }
 
   function openModal(tab) {
@@ -274,6 +304,18 @@ const Auth = (() => {
     if (formLogin) formLogin.addEventListener('submit', handleLogin);
     if (formSignup) formSignup.addEventListener('submit', handleRegister);
 
+    // 프로필 드롭다운
+    const navProfileBtn = $('navProfileBtn');
+    if (navProfileBtn) navProfileBtn.addEventListener('click', e => { e.stopPropagation(); toggleDropdown(); });
+    document.addEventListener('click', e => {
+      if (!$('navProfileMenu')?.contains(e.target)) closeDropdown();
+    });
+
+    // 드롭다운 내 버튼 — wizard.js에서 처리하는 항목은 auth.js에서 연결 불필요
+    const ddDeleteAccount = $('ddDeleteAccount');
+    if (ddDeleteAccount) ddDeleteAccount.addEventListener('click', () => { closeDropdown(); openDeleteModal(); });
+
+    // 퇴회 모달 (step1 내 버튼 + 드롭다운 내 버튼)
     const btnDeleteAccount = $('btnDeleteAccount');
     const btnDeleteConfirm = $('btnDeleteConfirm');
     const btnDeleteCancel = $('btnDeleteCancel');

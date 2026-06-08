@@ -12,11 +12,33 @@
   <header class="top-nav">
     <span class="top-nav-brand">🛫 Korea Travel Planner</span>
     <div class="nav-right">
-      <span class="nav-user-label" id="navUserLabel"></span>
-      <button type="button" id="btnNavLogout" class="btn btn-sm ghost nav-logout-btn" style="display:none">ログアウト</button>
-      <a href="/" id="btnNavPlanMode" class="btn btn-sm secondary nav-plan-mode" aria-current="page" title="1〜8ステップで旅行プランを作成">プランモード</a>
-      <button type="button" id="btnSavedPlans" class="btn btn-sm secondary nav-saved-plans">保存プラン</button>
-      <a href="/chat/" class="btn btn-sm secondary nav-chat-shortcut">💬 AIチャット</a>
+
+      <!-- ゲスト用: 独立ボタン群 -->
+      <div id="navGuestBtns" class="nav-guest-btns">
+        <a href="/" id="btnNavPlanMode" class="btn btn-sm secondary nav-plan-mode" aria-current="page" title="1〜8ステップで旅行プランを作成">プランモード</a>
+        <button type="button" id="btnSavedPlans" class="btn btn-sm secondary nav-saved-plans">保存プラン</button>
+        <a href="/chat/" class="btn btn-sm secondary nav-chat-shortcut">💬 AIチャット</a>
+      </div>
+
+      <!-- ログイン済み: プロフィールドロップダウン -->
+      <div id="navProfileMenu" class="nav-profile-menu" style="display:none">
+        <button type="button" id="navProfileBtn" class="nav-profile-btn" aria-haspopup="true" aria-expanded="false">
+          <span id="navAvatar" class="nav-profile-avatar">?</span>
+          <span id="navUsername" class="nav-profile-name"></span>
+          <svg class="nav-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+            <path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <div id="navDropdown" class="nav-dropdown" role="menu">
+          <a href="/" class="nav-dropdown-item" id="ddPlanMode" role="menuitem">🗺 プランモード</a>
+          <button type="button" class="nav-dropdown-item" id="ddSavedPlans" role="menuitem">📚 保存プラン</button>
+          <a href="/chat/" class="nav-dropdown-item" role="menuitem">💬 AIチャット</a>
+          <div class="nav-dropdown-divider"></div>
+          <button type="button" class="nav-dropdown-item nav-dropdown-item--danger" id="ddDeleteAccount" role="menuitem">退会</button>
+          <button type="button" class="nav-dropdown-item" id="ddLogout" role="menuitem">ログアウト</button>
+        </div>
+      </div>
+
     </div>
   </header>
 
