@@ -254,6 +254,16 @@ function validate(step) {
     }
     if (err) err.style.display = "none";
   }
+  if (step === 4) {
+    const selected = chips("transportChips");
+    const err = $("transportError");
+    if (!selected.length) {
+      if (err) err.hidden = false;
+      $("transportChips")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return false;
+    }
+    if (err) err.hidden = true;
+  }
   if (step === 6) {
     const errEl = $("budgetTotalError");
     if (errEl) errEl.textContent = "";
@@ -2357,7 +2367,9 @@ function buildPrompt(isReroll = false) {
       "【到着日】1日目は入国・移動・チェックイン・休息を優先。到着・チェックインが遅い場合は観光・食事を出さない。到着が早く夕食時間が物理的に取れる場合のみ、宿泊近郊の夕食1件まで可。希望エリア観光は2日目以降に配置（宿泊先の市区だけで観光エリアを決めない）。",
       "【宿泊先と観光エリアの距離】宿泊先の市区と希望エリアが異なる場合は、2日目冒頭に片道移動時間の目安を1行で明記し、その日の観光地は同一方面にまとめる。毎日同じ遠方エリアへ往復する日程は禁止。移動負担が大きい場合は、観光地数を減らすか宿泊地変更を提案する。",
       "【遠方移動日の地図】2日目に宿泊先から遠方観光地へ移動する場合、2日目の最初のブロックは必ず「宿泊先→目的地エリアの主要駅/最初の観光地」への移動にし、本文にも経路を明記する。地図ルート上でも宿泊先を出発点として扱える構成にする。",
+      "【遠方移動日の食事】宿泊先から遠方観光エリアへ移動する日も、到着後の昼食1件（具体的な店名＋地図URL）と夕食1件（具体的な店名＋地図URL）を必ず含める。「移動に充てる」「到着後は休憩」だけで食事を省略することを禁止する。",
       "【帰還日の構成】遠方エリアから宿泊先へ戻る日は、午前〜昼食までは目的地エリア内で具体スポット1件＋具体昼食1件を入れ、午後に宿泊先へ戻る。帰還日を「移動」「休息」「周辺で食事」だけで終わらせない。",
+      "【場所重複禁止】同一の観光スポット・食事店を複数の日に重複させない。Reference Dataの候補数が不足する場合は、候補リスト外の実在する周辺スポットを補完してよい（創作・架空名は禁止）。候補不足を理由に「スポットなし」「リスト外のため省略」とだけ書いて日程を空欄にすることを禁止する。",
       "【遠方観光地の扱い】宿泊先と希望エリアが遠い場合（例: ソウル/仁川/京畿の宿泊先から釜山・光州・江原・済州など）は、毎日宿泊先から日帰り往復させない。2日目に遠方エリアへ移動した後は、その地域に滞在している前提で連続日程を組む。3日目以降に「元の宿泊先から遠方へ出発」と書くことは禁止。出国前日に元の宿泊先または出国空港圏へ戻る移動ブロックを1回だけ入れる。最終日は元の宿泊先/空港圏から出国する。"
     );
   }
@@ -2390,7 +2402,7 @@ function buildPrompt(isReroll = false) {
     "【日程密度】観光可能な旅行日は、観光/体験2〜3件＋昼食1件＋夕食1件を基本上限にする。食事は昼食・夕食の2回だけ。車移動でも同一市内という理由だけで観光地・イベント・食事を詰め込みすぎない。イベント/スポーツ観戦日は観光を1〜2件に減らす。",
     "【夜スロット絶対禁止】[夜]スロットには飲食店・カフェ・バー・屋台・食事場所を一切置かない。[夜]は夜景・散歩・公園・文化エリア・宿泊休憩のみ。夕食は[夕食]スロットで済ませる。夕食後の追加飲食は禁止。",
     "【カード表示用ノイズ禁止】本文に「外観写真」「評価」「営業中」「住所」「地図」「経路」「지도」「통로」「この日の動線上の候補」「予算の目安」を場所名の直前直後に書かない。場所名の直後はReference Dataの地図URL（map.naver.com）だけを書く。",
-    "【食事 — 厳守】Reference Dataの「食事候補」リストの実在店のみ。朝食は入れない。観光可能な旅行日の食事は昼食1件・夕食1件の2回だけ。昼食・夕食は店名＋次行にReference Dataの地図URL（map.naver.com）を書く。到着が遅い入国日・出国が早い最終日は食事ブロックを書かない。食事候補は昼食・夕食スロット以外で絶対に使わない。午前・夜に食堂/レストラン/カフェ/デザート/市場グルメ/軽食/屋台/バーを置くことは禁止。午後はカフェ巡り希望かつReference Dataに「カフェ候補」がある場合のみ、カフェ候補の実在店名＋地図URLを1件入れてよい。「近郊で食事」「店名は記載しない」「한식店」「現地のレストラン」「別の韓国料理店」「コンビニ」「軽食」「間食」「候補が足りない/全部終わった」は禁止。該当日の候補が足りない場合は、本文で説明せず、同一エリアまたは近接する目的地エリアの検証済み候補から選ぶ。帰還日・宿泊エリア候補は帰還後の夕食だけ使用可。",
+    "【食事 — 厳守】朝食は入れない。観光可能な旅行日の食事は昼食1件・夕食1件の2回だけ。到着が遅い入国日・出国が早い最終日は食事ブロックを書かない。食事は昼食・夕食スロット以外で絶対に使わない。「近郊で食事」「店名は記載しない」「한식店」「現地のレストラン」「別の韓国料理店」「コンビニ」「軽食」「間食」「候補が足りない/全部終わった」「(식사 후보 리스트에 해당하는 가게가 없습니다)」は絶対禁止。【通常】Reference Dataの「食事候補」リストの店名＋次行にその地図URL（map.naver.com）を書く。候補が足りない場合は同一エリアまたは近接エリアの検証済み候補から選ぶ。帰還日・宿泊エリア候補は帰還後の夕食だけ使用可。【例外：食事候補ゼロ件】Reference Dataの「食事候補」が全エリア合計0件の場合のみ、AIが確実に知っているその都市の実在飲食店を使用可。店名は韓国語正式表記、地図URLは「https://map.naver.com/v5/search/店名（URL-encode）」形式。架空・想像の店名は引き続き禁止。",
     "【観光】「観光スポット候補」リストの施設名＋URLのみ。リスト外の創作禁止。「〇〇周辺を散策」「〇〇 일대/주변 산책」「近くを歩く」「ショッピングや散策」だけの抽象予定は禁止。散策でも必ず候補リスト内の具体施設名・公園名・通り名・モール名＋地図URLを書き、UIカード化できる位置情報にする。",
     "【スポーツ】Sports Schedule Resultsの試合またはオフシーズン案内をそのまま記載。ジム・ストリートへの置き換え禁止。",
     "営業時間・料金・チケットは必要な場合だけ文末で一言。本文に「時間外の可能性」「営業時間外かもしれません」は書かない。",
@@ -2495,6 +2507,20 @@ function syncTransportChipsForAirport() {
             : "🚌 空港リムジン";
   }
   TRANSPORT_INFO.bus = TRANSPORT_BUS_BY_AIRPORT[iata] || TRANSPORT_BUS_BY_AIRPORT.ICN;
+  renderTransportInfoPanel();
+}
+
+function renderTransportInfoPanel() {
+  const panel = $("transportInfoPanel");
+  if (!panel) return;
+  const selected = chips("transportChips");
+  if (!selected.length) {
+    panel.style.display = "none";
+    panel.innerHTML = "";
+    return;
+  }
+  panel.innerHTML = selected.map((t) => TRANSPORT_INFO[t] || "").join("");
+  panel.style.display = "block";
 }
 
 function setupTransportInfo() {
@@ -2507,13 +2533,9 @@ function setupTransportInfo() {
   el.addEventListener("click", () => {
     requestAnimationFrame(() => {
       const selected = chips("transportChips");
-      if (!selected.length) {
-        panel.style.display = "none";
-        panel.innerHTML = "";
-        return;
-      }
-      panel.innerHTML = selected.map((t) => TRANSPORT_INFO[t] || "").join("");
-      panel.style.display = "block";
+      const err = $("transportError");
+      if (selected.length && err) err.hidden = true;
+      renderTransportInfoPanel();
     });
   });
 }
@@ -3453,6 +3475,8 @@ function _directionsUrl(p) {
 function _placeGuideLine(p) {
   const blob = `${p?.name || ""} ${p?.address || ""} ${p?.category || ""} ${p?.primary_type || ""}`.toLowerCase();
   const has = (...needles) => needles.some((n) => blob.includes(String(n).toLowerCase()));
+  // Exclude food places from being labelled as cafe (e.g. "전포카페거리" in address)
+  const isFoodByName = _CAFE_EXCLUDE_NAME_RE.test((p?.name || "").toLowerCase());
 
   if (has("insadong", "인사동")) {
     if (has("ssamziegil", "쌈지길")) return "伝統雑貨・工芸品・小さなギャラリーをまとめて見やすいスポット。";
@@ -3469,7 +3493,7 @@ function _placeGuideLine(p) {
   if (has("gwanghwamun", "광화문")) return "広場、宮殿、博物館をつなげやすいソウル中心部のランドマーク。";
   if (has("찜닭", "jjimdak", "チムタク")) return "甘辛い醤油だれの鶏煮込みが名物。辛さは注文時に調整すると安心。";
   if (has("chicken", "치킨", "후라이드", "fried")) return "韓国式フライドチキン向き。ビールや軽い夜食にも合わせやすい店。";
-  if (has("cafe", "coffee", "커피", "카페")) return "散策の途中で休憩しやすいカフェ候補。写真と営業時間を見て選ぶと安心。";
+  if (!isFoodByName && has("cafe", "coffee", "커피", "카페")) return "散策の途中で休憩しやすいカフェ候補。写真と営業時間を見て選ぶと安心。";
   if (has("restaurant", "식당", "맛집")) return "この日の動線上で食事を取りやすい候補。代表メニューは現地メニューで確認。";
   if (has("museum", "gallery", "미술관", "박물관")) return "展示鑑賞向きのスポット。所要時間は展示内容に合わせて調整しやすいです。";
   if (has("market", "시장", "mall", "store", "거리", "길")) return "買い物と写真を組み合わせやすい立ち寄りスポット。";
@@ -3502,9 +3526,9 @@ function _renderInlinePlaceCard(p) {
     : "";
   const naverPhotoUrl = p.photo_url || p.naver_photo_url
     || ((p.maps_url || p.google_maps_uri || "").includes("map.naver.com")
-      ? `/api/naver-photo/?url=${encodeURIComponent(p.maps_url || p.google_maps_uri)}&q=${encodeURIComponent(naverQuery)}${naverCoord}`
+      ? `/api/naver-photo/?url=${encodeURIComponent(p.maps_url || p.google_maps_uri)}&q=${encodeURIComponent(naverQuery)}${naverCoord}&image_fallback=1`
       : "")
-    || (naverQuery ? `/api/naver-photo/?q=${encodeURIComponent(naverQuery)}${naverCoord}` : "");
+    || (naverQuery ? `/api/naver-photo/?q=${encodeURIComponent(naverQuery)}${naverCoord}&image_fallback=1` : "");
   const fallbackThumb = '<span class="plan-place-card__img plan-place-card__img--fallback" aria-hidden="true">📍</span>';
   const fallbackThumbAttr = fallbackThumb.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   const thumb = naverPhotoUrl
@@ -3554,6 +3578,18 @@ function _tryRenderPlaceCard(indexes, rendered, url, renderedScope) {
   if (renderedScope?.has(key)) return false;
   const place = _lookupPlace(indexes, url);
   if (!place) return false;
+  // Anchor/search-query placeholder places must not render as real place cards
+  const pid = place.place_id || "";
+  if (pid.startsWith("anchor:") || pid.startsWith("cafe-anchor:")) {
+    rendered.add(key); // mark consumed so the fallback link is also skipped
+    return false;
+  }
+  // Personal care businesses (hair salons, nail salons, etc.) are not tourist spots
+  const _catLow = (place.category || "").toLowerCase();
+  if (/미용실|헤어샵|헤어살롱|헤어숍|네일샵|네일아트|왁싱|속눈썹|반영구화장|세탁소|hair\s*salon|beauty\s*salon|nail\s*salon|barber\s*shop/i.test(_catLow)) {
+    rendered.add(key);
+    return false;
+  }
   const pk = _placeRenderKey(place);
   if (pk && rendered.has(pk)) return false;
   if (pk && renderedScope?.has(pk)) return false;
@@ -3829,10 +3865,16 @@ function _isFortunePlaceForRefs(place) {
   return false;
 }
 
+const _CAFE_EXCLUDE_NAME_RE = /국밥|설렁탕|순댓국|삼겹살|갈비(?!천)|삼계탕|칼국수|냉면|해장국|곱창|막창|횟집|생선구이|어탕|추어탕|감자탕|부대찌개|닭갈비|족발|보쌈|고깃집|정육|치킨|돼지(?:국밥|고기|갈비)|닭(?:강정|발|볶음)|짬뽕|짜장|탕수육|해물|낙지|오징어|게장/i;
+
 function _isCafePlaceForRefs(place) {
   if (_isFortunePlaceForRefs(place)) return false;
-  const blob = `${place?.name || ""} ${place?.address || ""} ${place?.category || ""} ${place?.primary_type || ""}`.toLowerCase();
-  return /카페|커피|coffee|cafe|베이커리|디저트|빙수|スイーツ|ベーカリー/.test(blob);
+  const name = (place?.name || "").toLowerCase();
+  // 식당 키워드가 이름에 있으면 카페로 분류 금지 (카페거리 주소 포함 식당 방지)
+  if (_CAFE_EXCLUDE_NAME_RE.test(name)) return false;
+  // 카페 여부는 이름 + 카테고리만 기준 (주소/search_area 제외)
+  const nameCat = `${name} ${(place?.category || "")} ${(place?.primary_type || "")}`.toLowerCase();
+  return /카페|커피|coffee|cafe|베이커리|디저트|빙수|スイーツ|ベーカリー/.test(nameCat);
 }
 
 function _isMealPlaceForRefs(place) {
@@ -3872,6 +3914,9 @@ function _renderPlanPlacesRefSection(places, reply) {
     const toShow = preferLinked(list).filter((p) => {
       const key = `${p.name || ""}|${p.address || ""}`;
       if (!p.name || seen.has(key)) return false;
+      // anchor/fallback places have search queries as names — skip them
+      const pid = p.place_id || "";
+      if (pid.startsWith("anchor:") || pid.startsWith("cafe-anchor:")) return false;
       seen.add(key);
       return true;
     }).slice(0, limit);
@@ -4300,6 +4345,7 @@ async function _displayPlanOutput(data) {
       arrivalAirport: arrivalIata,
       departureAirport: departureIata,
       accommodation: wizardData.accommodation || null,
+      transport: wizardData.transport || [],
       regions: wizardData.regions || [],
       regionCities: wizardData.regionCities || wizardData.regionCitiesOther || "",
       regionCityIds: wizardData.regionCityIds || [],

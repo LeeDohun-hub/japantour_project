@@ -375,6 +375,223 @@ def api_places_geocode(request):
         return JsonResponse({"places": [], "error": str(exc), "provider": "naver_maps"})
 
 
+def _float_query(request: HttpRequest, name: str) -> float | None:
+    raw = request.GET.get(name, "").strip()
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_korean_coord(lat: float | None, lng: float | None) -> bool:
+    return (
+        lat is not None
+        and lng is not None
+        and 33.0 <= lat <= 39.5
+        and 124.0 <= lng <= 132.0
+    )
+
+
+@require_GET
+def api_maps_driving_route(request):
+    """Proxy Naver Directions 5 driving route without exposing server API secret."""
+    import sys
+    from pathlib import Path as _P
+
+    _root = _P(settings.BASE_DIR).parent
+    if str(_root / "src") not in sys.path:
+        sys.path.insert(0, str(_root / "src"))
+
+    from src.api.naver_maps_client import NaverMapsClient
+
+    start_lat = _float_query(request, "start_lat")
+    start_lng = _float_query(request, "start_lng")
+    goal_lat = _float_query(request, "goal_lat")
+    goal_lng = _float_query(request, "goal_lng")
+    if not (_is_korean_coord(start_lat, start_lng) and _is_korean_coord(goal_lat, goal_lng)):
+        return JsonResponse({"ok": False, "error": "invalid_coordinates"}, status=400)
+
+    # waypoints: "lng,lat|lng,lat|..." (up to 5, Korean coords only)
+    raw_waypoints = request.GET.get("waypoints", "").strip()
+    waypoints: list[tuple[float, float]] = []
+    if raw_waypoints:
+        for token in raw_waypoints.split("|")[:5]:
+            parts = token.strip().split(",")
+            if len(parts) == 2:
+                try:
+                    wlng, wlat = float(parts[0]), float(parts[1])
+                    if _is_korean_coord(wlat, wlng):
+                        waypoints.append((wlng, wlat))
+                except ValueError:
+                    pass
+
+    option = request.GET.get("option", "traoptimal").strip() or "traoptimal"
+    lang = request.GET.get("lang", "ja").strip() or "ja"
+    wp_key = "|".join(f"{lng:.5f},{lat:.5f}" for lng, lat in waypoints)
+    cache_key = (
+        "naver_driving_route:"
+        f"{round(start_lng, 5)},{round(start_lat, 5)}:"
+        f"{round(goal_lng, 5)},{round(goal_lat, 5)}:{option}:{lang}:{wp_key}"
+    )
+    cached = cache.get(cache_key)
+    if cached:
+        return JsonResponse(cached)
+
+    client = NaverMapsClient(timeout=10)
+    try:
+        route = client.driving_route(
+            start_lng=float(start_lng),
+            start_lat=float(start_lat),
+            goal_lng=float(goal_lng),
+            goal_lat=float(goal_lat),
+            waypoints=waypoints or None,
+            option=option,
+            lang=lang,
+        )
+    except Exception as exc:
+        logger.warning("api_maps_driving_route error: %s", exc)
+        route = None
+
+    if not route:
+        last_error = client.last_error or {}
+        error = last_error.get("error") or "route_unavailable"
+        status = 401 if error == "naver_auth_failed" else 502
+        return JsonResponse({
+            "ok": False,
+            "error": error,
+            "provider": "naver_directions5",
+            **({"upstream_code": last_error.get("code")} if last_error.get("code") is not None else {}),
+        }, status=status)
+    payload = {"ok": True, "route": route, "provider": "naver_directions5"}
+    cache.set(cache_key, payload, timeout=180)
+    return JsonResponse(payload)
+
+
+@require_GET
+def api_maps_transit_route(request):
+    """Proxy ODsay public transit route without exposing API key."""
+    import sys
+    from pathlib import Path as _P
+
+    _root = _P(settings.BASE_DIR).parent
+    if str(_root / "src") not in sys.path:
+        sys.path.insert(0, str(_root / "src"))
+
+    from src.api.odsay_client import odsay_api_key, transit_route
+
+    start_lat = _float_query(request, "start_lat")
+    start_lng = _float_query(request, "start_lng")
+    goal_lat = _float_query(request, "goal_lat")
+    goal_lng = _float_query(request, "goal_lng")
+
+    if not (_is_korean_coord(start_lat, start_lng) and _is_korean_coord(goal_lat, goal_lng)):
+        return JsonResponse({"ok": False, "error": "invalid_coordinates"}, status=400)
+
+    if not odsay_api_key():
+        return JsonResponse({"ok": False, "error": "odsay_not_configured"}, status=503)
+
+    cache_key = (
+        "odsay_transit_route:"
+        f"{round(float(start_lng), 4)},{round(float(start_lat), 4)}:"
+        f"{round(float(goal_lng), 4)},{round(float(goal_lat), 4)}"
+    )
+    cached = cache.get(cache_key)
+    if cached:
+        return JsonResponse(cached)
+
+    _odsay_detail: str = ""
+    try:
+        from src.api.odsay_client import ODsayAuthError
+        route = transit_route(
+            start_lng=float(start_lng),
+            start_lat=float(start_lat),
+            goal_lng=float(goal_lng),
+            goal_lat=float(goal_lat),
+        )
+    except ODsayAuthError as exc:
+        logger.error("ODsay key authentication failed — key is invalid or expired: %s", exc)
+        return JsonResponse({"ok": False, "error": "odsay_auth_failed", "detail": str(exc)}, status=503)
+    except Exception as exc:
+        logger.warning("api_maps_transit_route error: %s", exc)
+        _odsay_detail = str(exc)
+        route = None
+
+    if not route:
+        logger.warning(
+            "ODsay transit route unavailable (%.4f,%.4f)→(%.4f,%.4f) detail=%s",
+            float(start_lng), float(start_lat), float(goal_lng), float(goal_lat),
+            _odsay_detail or "see odsay_client logs",
+        )
+        return JsonResponse({"ok": False, "error": "route_unavailable"}, status=502)
+
+    payload = {"ok": True, "route": route, "provider": "odsay"}
+    cache.set(cache_key, payload, timeout=3600)
+    return JsonResponse(payload)
+
+
+@require_GET
+def api_maps_transit_route_debug(request):
+    """Raw ODsay API probe — DEBUG mode only. Returns full response for diagnosis."""
+    if not settings.DEBUG:
+        return JsonResponse({"detail": "DEBUG mode only"}, status=403)
+
+    import sys
+    import requests as rq
+    from pathlib import Path as _P
+
+    _root = _P(settings.BASE_DIR).parent
+    if str(_root / "src") not in sys.path:
+        sys.path.insert(0, str(_root / "src"))
+
+    from src.api.odsay_client import odsay_api_key
+
+    api_key = odsay_api_key()
+    if not api_key:
+        return JsonResponse({"ok": False, "error": "ODSAY_API_KEY not set"})
+
+    start_lng = float(_float_query(request, "start_lng") or 126.832)
+    start_lat = float(_float_query(request, "start_lat") or 37.6374)
+    goal_lng = float(_float_query(request, "goal_lng") or 126.4407)
+    goal_lat = float(_float_query(request, "goal_lat") or 37.4602)
+
+    params = {
+        "apiKey": api_key,
+        "SX": f"{start_lng:.6f}",
+        "SY": f"{start_lat:.6f}",
+        "EX": f"{goal_lng:.6f}",
+        "EY": f"{goal_lat:.6f}",
+        "OPT": "0",
+        "output": "json",
+    }
+
+    try:
+        resp = rq.get(
+            "https://api.odsay.com/v1/api/searchPubTransPathT",
+            params=params,
+            timeout=15,
+            headers={"Accept": "application/json"},
+        )
+        try:
+            body = resp.json()
+        except Exception:
+            body = resp.text[:2000]
+
+        masked_key = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "****"
+        return JsonResponse({
+            "ok": True,
+            "key_masked": masked_key,
+            "key_len": len(api_key),
+            "request_url": resp.url,
+            "http_status": resp.status_code,
+            "coords": {"start_lng": start_lng, "start_lat": start_lat, "goal_lng": goal_lng, "goal_lat": goal_lat},
+            "odsay_response": body,
+        })
+    except Exception as exc:
+        return JsonResponse({"ok": False, "error": str(exc)})
+
+
 @require_POST
 def api_places_enrich(request):
     """プラン本文の地図URLを場所詳細（写真・評価等）に変換."""
@@ -658,6 +875,14 @@ _NAVER_FETCH_HEADERS = {
     "Sec-Fetch-Site": "same-origin",
 }
 NAVER_IMAGE_SEARCH_URL = "https://openapi.naver.com/v1/search/image"
+_KOREAN_ADDR_SPLIT_RE = re.compile(
+    r"\s+(?:"
+    r"서울특별시|서울시|부산광역시|부산시|대구광역시|대구시|인천광역시|인천시|"
+    r"광주광역시|광주시|대전광역시|대전시|울산광역시|울산시|세종특별자치시|세종시|"
+    r"경기도|강원특별자치도|강원도|충청북도|충북|충청남도|충남|전북특별자치도|전라북도|전북|"
+    r"전라남도|전남|경상북도|경북|경상남도|경남|제주특별자치도|제주도"
+    r")\s+"
+)
 
 
 def _is_probable_naver_place_photo(url: str) -> bool:
@@ -761,6 +986,63 @@ def _naver_search_headers() -> dict[str, str] | None:
     }
 
 
+def _photo_query_variants(query: str) -> list[str]:
+    """Return progressively broader Naver image-search queries."""
+    raw = " ".join(str(query or "").split()).strip()
+    if not raw:
+        return []
+
+    variants: list[str] = []
+
+    def add(value: str) -> None:
+        value = " ".join(str(value or "").split()).strip(" -_/|,")
+        if value and value not in variants:
+            variants.append(value)
+
+    add(raw)
+
+    # Frontend often sends "place name + full address". Naver image search is
+    # much more reliable when retried with only the place name.
+    no_addr = _KOREAN_ADDR_SPLIT_RE.split(raw, 1)[0]
+    add(no_addr)
+
+    # If an address keyword was not present, trim obvious trailing road/lot/floor
+    # fragments without touching normal branch names such as "강남점".
+    no_detail = re.sub(
+        r"\s+\S*(?:로|길|대로)\d*(?:번길)?(?:\s+\d+[^\s]*)?.*$",
+        "",
+        no_addr,
+    )
+    add(no_detail)
+
+    tokens = no_addr.split()
+    if len(tokens) > 2:
+        add(" ".join(tokens[:2]))
+    if len(tokens) > 1:
+        add(tokens[0])
+
+    return variants[:5]
+
+
+def _image_candidate_score(url: str) -> int:
+    lower = (url or "").lower()
+    if not lower.startswith("http"):
+        return -1
+    if any(x in lower for x in ("favicon", "logo", "sprite")):
+        return -1
+    if "ldb-phinf.pstatic.net" in lower:
+        return 100
+    if "search.pstatic.net/common" in lower and "ldb-phinf" in lower:
+        return 90
+    if "apis.naver.com/place/panorama/thumbnail" in lower:
+        return 80
+    if "blogthumb" in lower or "postfiles.pstatic" in lower:
+        return 50
+    if "imgnews.naver.net" in lower:
+        return 10
+    return 20
+
+
 def _fetch_naver_image_search_photo(query: str) -> str | None:
     headers = _naver_search_headers()
     if not query:
@@ -768,24 +1050,37 @@ def _fetch_naver_image_search_photo(query: str) -> str | None:
     if not headers:
         logger.debug("Naver image search skipped: NAVER_SEARCH_CLIENT_ID/SECRET not configured")
         return None
-    try:
-        resp = http_requests.get(
-            NAVER_IMAGE_SEARCH_URL,
-            params={"query": query, "display": 5, "sort": "sim", "filter": "all"},
-            headers=headers,
-            timeout=8,
-        )
-        resp.raise_for_status()
-        items = resp.json().get("items") or []
-    except (http_requests.RequestException, ValueError) as exc:
-        logger.warning("Naver image search failed [%r]: %s", query[:80], exc)
-        return None
-    for item in items:
-        for key in ("thumbnail", "link"):
-            candidate = html.unescape(str(item.get(key) or "")).strip()
-            if candidate.startswith("http") and not any(x in candidate.lower() for x in ("favicon", "logo", "sprite")):
-                return candidate
-    return None
+    best_candidate: tuple[int, str] | None = None
+    for search_query in _photo_query_variants(query):
+        try:
+            resp = http_requests.get(
+                NAVER_IMAGE_SEARCH_URL,
+                params={"query": search_query, "display": 10, "sort": "sim", "filter": "all"},
+                headers=headers,
+                timeout=8,
+            )
+            resp.raise_for_status()
+            items = resp.json().get("items") or []
+        except (http_requests.RequestException, ValueError) as exc:
+            logger.warning("Naver image search failed [%r]: %s", search_query[:80], exc)
+            continue
+
+        candidates: list[tuple[int, str]] = []
+        for item in items:
+            for key in ("thumbnail", "link"):
+                candidate = html.unescape(str(item.get(key) or "")).strip()
+                candidate = _normalize_direct_naver_photo_url(candidate)
+                score = _image_candidate_score(candidate)
+                if score >= 0:
+                    candidates.append((score, candidate))
+        if candidates:
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            top = candidates[0]
+            if best_candidate is None or top[0] > best_candidate[0]:
+                best_candidate = top
+            if top[0] >= 90:
+                return top[1]
+    return best_candidate[1] if best_candidate else None
 
 
 def _naver_place_photo_proxy(
@@ -867,7 +1162,7 @@ def api_naver_photo(request):
     stable_key = (
         "naver_photo_url5:"
         + ("img1:" if allow_image_fallback else "strict:")
-        + re.sub(r"\W+", "_", raw_url)[:180]
+        + re.sub(r"\W+", "_", f"{raw_url}|{query}")[:220]
     )
     cached = cache.get(stable_key)
     if cached:

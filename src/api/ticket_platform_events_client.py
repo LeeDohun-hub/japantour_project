@@ -69,10 +69,15 @@ _REGION_VENUE_MARKERS: dict[str, tuple[str, ...]] = {
     ),
     "jeju": _JEJU_REGION_MARKERS,
     "busan": ("부산", "부산광역시", "釜山", "busan", "海雲臺", "海雲台", "해운대"),
-    "gyeongsang": ("부산", "대구", "경상", "庆尚", "大邱", "金海"),
-    "gangwon": ("강원", "江原", "춘천", "春川", "강릉", "江陵", "속초", "束草"),
-    "jeolla": ("전주", "全州", "광주", "光州", "全羅", "光州"),
-    "chungcheong": ("대전", "大田", "忠清", "청주", "清州"),
+    "gyeongsang": (
+        "부산", "釜山", "busan", "해운대", "海雲台",
+        "대구", "大邱", "daegu", "울산", "蔚山", "ulsan",
+        "창원", "昌原", "포항", "경주", "慶州", "김해", "金海",
+        "경상", "慶尚", "경남", "경북",
+    ),
+    "gangwon": ("강원", "江原", "춘천", "春川", "강릉", "江陵", "속초", "束草", "원주", "동해", "삼척"),
+    "jeolla": ("전주", "全州", "광주", "光州", "全羅", "전남", "전북", "여수", "순천", "목포"),
+    "chungcheong": ("대전", "大田", "忠清", "청주", "清州", "천안", "공주", "아산", "충남", "충북", "세종"),
 }
 
 _AREA_KEY_TO_EVENT_REGION: dict[str, str] = {
@@ -672,10 +677,11 @@ def fetch_ticket_platform_events(
     filtered = [ev for _, ev in scored if _event_matches_trip_region(ev, traveler_profile)]
     if not filtered:
         logger.info(
-            "KOPIS: no events for regions %s",
+            "KOPIS: no events for regions %s — returning empty",
             sorted(_trip_active_region_keys(traveler_profile)),
         )
-    selected = (filtered or [ev for _, ev in scored])[:max_total]
+        return []
+    selected = filtered[:max_total]
     return [
         _enrich_kopis_event(ev, api_key=api_key, timeout=timeout_per_genre)
         for ev in selected

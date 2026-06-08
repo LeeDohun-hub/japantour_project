@@ -1677,6 +1677,12 @@ a.btn {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.plan-transfer-card__meta {
+  margin-top: 0.2rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #15803d;
+}
 .plan-transfer-card__arrow {
   flex-shrink: 0;
   color: #2563eb;

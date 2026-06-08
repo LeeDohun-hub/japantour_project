@@ -724,15 +724,21 @@ STRICT SECTION USAGE — NON-NEGOTIABLE:
   - [午前] slots: ONLY use entries from 「観光スポット候補（食事には使わない）」. NEVER place any restaurant, cafe, food stall, bar, dessert shop, market-food stop, or eating/drinking venue in 午前.
   - [午後] slots: use entries from 「観光スポット候補（食事には使わない）」, and when the traveler selected cafe/coffee/cafe hopping, add at most one concrete 「カフェ候補」 as an afternoon location-card stop after at least one non-food stop.
   - [昼食] and [夕食] slots: ONLY use entries from 「食事候補」. NEVER use 観光スポット候補 entries as meal items.
+    ZERO-CANDIDATE EXCEPTION: If the 「食事候補」 section is completely empty (zero entries across ALL regions),
+    you MAY use well-known real restaurants in the destination city from your training knowledge.
+    Requirements for the exception: (a) Korean official name only; (b) map URL must use Naver search format:
+    https://map.naver.com/v5/search/[URL-encoded-Korean-name]; (c) only use restaurants you are CERTAIN exist
+    in that Korean city — never fabricate; (d) still prohibited: generic descriptions like 「韓国料理店」,
+    "(식사 후보 리스트에 해당하는 가게가 없습니다)", or any "no candidate" notice.
   - 「カフェ候補」 is a separate pool for itinerary rest/cafe time, not lunch/dinner. Never use cafe candidates as lunch/dinner unless no restaurant candidate exists.
 
 Restaurants / cafes:
   - Morning may include sightseeing/parks/viewpoints/experience facilities, but never schedule breakfast, brunch, morning cafe, restaurants, cafes, or any food venue before lunch.
   - On each usable sightseeing day, schedule food exactly twice: one Lunch and one Dinner. Assign a DIFFERENT verified candidate to each. These are the ONLY food stops for that day.
   - Do NOT schedule meals on an arrival day when arrival/check-in is too late, or on a departure day when the flight/check-in deadline is too early. In those cases, omit meal blocks rather than adding convenience stores, snacks, cafes, or generic nearby meals.
-  - Each lunch/dinner: ONE shop name from 「食事候補」+ the Reference Data map.naver.com URL on the very next line (copy exactly).
-  - The Naver map URL must be copied verbatim from the candidate list — never omit or shorten it.
-  - NEVER use generic meal lines or fallback excuses (禁止: 「近郊で食事」「店名は記載しない」「한식店」「現地のレストラン」「韓国料理店で」「別の韓国料理店」「コンビニ」「軽食」「間食」「候補が足りない」「候補が全部終わった」).
+  - Each lunch/dinner: ONE shop name from 「食事候補」 (or training-knowledge fallback if zero candidates) + Naver map URL on the very next line.
+  - When 「食事候補」 has entries: copy the map.naver.com URL verbatim from the candidate list. When using the zero-candidate fallback: use https://map.naver.com/v5/search/[URL-encoded-Korean-name].
+  - NEVER use generic meal lines or fallback excuses (禁止: 「近郊で食事」「店名は記載しない」「한식店」「現地のレストラン」「韓国料理店で」「別の韓国料理店」「コンビニ」「軽食」「間食」「候補が足りない」「候補が全部終わった」「식사 후보 리스트에 해당하는 가게가 없습니다」).
   - If that day's 「食事候補」 is short, do not explain it to the user. Choose another verified restaurant from the same/nearest destination area. Use 「帰還日・宿泊エリア」 ONLY after an explicit return-to-accommodation block on the return day.
   - ABSOLUTE: after lunch is assigned, the IMMEDIATELY NEXT itinerary item must NOT be a restaurant, cafe, dessert, snack, market-food stop, or generic food/rest stop. This applies to afternoon labels AND numbered items such as ②/③/④.
   - The item right after lunch must be sightseeing, experience, nature, shopping, transport, or rest using non-food attraction candidates. Dinner is the next allowed food stop, separated from lunch by at least one non-food stop or a return/move/rest block.
@@ -1007,7 +1013,7 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "         店名B\n"
             "         https://map.naver.com/...\n"
             "  ② 該当日の未使用店が1件のみ → もう一方は同一エリア/近接エリアの検証済み候補から選ぶ（帰還日・宿泊エリアは帰還後の夕食だけ）\n"
-            "  ③ 候補が完全に空 → 食事枠だけを抽象化せず、Reference Data内の最も近い検証済み食事候補を使う\n"
+            "  ③ 候補が完全に空（全エリア0件） → AIが確実に知っている当該都市の実在飲食店名（韓国語正式表記）を使用し、地図URLは「https://map.naver.com/v5/search/[URL-encoded-name]」形式。架空・創作名は禁止。「식사 후보 리스트에 해당하는 가게가 없습니다」等のデータ不足通知を本文に書くことは禁止。\n"
             "  ▶ 食事メニュー未選択の場合: 候補リストの中から多様なジャンルの店を自由に選んでよい。\n"
             "- **朝の扱い**: 午前に観光地・公園・展望台・体験施設を入れるのは可。ただし朝食・朝ごはん・朝カフェ・ブランチ・食堂・レストラン・カフェは入れない。朝の飲食店訪問は禁止。食事店は昼食・夕食だけ。\n"
             "- 好みメニュー（韓国チキン・クッパ等）と一致する店を優先。候補リストに好みの店がない日は\n"
@@ -3500,25 +3506,28 @@ def _is_fortune_telling_place(place: NearbyPlace) -> bool:
     return False
 
 
+_CAFE_EXCLUDE_BY_NAME_RE = re.compile(
+    r"국밥|설렁탕|순댓국|삼겹살|갈비(?!천)|삼계탕|칼국수|냉면|해장국|곱창|막창|"
+    r"육회|횟집|생선구이|어탕|추어탕|감자탕|부대찌개|닭갈비|족발|보쌈|"
+    r"수산|고깃집|정육|치킨|돼지(?:국밥|고기|갈비)|돼지|닭(?:강정|발|볶음)|"
+    r"짬뽕|짜장|중화|탕수육|만두(?:국|집)|해물|낙지|문어|오징어|게장|굴밥",
+    re.I,
+)
+
+
 def _is_cafe_candidate_place(place: NearbyPlace) -> bool:
     if _is_fortune_telling_place(place):
         return False
-    # Do not use search_area here. A query like "강남 카페" must not turn an
-    # unrelated Naver result (e.g. 점집/연화암) into a cafe candidate.
-    blob = _place_identity_blob(place).lower()
+    # 가게 이름에 식당 키워드 → 무조건 제외 (전포카페거리 본점처럼 주소에 카페거리 포함된 식당 방지)
+    place_name = (place.name or "").lower()
+    if _CAFE_EXCLUDE_BY_NAME_RE.search(place_name):
+        return False
+    # 카페 여부는 가게 이름(place.name) + 카테고리만으로 판단. 주소/search_area 제외.
+    # "강남 카페거리" 같은 주소 일치로 점집/식당이 카페 후보에 들어오는 것을 방지.
+    name_cat = f"{place.name} {place.category}".lower()
     return any(
-        kw in blob
-        for kw in (
-            "카페",
-            "커피",
-            "coffee",
-            "cafe",
-            "베이커리",
-            "디저트",
-            "빙수",
-            "スイーツ",
-            "ベーカリー",
-        )
+        kw in name_cat
+        for kw in ("카페", "커피", "coffee", "cafe", "베이커리", "디저트", "빙수", "スイーツ", "ベーカリー")
     )
 
 
@@ -3632,6 +3641,14 @@ _CIVIC_OFFICE_URL_RE = re.compile(
     r"https?://(?:www\.)?[^/\s]*(?:go\.kr|police\.go\.kr|fire\.[^/\s]+|court\.go\.kr|spo\.go\.kr|nts\.go\.kr)[^\s]*",
     re.IGNORECASE,
 )
+_PERSONAL_CARE_CATEGORY_RE = re.compile(
+    r"미용실|헤어샵|헤어살롱|헤어숍|헤어클리닉|"
+    r"네일샵|네일아트|네일숍|"
+    r"왁싱|속눈썹(?!전시|박물관)|눈썹문신|반영구화장|반영구 화장|"
+    r"세탁소|코인세탁|"
+    r"hair\s*salon|beauty\s*salon|nail\s*salon|nail\s*art|barber\s*shop",
+    re.IGNORECASE,
+)
 
 
 def _is_civic_office_text(text: str | None) -> bool:
@@ -3639,10 +3656,17 @@ def _is_civic_office_text(text: str | None) -> bool:
     return bool(_ATTRACTION_NAME_EXCLUDE_RE.search(blob) or _CIVIC_OFFICE_URL_RE.search(blob))
 
 
+def _is_personal_care_place(place: NearbyPlace) -> bool:
+    cat = str(getattr(place, "category", "") or "")
+    return bool(_PERSONAL_CARE_CATEGORY_RE.search(cat))
+
+
 def _is_itinerary_attraction_candidate(place: NearbyPlace) -> bool:
     cat = (place.category or "").lower().strip()
     blob = _place_blob(place).lower()
     if _is_civic_office_text(blob):
+        return False
+    if _is_personal_care_place(place):
         return False
     if cat in _ATTRACTION_TYPE_EXCLUDE:
         return False
@@ -4621,6 +4645,8 @@ def _is_naver_food_place(place: NearbyPlace) -> bool:
 def _is_naver_attr_place(place: NearbyPlace) -> bool:
     if _is_fortune_telling_place(place):
         return False
+    if _is_personal_care_place(place):
+        return False
     cat = str(getattr(place, "category", "") or "")
     if _foodish_signal(place):
         return False
@@ -5442,6 +5468,66 @@ def _itinerary_line_foodish(line: str) -> bool:
     )
 
 
+def _looks_like_plain_itinerary_place_line(line: str) -> bool:
+    text = str(line or "").strip()
+    if not text or len(text) > 34:
+        return False
+    if _MAPS_URL_IN_TEXT_RE.search(text) or _itinerary_slot_from_line(text) or _ITINERARY_DAY_RE.match(text):
+        return False
+    if re.search(r"[。.!?！？]|です|ます|입니다|합니다|즐길|맛볼|확인|候補|スポット", text):
+        return False
+    return bool(re.search(r"[\u3131-\uD79D]", text))
+
+
+_BUSAN_DAY_AREA_ALIASES: dict[str, tuple[str, ...]] = {
+    "해운대": ("해운대", "송정", "기장"),
+    "송정": ("해운대", "송정", "기장"),
+    "기장": ("기장", "송정", "해운대"),
+    "광안리": ("광안리", "수영구", "해운대"),
+    "수영": ("수영구", "광안리", "해운대"),
+    "남포": ("남포", "중구", "영도", "부산역"),
+    "영도": ("영도", "남포", "중구"),
+}
+
+
+def _day_focus_area_tokens(line: str) -> tuple[str, ...]:
+    text = str(line or "")
+    tokens: list[str] = []
+    had_group = False
+    for m in re.finditer(r"[（(]([^）)]+)[）)]", text):
+        had_group = True
+        tokens.extend(_parse_region_city_tokens(m.group(1)))
+    if not had_group:
+        explicit = re.sub(r"^\s*(?:#{1,6}\s*)?(?:Day\s*)?\d+\s*(?:日目|일째|일차|日|day)?", "", text, flags=re.I)
+        if explicit and explicit != text:
+            for token in _parse_region_city_tokens(explicit):
+                if token not in tokens:
+                    tokens.append(token)
+
+    out: list[str] = []
+    for token in tokens:
+        clean = re.sub(r"(?:지역|エリア|周辺|観光|食事|일정|코스)$", "", token).strip()
+        if not re.search(r"[\u3131-\uD79D]", clean):
+            continue
+        if not clean:
+            continue
+        expanded = _BUSAN_DAY_AREA_ALIASES.get(clean, (clean,))
+        for item in expanded:
+            if item and item not in out:
+                out.append(item)
+    return tuple(out[:5])
+
+
+def _place_matches_day_focus(place: NearbyPlace | None, day_focus: tuple[str, ...]) -> bool:
+    if not place or not day_focus:
+        return True
+    blob = " ".join(
+        str(x or "")
+        for x in (place.address, place.name, getattr(place, "search_area", ""))
+    )
+    return any(token in blob for token in day_focus)
+
+
 def _repair_wizard_itinerary_rules(
     reply: str,
     places: list[NearbyPlace],
@@ -5461,6 +5547,19 @@ def _repair_wizard_itinerary_rules(
     food_names: set[str] = set()
     food_place_by_url: dict[str, NearbyPlace] = {}
     food_place_by_name: dict[str, NearbyPlace] = {}
+    attr_by_url: set[str] = set()
+    attr_names: set[str] = set()
+    attr_place_by_url: dict[str, NearbyPlace] = {}
+    attr_place_by_name: dict[str, NearbyPlace] = {}
+    cafe_by_url: set[str] = set()
+    cafe_by_name: set[str] = set()
+    cafe_place_by_url: dict[str, NearbyPlace] = {}
+    cafe_place_by_name: dict[str, NearbyPlace] = {}
+    food_queue = _queue_places_for_repair(
+        places,
+        lambda p: _is_meal_candidate_place(p)
+        and not _is_cafe_candidate_place(p)
+    )
     cafe_queue = _queue_places_for_repair(places, _is_cafe_candidate_place)
     attr_queue = _queue_places_for_repair(
         places,
@@ -5468,13 +5567,21 @@ def _repair_wizard_itinerary_rules(
         and not _is_meal_candidate_place(p)
         and not _foodish_signal(p),
     )
+    food_idx = 0
     cafe_idx = 0
     attr_idx = 0
     for p in places or []:
         uri = p.google_maps_uri or ""
         key = _plan_maps_url_key(uri)
         name_key = _norm_plan_place_name(p.name)
-        is_food = _is_meal_candidate_place(p) or _itinerary_line_foodish(p.name)
+        if _is_cafe_candidate_place(p):
+            if key:
+                cafe_by_url.add(key)
+                cafe_place_by_url[key] = p
+            if name_key:
+                cafe_by_name.add(name_key)
+                cafe_place_by_name[name_key] = p
+        is_food = _is_meal_candidate_place(p) and not _is_cafe_candidate_place(p)
         if is_food:
             if key:
                 food_by_url.add(key)
@@ -5482,13 +5589,30 @@ def _repair_wizard_itinerary_rules(
             if name_key:
                 food_names.add(name_key)
                 food_place_by_name[name_key] = p
+        is_attr = (
+            not _is_cafe_candidate_place(p)
+            and not _is_meal_candidate_place(p)
+            and not _foodish_signal(p)
+        )
+        if is_attr:
+            if key:
+                attr_by_url.add(key)
+                attr_place_by_url[key] = p
+            if name_key:
+                attr_names.add(name_key)
+                attr_place_by_name[name_key] = p
 
+    has_cafe_interest = _has_cafe_hopping_interest(traveler_profile, user_message)
     lines = reply.splitlines()
     out: list[str] = []
     slot = ""
     day_food_count = 0
+    day_cafe_count = 0
+    slot_plain_place_seen = False
+    used_food_names_global: set[str] = set()  # cross-day dedup for restaurants
     last_kept_place_food = False
     current_day: int | None = None
+    current_day_focus: tuple[str, ...] = ()
     try:
         total_days = int((traveler_profile or {}).get("days") or 0) or None
     except (TypeError, ValueError):
@@ -5529,16 +5653,22 @@ def _repair_wizard_itinerary_rules(
         return True
 
     def next_place_line(kind: str) -> list[str]:
-        nonlocal cafe_idx, attr_idx
-        queue = cafe_queue if kind == "cafe" else attr_queue
-        start = cafe_idx if kind == "cafe" else attr_idx
+        nonlocal food_idx, cafe_idx, attr_idx
+        queue = food_queue if kind == "food" else cafe_queue if kind == "cafe" else attr_queue
+        start = food_idx if kind == "food" else cafe_idx if kind == "cafe" else attr_idx
         for idx2 in range(start, len(queue)):
             p = queue[idx2]
-            if kind == "cafe":
+            if kind == "food":
+                food_idx = idx2 + 1
+            elif kind == "cafe":
                 cafe_idx = idx2 + 1
             else:
                 attr_idx = idx2 + 1
-            if p.name and p.google_maps_uri:
+            if (
+                p.name
+                and p.google_maps_uri
+                and _place_matches_day_focus(p, current_day_focus)
+            ):
                 return [p.name, p.google_maps_uri]
         return []
 
@@ -5550,7 +5680,10 @@ def _repair_wizard_itinerary_rules(
         if _ITINERARY_DAY_RE.match(stripped):
             slot = ""
             current_day = _itinerary_day_number(stripped, total_days)
+            current_day_focus = _day_focus_area_tokens(stripped)
             day_food_count = 0
+            day_cafe_count = 0
+            slot_plain_place_seen = False
             last_kept_place_food = False
             out.append(line)
             idx += 1
@@ -5563,6 +5696,7 @@ def _repair_wizard_itinerary_rules(
                 idx += 1
                 continue
             slot = new_slot
+            slot_plain_place_seen = False
             out.append(line)
             if new_slot == "afternoon" and _has_cafe_hopping_interest(traveler_profile, user_message):
                 lookahead = "\n".join(lines[idx + 1: idx + 5])
@@ -5617,21 +5751,106 @@ def _repair_wizard_itinerary_rules(
             idx += 1
             continue
 
+        name_only_key = _norm_plan_place_name(stripped)
+        if (
+            stripped
+            and not _MAPS_URL_IN_TEXT_RE.search(stripped)
+            and not _MAPS_URL_IN_TEXT_RE.search(next_line)
+            and name_only_key
+        ):
+            name_only_place = (
+                food_place_by_name.get(name_only_key)
+                or cafe_place_by_name.get(name_only_key)
+                or attr_place_by_name.get(name_only_key)
+            )
+            name_only_is_cafe = name_only_key in cafe_by_name
+            name_only_is_food = not name_only_is_cafe and name_only_key in food_names
+            name_only_is_attr = name_only_key in attr_names
+            name_only_wrong_area = (
+                current_day_focus
+                and name_only_place is not None
+                and not _place_matches_day_focus(name_only_place, current_day_focus)
+            )
+            name_only_remove = (
+                (name_only_is_food and (slot not in {"lunch", "dinner"} or name_only_wrong_area))
+                or (name_only_is_cafe and (slot != "afternoon" or day_cafe_count >= 1 or name_only_wrong_area))
+                or (name_only_is_attr and (slot in {"lunch", "dinner"} or name_only_wrong_area))
+                or (name_only_is_attr and slot in {"morning", "afternoon", "night"} and slot_plain_place_seen)
+            )
+            if name_only_remove:
+                replacement = []
+                if name_only_is_attr and slot in {"lunch", "dinner"} and day_food_count < 2:
+                    replacement = next_place_line("food")
+                idx += 1
+                if idx < len(lines):
+                    tail = lines[idx].strip()
+                    if (
+                        tail
+                        and not _MAPS_URL_IN_TEXT_RE.search(tail)
+                        and not _ITINERARY_DAY_RE.match(tail)
+                        and not _itinerary_slot_from_line(tail)
+                    ):
+                        idx += 1
+                if replacement:
+                    out.extend(replacement)
+                    day_food_count += 1
+                    last_kept_place_food = True
+                continue
+
         url_match = _MAPS_URL_IN_TEXT_RE.search(next_line)
         if stripped and url_match and not _MAPS_URL_IN_TEXT_RE.search(stripped):
             url_key = _plan_maps_url_key(url_match.group(0))
             name_key = _norm_plan_place_name(stripped)
-            is_food_block = url_key in food_by_url or name_key in food_names or _itinerary_line_foodish(stripped)
-            remove_food = (
+            # A place is a "cafe block" if its URL/name matches a known cafe candidate.
+            # Cafes in afternoon are NOT treated as food when cafe hopping interest exists.
+            is_cafe_block = (
+                has_cafe_interest
+                and (url_key in cafe_by_url or name_key in cafe_by_name)
+            )
+            is_food_block = (
+                not is_cafe_block
+                and (url_key in food_by_url or name_key in food_names or _itinerary_line_foodish(stripped))
+            )
+            place_for_block = (
+                food_place_by_name.get(name_key)
+                or cafe_place_by_name.get(name_key)
+                or attr_place_by_name.get(name_key)
+                or food_place_by_url.get(url_key)
+                or cafe_place_by_url.get(url_key)
+                or attr_place_by_url.get(url_key)
+            )
+            is_attr_block = (
+                not is_food_block
+                and not is_cafe_block
+                and (url_key in attr_by_url or name_key in attr_names)
+            )
+            wrong_day_area = (
+                current_day_focus
+                and place_for_block is not None
+                and not _place_matches_day_focus(place_for_block, current_day_focus)
+            )
+            nonmeal_in_meal_slot = slot in {"lunch", "dinner"} and (is_attr_block or is_cafe_block)
+            # Cross-day restaurant dedup: remove if this exact restaurant already appeared.
+            is_duplicate_food = is_food_block and name_key and name_key in used_food_names_global
+            remove_food = is_duplicate_food or (
                 is_food_block
                 and (
                     slot not in {"lunch", "dinner"}
                     or day_food_count >= 2
                     or last_kept_place_food
                     or wrong_penultimate_dinner_place(url_key, name_key)
+                    or wrong_day_area
                 )
             )
-            if remove_food:
+            # Cafe blocks: keep only 1 per day in afternoon; always remove if not afternoon slot.
+            remove_cafe = is_cafe_block and (
+                slot != "afternoon" or day_cafe_count >= 1 or wrong_day_area
+            )
+            remove_attr = is_attr_block and (nonmeal_in_meal_slot or wrong_day_area)
+            if remove_food or remove_cafe or remove_attr:
+                replacement = []
+                if nonmeal_in_meal_slot and day_food_count < 2:
+                    replacement = next_place_line("food")
                 idx += 2
                 if idx < len(lines):
                     tail = lines[idx].strip()
@@ -5642,18 +5861,29 @@ def _repair_wizard_itinerary_rules(
                         and not _itinerary_slot_from_line(tail)
                     ):
                         idx += 1
+                if replacement:
+                    out.extend(replacement)
+                    day_food_count += 1
+                    last_kept_place_food = True
                 continue
             out.append(line)
             out.append(next_line)
             if is_food_block:
                 day_food_count += 1
                 last_kept_place_food = True
+                if name_key:
+                    used_food_names_global.add(name_key)
+            elif is_cafe_block:
+                day_cafe_count += 1
+                last_kept_place_food = False
             elif stripped:
                 last_kept_place_food = False
             idx += 2
             continue
 
         out.append(line)
+        if _looks_like_plain_itinerary_place_line(stripped):
+            slot_plain_place_seen = True
         if stripped and not _MAPS_URL_IN_TEXT_RE.search(stripped):
             last_kept_place_food = False
         idx += 1
@@ -7409,7 +7639,14 @@ def route_and_answer(
         sources_used.append("rag")
     sources_used.append("llm")
 
-    api_places = itinerary_places if category == "itinerary" else places_results
+    # anchor/fallback places (place_id starts with "anchor:" or "cafe-anchor:") are LLM-prompt
+    # hints only — they use search query strings as names and must not appear as frontend cards.
+    _ANCHOR_PREFIXES = ("anchor:", "cafe-anchor:")
+    api_places = (
+        [p for p in itinerary_places if not str(p.place_id or "").startswith(_ANCHOR_PREFIXES)]
+        if category == "itinerary"
+        else places_results
+    )
     places_total = len(api_places)
 
     _common_result_kwargs: dict = dict(

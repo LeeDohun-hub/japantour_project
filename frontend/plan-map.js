@@ -53,7 +53,9 @@
   let _activeDay = 1;
   let _mapMeta = {};
   let _originalReply = "";
+  let _routeRenderSeq = 0;
   const _lockedStops = new Map();
+  const _drivingRouteCache = new Map();
 
   function esc(s) {
     return String(s || "").replace(/[&<>"']/g, (c) =>
@@ -169,7 +171,10 @@
     return point?.lat != null && point?.lng != null;
   }
 
-  function _naverTransitRouteUrl(from, to) {
+  const _NMAP_APPNAME = "japantourtravel.com";
+
+  function _naverRouteWebUrl(from, to, mode = "transit") {
+    const routeMode = mode === "car" ? "car" : mode === "walk" ? "walk" : mode === "bicycle" ? "bicycle" : "transit";
     if (!_hasRouteCoords(from) || !_hasRouteCoords(to)) {
       return `https://map.naver.com/p/search/${encodeURIComponent(_routeSearchText(from, to))}`;
     }
@@ -180,9 +185,170 @@
     return (
       `https://map.naver.com/p/directions/` +
       `${from.lng},${from.lat},${fromName},PLACE_POI/` +
-      `${to.lng},${to.lat},${toName},PLACE_POI/-/transit` +
+      `${to.lng},${to.lat},${toName},PLACE_POI/-/${routeMode}` +
       `?c=${midLng},${midLat},10,0,0,0,dh`
     );
+  }
+
+  function _naverRouteNmapUrl(from, to, mode = "transit") {
+    // nmap:// URL Scheme — 네이버 지도 앱으로 직접 연결 (모바일 앱 설치 시)
+    if (!_hasRouteCoords(from) || !_hasRouteCoords(to)) return null;
+    const actionMap = { transit: "public", car: "car", walk: "walk", bicycle: "bicycle" };
+    const action = actionMap[mode] || "public";
+    const sname = encodeURIComponent(_routeStopName(from, "출발지"));
+    const dname = encodeURIComponent(_routeStopName(to, "도착지"));
+    return (
+      `nmap://route/${action}` +
+      `?slat=${from.lat}&slng=${from.lng}&sname=${sname}` +
+      `&dlat=${to.lat}&dlng=${to.lng}&dname=${dname}` +
+      `&appname=${_NMAP_APPNAME}`
+    );
+  }
+
+  function _naverRouteUrl(from, to, mode = "transit") {
+    // 모바일: nmap:// 앱 스킴 우선, 데스크탑/앱 미설치: 웹 URL 폴백
+    return _naverRouteNmapUrl(from, to, mode) || _naverRouteWebUrl(from, to, mode);
+  }
+
+  function _airportTransferRouteModes() {
+    const transport = Array.isArray(_mapMeta?.transport) ? _mapMeta.transport : [];
+    const selected = new Set(transport.map((t) => String(t || "").toLowerCase()));
+    const hasAny = (...keys) => keys.some((k) => selected.has(k));
+    const modes = [];
+    if (hasAny("rail", "arex", "subway", "bus")) {
+      const transitLabel = hasAny("bus") && !hasAny("rail", "arex", "subway")
+        ? "Naverバス経路"
+        : hasAny("rail", "arex", "subway") && !hasAny("bus")
+          ? "Naver鉄道経路"
+          : "Naver公共交通";
+      modes.push({
+        mode: "transit",
+        label: transitLabel,
+      });
+    }
+    if (hasAny("taxi", "rental")) {
+      modes.push({
+        mode: "car",
+        label: hasAny("rental") ? "Naver車経路" : "Naverタクシー経路",
+      });
+    }
+    if (!modes.length) modes.push({ mode: "transit", label: "Naver経路" });
+    return modes;
+  }
+
+  function _selectedTransportHasCarRoute() {
+    const transport = Array.isArray(_mapMeta?.transport) ? _mapMeta.transport : [];
+    return transport.some((t) => ["taxi", "rental"].includes(String(t || "").toLowerCase()));
+  }
+
+  function _selectedTransportHasTransitRoute() {
+    const transport = Array.isArray(_mapMeta?.transport) ? _mapMeta.transport : [];
+    return transport.some((t) => ["rail", "arex", "subway", "bus"].includes(String(t || "").toLowerCase()));
+  }
+
+
+  function _fmtRouteDistance(meters) {
+    const n = Number(meters);
+    if (!Number.isFinite(n) || n <= 0) return "";
+    return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}km` : `${Math.round(n)}m`;
+  }
+
+  function _fmtRouteDuration(ms) {
+    const n = Number(ms);
+    if (!Number.isFinite(n) || n <= 0) return "";
+    const min = Math.max(1, Math.round(n / 60000));
+    if (min < 60) return `約${min}分`;
+    const h = Math.floor(min / 60);
+    const rest = min % 60;
+    return rest ? `約${h}時間${rest}分` : `約${h}時間`;
+  }
+
+  function _fmtKrw(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return "";
+    return `${Math.round(n).toLocaleString("ko-KR")}ウォン`;
+  }
+
+  function _airportDrivingRouteMeta(day) {
+    const summary = day?._airportDrivingRoute?.summary || null;
+    if (!summary || !_selectedTransportHasCarRoute()) return "";
+    const parts = [
+      _fmtRouteDuration(summary.duration),
+      _fmtRouteDistance(summary.distance),
+      summary.taxiFare ? `タクシー目安 ${_fmtKrw(summary.taxiFare)}` : "",
+    ].filter(Boolean);
+    return parts.length ? parts.join(" ・ ") : "";
+  }
+
+  function _drivingRouteCacheKey(from, to) {
+    return [
+      Number(from.lng).toFixed(5),
+      Number(from.lat).toFixed(5),
+      Number(to.lng).toFixed(5),
+      Number(to.lat).toFixed(5),
+    ].join(",");
+  }
+
+  async function _fetchAirportDrivingRoute(segment) {
+    const from = segment?.from;
+    const to = segment?.to;
+    if (!_selectedTransportHasCarRoute() || !_hasRouteCoords(from) || !_hasRouteCoords(to)) return null;
+    const key = _drivingRouteCacheKey(from, to);
+    if (_drivingRouteCache.has(key)) return _drivingRouteCache.get(key);
+    const qs = new URLSearchParams({
+      start_lng: String(from.lng),
+      start_lat: String(from.lat),
+      goal_lng: String(to.lng),
+      goal_lat: String(to.lat),
+      option: "traoptimal",
+      lang: "ja",
+    });
+    try {
+      const res = await fetch(`/api/maps/driving-route/?${qs}`);
+      const data = await res.json();
+      const route = res.ok && data?.ok && Array.isArray(data.route?.path) ? data.route : null;
+      _drivingRouteCache.set(key, route);
+      return route;
+    } catch (err) {
+      console.warn("airport driving route failed", err);
+      _drivingRouteCache.set(key, null);
+      return null;
+    }
+  }
+
+  // Fetch Naver Directions 5 route for all daily tourist stops (start + up to 5 waypoints + goal).
+  // Returns stitched path [{lat, lng}, ...] or null on failure.
+  async function _fetchDayStopsRoute(stops) {
+    const geo = stops.filter((s) => s.lat != null && s.lng != null);
+    if (geo.length < 2) return null;
+    const start = geo[0];
+    const goal = geo[geo.length - 1];
+    // Up to 5 intermediate waypoints (Direction 5 limit)
+    const viaStops = geo.slice(1, geo.length - 1).slice(0, 5);
+    const cacheKey = geo.map((s) => `${Number(s.lat).toFixed(4)},${Number(s.lng).toFixed(4)}`).join("|");
+    if (_drivingRouteCache.has(cacheKey)) return _drivingRouteCache.get(cacheKey);
+    const qs = new URLSearchParams({
+      start_lng: String(start.lng),
+      start_lat: String(start.lat),
+      goal_lng: String(goal.lng),
+      goal_lat: String(goal.lat),
+      option: "traoptimal",
+      lang: "ja",
+    });
+    if (viaStops.length) {
+      qs.set("waypoints", viaStops.map((s) => `${s.lng},${s.lat}`).join("|"));
+    }
+    try {
+      const res = await fetch(`/api/maps/driving-route/?${qs}`);
+      const data = await res.json();
+      const path = res.ok && data?.ok && Array.isArray(data.route?.path) ? data.route.path : null;
+      _drivingRouteCache.set(cacheKey, path);
+      return path;
+    } catch (err) {
+      console.warn("day stops route failed", err);
+      _drivingRouteCache.set(cacheKey, null);
+      return null;
+    }
   }
 
   function _kakaoRouteUrl(from, to) {
@@ -220,8 +386,20 @@
     const { from, to } = segment;
     const fromIsAirport = Boolean(from.stop?.isAirport);
     const title = fromIsAirport ? "空港 → 宿泊先ルート" : "宿泊先 → 空港ルート";
-    const naverUrl = esc(_naverTransitRouteUrl(from, to));
     const kakaoUrl = esc(_kakaoRouteUrl(from, to));
+    const drivingMeta = _airportDrivingRouteMeta(day);
+    const naverActions = _airportTransferRouteModes()
+      .map(({ mode, label }) => {
+        const nmapUrl = _naverRouteNmapUrl(from, to, mode);
+        const webUrl = _naverRouteWebUrl(from, to, mode);
+        // href = 웹 URL (데스크탑/앱 미설치 폴백), data-nmap = 앱 스킴 (모바일 앱)
+        return (
+          `<a href="${esc(webUrl)}" target="_blank" rel="noopener"` +
+          (nmapUrl ? ` data-nmap="${esc(nmapUrl)}"` : "") +
+          ` class="plan-naver-route-btn">${esc(label)}</a>`
+        );
+      })
+      .join("");
     return `<article class="plan-transfer-card">
       <div class="plan-transfer-card__icon">⇄</div>
       <div class="plan-transfer-card__body">
@@ -231,9 +409,10 @@
           <span class="plan-transfer-card__arrow">→</span>
           <span>${esc(_routeStopName(to, "到着地"))}</span>
         </div>
+        ${drivingMeta ? `<div class="plan-transfer-card__meta">${esc(drivingMeta)}</div>` : ""}
       </div>
       <div class="plan-transfer-card__actions">
-        <a href="${naverUrl}" target="_blank" rel="noopener">Naver経路</a>
+        ${naverActions}
         <a href="${kakaoUrl}" target="_blank" rel="noopener">Kakao経路</a>
       </div>
     </article>`;
@@ -768,6 +947,9 @@
       const trimmed = lines[lineIdx].trim();
       const urlOnly = trimmed.split(/\s/)[0];
       const place = (placeIndex.byUrl || placeIndex || {})[mapsUrlKey(urlOnly)] || null;
+      // Anchor/search-query placeholder places have no real coordinates — skip
+      const pid = place?.place_id || "";
+      if (pid.startsWith("anchor:") || pid.startsWith("cafe-anchor:")) return;
       const label = labelBeforeUrl(lines, urlOnly) || place?.name || "スポット";
       const rec = {
         url: urlOnly,
@@ -801,17 +983,9 @@
         else pushStop(null, url, i);
         continue;
       }
-      if (current) {
-        if (_isRecommendationLine(t) || _isPlanNoiseLine(t)) continue;
-        // Keep the map route aligned with the detailed plan: only explicit
-        // map URLs or standalone place-name lines in the plan body
-        // create stops. Reference-data/prose matches are intentionally ignored.
-        const place = findPlaceForLine(t, placeIndex);
-        const rec = placeToStop(place, t, i);
-        if (rec && !current.stops.some((s) => _sameStop(s, rec))) {
-          current.stops.push(rec);
-        }
-      }
+      // Only Naver/Google Maps URLs create stops — name-matching prose lines
+      // caused stops to bleed into wrong days (e.g. Day-1 overview mentioning
+      // Day-3 place names being incorrectly pinned to Day 1).
     }
 
     // Orphan stops (Maps URLs before the first day header) are discarded.
@@ -1043,8 +1217,9 @@
     setTimeout(refreshMapLayout, 350);
   }
 
-  function renderNaverMapForDay(day) {
+  async function renderNaverMapForDay(day) {
     if (!_mapInstance || !global.naver?.maps) return;
+    const renderSeq = ++_routeRenderSeq;
     clearMapOverlays();
     (day.stops || []).forEach(materializeNaverStopCoord);
     const stops = (day.stops || []).filter((s) => s.lat != null && s.lng != null);
@@ -1092,13 +1267,74 @@
       _markers.push(marker);
     });
 
-    if (path.length >= 2) {
+    const segment = _airportAccommodationSegment(day);
+    let routePath = path;
+    let routeStroke = "#2B6CB0";
+
+    if (segment && _hasRouteCoords(segment.from) && _hasRouteCoords(segment.to)) {
+      if (_selectedTransportHasTransitRoute()) {
+        // 대중교통은 직선 표시 + 하단 Naver 버튼으로 경로 안내 (폴리라인 미지원)
+        showMapStatus("");
+      } else if (_selectedTransportHasCarRoute()) {
+        showMapStatus("車ルートを読み込み中…");
+        const route = await _fetchAirportDrivingRoute(segment);
+        if (renderSeq !== _routeRenderSeq) return;
+        if (route?.path?.length >= 2) {
+          day._airportDrivingRoute = route;
+          const drivingPath = route.path
+            .map((p) => {
+              const lat = Number(p.lat);
+              const lng = Number(p.lng);
+              if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+              const pos = new nmap.LatLng(lat, lng);
+              bounds.extend(pos);
+              return pos;
+            })
+            .filter(Boolean);
+          if (drivingPath.length >= 2) {
+            routePath = drivingPath;
+            routeStroke = "#12A150";
+            renderDayStops(day);
+            showMapStatus("");
+          }
+        } else {
+          day._airportDrivingRoute = null;
+          showMapStatus("車ルートを取得できないため、地点間の目安線を表示しています。", true);
+        }
+      }
+    } else if (stops.length >= 2) {
+      // 관광 스팟 간 경로: Naver Direction 5 로 실제 도로 경로 표시 (직선 대체)
+      showMapStatus("ルートを読み込み中…");
+      const routePoints = await _fetchDayStopsRoute(stops);
+      if (renderSeq !== _routeRenderSeq) return;
+      if (routePoints && routePoints.length >= 2) {
+        const drivingPath = routePoints
+          .map((p) => {
+            const lat = Number(p.lat);
+            const lng = Number(p.lng);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+            const pos = new nmap.LatLng(lat, lng);
+            bounds.extend(pos);
+            return pos;
+          })
+          .filter(Boolean);
+        if (drivingPath.length >= 2) {
+          routePath = drivingPath;
+          routeStroke = "#2B6CB0";
+        }
+      }
+      showMapStatus("");
+    }
+
+    if (routePath.length >= 2) {
+      const isRouteData = routePath.length > path.length; // actual road path has more points
       _polyline = new nmap.Polyline({
         map: _mapInstance,
-        path,
-        strokeColor: "#2B6CB0",
-        strokeOpacity: 0.85,
-        strokeWeight: 4,
+        path: routePath,
+        strokeColor: routeStroke,
+        strokeOpacity: isRouteData ? 0.92 : 0.70,
+        strokeWeight: isRouteData ? 5 : 3,
+        strokeStyle: isRouteData ? "solid" : "shortdash",
       });
     }
 
@@ -1108,13 +1344,20 @@
     setTimeout(refreshMapLayout, 350);
   }
 
+  function _dayTabLabel(d) {
+    // Extract short label from parsed title (e.g. "3日目 — 松島" → "3日目")
+    const raw = String(d.title || "").replace(/^#+\s*/, "").replace(/\s*[:\-–—]\s*.*$/, "").trim();
+    if (/\d+日目/.test(raw)) return raw.match(/\d+日目/)[0];
+    return `${d.day}日目`;
+  }
+
   function renderDayTabs(days) {
     const el = document.getElementById("planDayTabs");
     if (!el) return;
     el.innerHTML = days
       .map(
         (d) =>
-          `<button type="button" class="plan-day-tab${d.day === _activeDay ? " active" : ""}" data-day="${d.day}">Day ${d.day}</button>`
+          `<button type="button" class="plan-day-tab${d.day === _activeDay ? " active" : ""}" data-day="${d.day}">${_dayTabLabel(d)}</button>`
       )
       .join("");
     el.querySelectorAll(".plan-day-tab").forEach((btn) => {
@@ -1373,7 +1616,7 @@
         }
       })
       .join("");
-    el.innerHTML = stopCards;
+    el.innerHTML = `${renderAirportTransferCard(day)}${stopCards}`;
     el.querySelectorAll(".plan-day-stop__lock").forEach((btn) => {
       btn.addEventListener("click", () => {
         const key = btn.dataset.lockKey || "";
@@ -1579,9 +1822,15 @@
     if (titleEl && meta?.title) titleEl.textContent = meta.title;
     if (subEl) subEl.textContent = meta?.subtitle || "マップの番号順にスポットを巡るルートです。";
 
-    _activeDay = _planDays[0].day;
+    // Start on the first day that has actual tourist stops (not just airport/accommodation).
+    // Arrival days (Day 1) are often empty or have only anchor stops, so skip them.
+    const _firstTouristDay =
+      _planDays.find((d) =>
+        d.stops.some((s) => !s.isAirport && !s.isAccommodation && s.lat != null)
+      ) || _planDays[0];
+    _activeDay = _firstTouristDay.day;
     renderDayTabs(_planDays);
-    renderDayStops(_planDays[0]);
+    renderDayStops(_firstTouristDay);
 
     const cfg = await fetchMapsConfig();
     const canvas = document.getElementById("planMapCanvas");
@@ -1645,6 +1894,28 @@
     const canvas = document.getElementById("planMapCanvas");
     if (canvas) canvas.innerHTML = "";
   }
+
+  // nmap:// URL Scheme click handler — mobile opens Naver Maps app, desktop uses web URL
+  (function () {
+    var _isMobile = /Android|iPhone|iPad|iPod/i.test(
+      (typeof navigator !== "undefined" && navigator.userAgent) || ""
+    );
+    document.addEventListener("click", function (e) {
+      var btn = e.target && e.target.closest && e.target.closest(".plan-naver-route-btn");
+      if (!btn) return;
+      var nmapUrl = btn.dataset && btn.dataset.nmap;
+      var webUrl = btn.href;
+      if (!nmapUrl || !_isMobile) return; // desktop: let default href open in new tab
+      e.preventDefault();
+      var t = Date.now();
+      window.location.href = nmapUrl;
+      setTimeout(function () {
+        if (Date.now() - t < 2000) {
+          window.open(webUrl, "_blank", "noopener");
+        }
+      }, 1200);
+    });
+  })();
 
   const root = global || globalThis || window;
   if (root) {

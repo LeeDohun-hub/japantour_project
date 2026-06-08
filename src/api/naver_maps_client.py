@@ -17,7 +17,9 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-GEOCODE_URL = "https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode"
+MAPS_APIGW_BASE_URL = "https://maps.apigw.ntruss.com"
+GEOCODE_URL = f"{MAPS_APIGW_BASE_URL}/map-geocode/v2/geocode"
+DIRECTIONS5_URL = f"{MAPS_APIGW_BASE_URL}/map-direction/v1/driving"
 
 
 def _first_env(*names: str) -> str:
@@ -87,6 +89,7 @@ class NaverMapsClient:
         self.client_id = (client_id or naver_maps_client_id()).strip()
         self.client_secret = (client_secret or naver_maps_client_secret()).strip()
         self.timeout = timeout
+        self.last_error: dict[str, Any] | None = None
 
     @property
     def is_configured(self) -> bool:
@@ -95,6 +98,10 @@ class NaverMapsClient:
     @property
     def can_geocode(self) -> bool:
         return bool(self.client_id and self.client_secret) and not NaverMapsClient._geocode_disabled
+
+    @property
+    def can_route(self) -> bool:
+        return bool(self.client_id and self.client_secret)
 
     def geocode(self, query: str, *, limit: int = 5) -> list[NaverGeocodeResult]:
         q = " ".join(str(query or "").split()).strip()
@@ -161,3 +168,98 @@ class NaverMapsClient:
                 )
             )
         return out
+
+    def driving_route(
+        self,
+        *,
+        start_lng: float,
+        start_lat: float,
+        goal_lng: float,
+        goal_lat: float,
+        waypoints: list[tuple[float, float]] | None = None,
+        option: str = "traoptimal",
+        lang: str = "ja",
+    ) -> dict[str, Any] | None:
+        """Call Naver Directions 5 API.
+
+        waypoints: list of (lng, lat) tuples, up to 5 intermediate stops.
+        The API supports start + up to 5 waypoints + goal.
+        """
+        if not self.can_route:
+            logger.info("Naver Directions skipped: client secret not configured")
+            return None
+        opt = option if option in {
+            "trafast",
+            "tracomfort",
+            "traoptimal",
+            "traavoidtoll",
+            "traavoidcaronly",
+        } else "traoptimal"
+        headers = {
+            "X-NCP-APIGW-API-KEY-ID": self.client_id,
+            "X-NCP-APIGW-API-KEY": self.client_secret,
+            "Accept": "application/json",
+        }
+        params: dict[str, str] = {
+            "start": f"{start_lng},{start_lat}",
+            "goal": f"{goal_lng},{goal_lat}",
+            "option": opt,
+            "lang": lang if lang in {"ko", "en", "ja", "zh"} else "ja",
+        }
+        if waypoints:
+            # Naver Directions 5 accepts up to 5 waypoints as "lng,lat|lng,lat|..."
+            via = "|".join(f"{lng},{lat}" for lng, lat in waypoints[:5])
+            params["waypoints"] = via
+        try:
+            resp = requests.get(DIRECTIONS5_URL, params=params, headers=headers, timeout=self.timeout)
+            if resp.status_code == 401:
+                self.last_error = {"status_code": 401, "error": "naver_auth_failed"}
+                logger.warning("Naver Directions 401 Unauthorized — check Maps Client ID/Secret for REST APIs")
+                return None
+            resp.raise_for_status()
+            payload: dict[str, Any] = resp.json()
+        except requests.RequestException as exc:
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+            self.last_error = {"status_code": status_code, "error": "naver_request_failed"}
+            logger.warning("Naver Directions request failed: %s", exc)
+            return None
+        except ValueError:
+            self.last_error = {"status_code": None, "error": "naver_invalid_json"}
+            logger.warning("Naver Directions invalid JSON")
+            return None
+
+        if payload.get("code") not in (0, "0", None):
+            self.last_error = {
+                "status_code": None,
+                "error": "naver_route_error",
+                "code": payload.get("code"),
+                "message": payload.get("message"),
+            }
+            logger.info("Naver Directions returned code=%s message=%s", payload.get("code"), payload.get("message"))
+            return None
+        routes = payload.get("route") or {}
+        candidates = routes.get(opt) or routes.get("traoptimal") or routes.get("trafast") or []
+        if not candidates:
+            return None
+        route = candidates[0] or {}
+        raw_path = route.get("path") or []
+        path: list[dict[str, float]] = []
+        for point in raw_path:
+            if not isinstance(point, (list, tuple)) or len(point) < 2:
+                continue
+            try:
+                lng = float(point[0])
+                lat = float(point[1])
+            except (TypeError, ValueError):
+                continue
+            path.append({"lat": lat, "lng": lng})
+        if len(path) < 2:
+            return None
+        return {
+            "option": opt,
+            "summary": route.get("summary") or {},
+            "path": path,
+            "section": route.get("section") or [],
+            "guide": route.get("guide") or [],
+            "source": "naver_directions5",
+        }

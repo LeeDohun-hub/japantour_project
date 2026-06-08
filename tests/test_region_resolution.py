@@ -662,6 +662,20 @@ class RouterItineraryRepairTests(unittest.TestCase):
             distance_meters=None,
         )
 
+    def _attraction(self, name: str, address: str, url: str) -> NearbyPlace:
+        return NearbyPlace(
+            name=name,
+            category="여행,명소",
+            address=address,
+            latitude=35.1,
+            longitude=129.0,
+            rating=None,
+            user_rating_count=None,
+            google_maps_uri=url,
+            is_open_now=None,
+            distance_meters=None,
+        )
+
     def test_penultimate_return_day_removes_far_destination_dinner(self) -> None:
         profile = {
             "plan_mode": True,
@@ -735,6 +749,113 @@ class RouterItineraryRepairTests(unittest.TestCase):
         self.assertIn("성수카페", repaired)
         self.assertIn(cafe_url, repaired)
         self.assertLess(repaired.index("성수카페"), repaired.index("夕食"))
+
+    def test_repair_replaces_attraction_in_lunch_slot(self) -> None:
+        profile = {
+            "plan_mode": True,
+            "days": 5,
+            "regions": ["gyeongsang"],
+            "regionCities": "부산",
+        }
+        tae_url = "https://map.naver.com/p/search/%ED%83%9C%EC%A2%85%EB%8C%80"
+        meal_url = "https://map.naver.com/p/search/%ED%95%B4%EC%9A%B4%EB%8C%80%EB%A7%9B%EC%A7%91"
+        reply = "\n".join([
+            "3日目(해운대 지역)",
+            "昼食",
+            "태종대",
+            tae_url,
+            "新鮮な海鮮料理を楽しめます。",
+        ])
+        places = [
+            self._attraction("태종대", "부산광역시 영도구 전망로 24", tae_url),
+            self._restaurant("해운대맛집", "부산광역시 해운대구 해운대로 1", meal_url),
+        ]
+
+        repaired = _repair_wizard_itinerary_rules(reply, places, profile, "旅行プラン")
+
+        self.assertNotIn("태종대", repaired)
+        self.assertNotIn(tae_url, repaired)
+        self.assertIn("해운대맛집", repaired)
+        self.assertIn(meal_url, repaired)
+
+    def test_repair_removes_far_cafe_from_focused_day(self) -> None:
+        profile = {
+            "plan_mode": True,
+            "days": 5,
+            "regions": ["gyeongsang"],
+            "regionCities": "부산",
+            "activities": ["cafe"],
+        }
+        far_url = "https://map.naver.com/p/search/%EB%AA%BB%EA%B3%A8%EC%8B%9C%EC%9E%A5%ED%98%B8%EB%91%90%EA%B3%BC%EC%9E%90"
+        near_url = "https://map.naver.com/p/search/%EC%88%98%EC%9B%94%EA%B2%BD%ED%99%94"
+        reply = "\n".join([
+            "3日目(해운대 지역)",
+            "午後",
+            "못골시장 호두과자 냠",
+            far_url,
+            "散策途中に休憩しやすい候補。",
+        ])
+        places = [
+            self._cafe("못골시장 호두과자 냠", "부산광역시 남구 못골번영로 22 1층", far_url),
+            self._cafe("수월경화", "부산광역시 해운대구 송정중앙로6번길 188", near_url),
+        ]
+
+        repaired = _repair_wizard_itinerary_rules(reply, places, profile, "カフェ巡り 旅行プラン")
+
+        self.assertNotIn("못골시장 호두과자 냠", repaired)
+        self.assertNotIn(far_url, repaired)
+
+    def test_repair_removes_name_only_food_from_morning_slot(self) -> None:
+        profile = {
+            "plan_mode": True,
+            "days": 5,
+            "regions": ["gyeongsang"],
+            "regionCities": "부산",
+        }
+        food_url = "https://map.naver.com/p/search/%EA%B3%A0%ED%96%A5%EC%97%B0%ED%99%94"
+        reply = "\n".join([
+            "3日目(해운대 지역)",
+            "午前",
+            "해동 용궁사 부산",
+            "고향연화",
+            "ショッピングと写真を組み合わせやすい立ち寄り場所。",
+            "海を向いた絶景の寺院です。",
+        ])
+        places = [
+            self._restaurant("고향연화", "부산광역시 기장군 기장읍 연화길 33-8", food_url),
+        ]
+
+        repaired = _repair_wizard_itinerary_rules(reply, places, profile, "旅行プラン")
+
+        self.assertIn("해동 용궁사 부산", repaired)
+        self.assertNotIn("고향연화", repaired)
+        self.assertNotIn("ショッピングと写真", repaired)
+
+    def test_repair_removes_second_name_only_attraction_after_plain_stop(self) -> None:
+        profile = {
+            "plan_mode": True,
+            "days": 5,
+            "regions": ["gyeongsang"],
+            "regionCities": "부산",
+        }
+        sea_url = "https://map.naver.com/p/search/%EC%94%A8%EB%9D%BC%EC%9D%B4%ED%94%84"
+        reply = "\n".join([
+            "3日目(해운대 지역)",
+            "午後",
+            "해운대 해수욕장",
+            "씨라이프 부산 아쿠아리움",
+            "この日の移動経路に組み込みやすい参照データで確認された場所。",
+            "韓国屈指のビーチリゾートで散策を楽しめます。",
+        ])
+        places = [
+            self._attraction("씨라이프 부산 아쿠아리움", "부산광역시 해운대구 해운대해변로 266", sea_url),
+        ]
+
+        repaired = _repair_wizard_itinerary_rules(reply, places, profile, "旅行プラン")
+
+        self.assertIn("해운대 해수욕장", repaired)
+        self.assertNotIn("씨라이프 부산 아쿠아리움", repaired)
+        self.assertNotIn("참조 데이터", repaired)
 
 
 if __name__ == "__main__":

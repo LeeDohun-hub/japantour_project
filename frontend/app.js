@@ -323,9 +323,9 @@ function naverPhotoUrlForPlace(p) {
   const googlePhotoLike = /\/api\/photo\/|places\.googleapis\.com/i.test(existingPhoto);
   return (existingPhoto && !googlePhotoLike ? existingPhoto : "")
     || (/map\.naver\.com|naver\.me/i.test(rawMapUrl)
-      ? `/api/naver-photo/?url=${encodeURIComponent(rawMapUrl)}&q=${encodeURIComponent(naverQuery)}${naverCoord}`
+      ? `/api/naver-photo/?url=${encodeURIComponent(rawMapUrl)}&q=${encodeURIComponent(naverQuery)}${naverCoord}&image_fallback=1`
       : "")
-    || (naverQuery ? `/api/naver-photo/?q=${encodeURIComponent(naverQuery)}${naverCoord}` : "");
+    || (naverQuery ? `/api/naver-photo/?q=${encodeURIComponent(naverQuery)}${naverCoord}&image_fallback=1` : "");
 }
 
 function renderInlinePlaceCard(p, lang) {

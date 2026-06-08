@@ -384,7 +384,7 @@
           <div class="wiz-step-header">
             <span class="wiz-step-num">🚌 交通</span>
             <h2>空港からの交通手段は？</h2>
-            <p class="wiz-lead">複数選択可</p>
+            <p class="wiz-lead">複数選択可 <span class="req-badge">必須</span></p>
           </div>
           <div class="chip-grid" id="transportChips">
             <button type="button" class="chip transport-chip" data-val="rail" id="transportChipRail">🚆 鉄道・地下鉄（AREX・広域鉄道）</button>
@@ -392,6 +392,7 @@
             <button type="button" class="chip transport-chip" data-val="bus" id="transportChipBus">🚌 空港バス・リムジン</button>
             <button type="button" class="chip transport-chip" data-val="rental">🚗 レンタカー</button>
           </div>
+          <p id="transportError" class="field-error" role="alert" hidden>空港からの交通手段を1つ以上選んでください。</p>
           <p id="transportAirportHint" class="accom-search-hint" style="display:none;margin-top:.5rem"></p>
           <div id="transportInfoPanel" class="transport-info-panel" style="display:none"></div>
           <p class="wiz-sub">リアルタイム料金・時刻は各サービスでご確認ください</p>
