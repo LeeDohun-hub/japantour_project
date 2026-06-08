@@ -2094,6 +2094,27 @@ def api_logout(request):
     return JsonResponse({"ok": True})
 
 
+@require_POST
+def api_delete_account(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({"detail": "ログインが必要です"}, status=401)
+
+    user = request.user
+    is_oauth = user.username.startswith("google_") or user.username.startswith("line_")
+
+    if not is_oauth:
+        try:
+            body = json.loads(request.body.decode("utf-8"))
+        except Exception:
+            return JsonResponse({"detail": "リクエスト形式が不正です"}, status=400)
+        if not user.check_password(body.get("password", "")):
+            return JsonResponse({"detail": "パスワードが正しくありません"}, status=400)
+
+    django_logout(request)
+    user.delete()
+    return JsonResponse({"ok": True})
+
+
 def _user_display_name(u: User) -> str:
     """OAuth 内部 username（google_* 等）をそのまま表示しない。"""
     first = (u.first_name or "").strip()

@@ -189,6 +189,68 @@ const Auth = (() => {
     renderGuest();
   }
 
+  function openDeleteModal() {
+    const modal = $('deleteAccountModal');
+    if (!modal) return;
+    const isOAuth = currentUser?.username?.startsWith('google_') || currentUser?.username?.startsWith('line_');
+    const pwField = $('deletePasswordField');
+    if (pwField) pwField.style.display = isOAuth ? 'none' : 'block';
+    const pwInput = $('deletePasswordInput');
+    if (pwInput) pwInput.value = '';
+    const errEl = $('deleteAccountError');
+    if (errEl) errEl.textContent = '';
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeDeleteModal() {
+    const modal = $('deleteAccountModal');
+    if (!modal) return;
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+  }
+
+  async function handleDeleteAccount() {
+    const errEl = $('deleteAccountError');
+    const btn = $('btnDeleteConfirm');
+    const isOAuth = currentUser?.username?.startsWith('google_') || currentUser?.username?.startsWith('line_');
+    const password = isOAuth ? undefined : $('deletePasswordInput')?.value;
+
+    if (!isOAuth && !password) {
+      if (errEl) errEl.textContent = 'パスワードを入力してください';
+      return;
+    }
+
+    if (errEl) errEl.textContent = '';
+    btn.disabled = true;
+    const origText = btn.textContent;
+    btn.textContent = '...';
+
+    try {
+      const res = await fetch('/api/auth/delete-account/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+        credentials: 'same-origin',
+        body: JSON.stringify(isOAuth ? {} : { password }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        closeDeleteModal();
+        currentUser = null;
+        renderGuest();
+        // 탈퇴 완료 후 페이지 새로고침
+        window.location.reload();
+      } else {
+        if (errEl) errEl.textContent = data.detail || '退会処理に失敗しました';
+      }
+    } catch (_) {
+      if (errEl) errEl.textContent = 'ネットワークエラーが発生しました';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = origText;
+    }
+  }
+
   function init() {
     checkSession();
 
@@ -212,12 +274,21 @@ const Auth = (() => {
     if (formLogin) formLogin.addEventListener('submit', handleLogin);
     if (formSignup) formSignup.addEventListener('submit', handleRegister);
 
+    const btnDeleteAccount = $('btnDeleteAccount');
+    const btnDeleteConfirm = $('btnDeleteConfirm');
+    const btnDeleteCancel = $('btnDeleteCancel');
+    const deleteModal = $('deleteAccountModal');
+    if (btnDeleteAccount) btnDeleteAccount.addEventListener('click', openDeleteModal);
+    if (btnDeleteConfirm) btnDeleteConfirm.addEventListener('click', handleDeleteAccount);
+    if (btnDeleteCancel) btnDeleteCancel.addEventListener('click', closeDeleteModal);
+    if (deleteModal) deleteModal.addEventListener('click', e => { if (e.target === deleteModal) closeDeleteModal(); });
+
     document.querySelectorAll('.auth-tab').forEach(t => {
       t.addEventListener('click', () => switchTab(t.dataset.tab));
     });
 
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') closeModal();
+      if (e.key === 'Escape') { closeModal(); closeDeleteModal(); }
     });
   }
 

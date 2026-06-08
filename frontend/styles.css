@@ -2376,6 +2376,83 @@ a.btn {
   margin-top: .85rem;
   display: flex;
   justify-content: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+.btn-danger-ghost {
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #f87171;
+  font-size: .78rem;
+  padding: .3rem .75rem;
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.btn-danger-ghost:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.7);
+}
+.btn-danger {
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  padding: .5rem 1.2rem;
+  border-radius: var(--radius-sm, 6px);
+  font-size: .9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+.btn-danger:hover { background: #b91c1c; }
+.btn-danger:disabled { opacity: .6; cursor: not-allowed; }
+
+/* ── Delete account modal ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.6);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.modal-box {
+  background: var(--surface, #1e2a3a);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: var(--radius, 12px);
+  padding: 1.75rem 1.5rem;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 8px 40px rgba(0,0,0,.5);
+}
+.modal-title {
+  margin: 0 0 .6rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text, #e8edf5);
+}
+.modal-desc {
+  font-size: .85rem;
+  color: var(--muted, #8899aa);
+  margin: 0 0 1rem;
+  line-height: 1.55;
+}
+.modal-field {
+  margin-bottom: .85rem;
+}
+.modal-field label {
+  display: block;
+  font-size: .8rem;
+  color: var(--muted, #8899aa);
+  margin-bottom: .35rem;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: .65rem;
+  margin-top: 1.1rem;
 }
 
 /* ── Place cards (Naver/place search results) ── */
