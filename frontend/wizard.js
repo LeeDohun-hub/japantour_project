@@ -2256,7 +2256,7 @@ function buildPrompt(isReroll = false) {
   const lockedItems = _collectLockedPlanItems();
   const sym = d.budget?.currency === "KRW" ? "₩" : "¥";
   const aMap = { food:"グルメ", shopping:"ショッピング", nightview:"夜景", tradition:"伝統文化",
-                 hallyu:"韓流・K-pop", drama:"公演", kpop:"K-pop", cafe:"カフェ巡り",
+                 festival:"祭り", hallyu:"韓流・K-pop", drama:"公演", kpop:"K-pop", cafe:"カフェ巡り",
                  nature:"自然", photo:"フォトスポット", sports:"スポーツ観戦", vacation:"バカンス" };
   const vacMap = { poolvilla:"プールヴィラ", camping:"キャンピング" };
   const tsMap = {
@@ -4479,7 +4479,7 @@ async function _displayPlanOutput(data) {
   }
 
   const places = data.places || [];
-  const showReferenceSections = true;
+  const showReferenceSections = false;
   const placesEl = $("planPlacesArea");
   const placesHtml = showReferenceSections ? _renderPlanPlacesRefSection(places, reply) : "";
   if (placesEl) {

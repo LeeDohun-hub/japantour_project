@@ -36,9 +36,10 @@ MOBILE_APP = "Japantour"
 # 서울 areaCode (legacy) — ldongCode2 연동 전 기본값
 SEOUL_AREA_CODE = "1"
 
-# TourAPI contentTypeId (JpnService2)
-CONTENT_TYPE_ATTRACTION = "12"  # 관광지
-CONTENT_TYPE_CULTURE = "14"  # 문화시설
+# TourAPI contentTypeId (JpnService2) — KorService2의 12/14와 다름
+CONTENT_TYPE_ATTRACTION = "76"  # 관광지·명소
+CONTENT_TYPE_CULTURE = "82"    # 음식점·카페 (JpnService2 A05)
+CONTENT_TYPE_SHOPPING = "79"   # 쇼핑 (JpnService2 A04, 11,087건)
 
 
 @dataclass(frozen=True)
@@ -603,32 +604,68 @@ class VisitKoreaClient:
         self,
         *,
         area_code: str,
-        num_of_rows: int = 8,
+        sigungu_code: str = "",
+        num_of_rows: int = 30,
     ) -> tuple[list[TourApiItem], str, str, int]:
-        """관광지(12) + 문화시설(14) 병합 (중복 content_id 제거)."""
-        merged: list[TourApiItem] = []
-        seen: set[str] = set()
-        last_code, last_msg, total = "", "", 0
-        per_type = max(4, num_of_rows // 2)
-        for ctype in (CONTENT_TYPE_ATTRACTION, CONTENT_TYPE_CULTURE):
-            batch, code, msg, count = self.search_attractions(
-                area_code=area_code,
-                content_type_id=ctype,
-                num_of_rows=per_type,
-            )
-            last_code, last_msg = code, msg
-            total += count
-            for item in batch:
-                if item.content_id and item.content_id in seen:
-                    continue
-                if item.content_id:
-                    seen.add(item.content_id)
-                merged.append(item)
-                if len(merged) >= num_of_rows:
-                    break
-            if len(merged) >= num_of_rows:
-                break
-        return merged[:num_of_rows], last_code, last_msg, total
+        """JpnService2 관광지·명소(76) 조회 — 전 페이지 수집 후 반환."""
+        return self.search_attractions(
+            area_code=area_code,
+            sigungu_code=sigungu_code,
+            content_type_id=CONTENT_TYPE_ATTRACTION,
+            num_of_rows=num_of_rows,
+        )
+
+    def search_shopping(
+        self,
+        *,
+        area_code: str,
+        num_of_rows: int = 20,
+    ) -> tuple[list[TourApiItem], str, str, int]:
+        """JpnService2 쇼핑(79) 조회 — 쇼핑몰·백화점·시장 등 A04 카테고리."""
+        return self.search_attractions(
+            area_code=area_code,
+            content_type_id=CONTENT_TYPE_SHOPPING,
+            num_of_rows=num_of_rows,
+        )
+
+    def search_green_spots(
+        self,
+        *,
+        area_code: str,
+        num_of_rows: int = 20,
+    ) -> tuple[list[TourApiItem], str, str, int]:
+        """GreenTourService1 생태관광지 조회 — 자연/힐링 관심사 선택 시 관광지 풀에 추가."""
+        if not area_code:
+            return [], "", "", 0
+        if not self.service_key:
+            raise ValueError("INCHEONTRANSPORT_API_KEY가 설정되지 않았습니다.")
+        params: dict[str, str] = {
+            "serviceKey": self.service_key,
+            "MobileOS": MOBILE_OS,
+            "MobileApp": MOBILE_APP,
+            "_type": "json",
+            "numOfRows": str(num_of_rows),
+            "pageNo": "1",
+            "areaCode": area_code,
+        }
+        url = f"{KTO_GREEN_BASE_URL}/areaBasedList1"
+        resp = requests.get(url, params=params, timeout=self.timeout)
+        logger.info(
+            "GreenTour areaBasedList1 HTTP %d — areaCode=%s",
+            resp.status_code,
+            area_code,
+        )
+        if not resp.ok:
+            logger.warning("GreenTour areaBasedList1 body: %s", resp.text[:400])
+            resp.raise_for_status()
+        raw = resp.json()
+        code, msg = _parse_header(raw)
+        if code and code not in ("00", "0000"):
+            raise ValueError(f"GreenTour areaBasedList1 resultCode={code} msg={msg}")
+        body = (raw.get("response") or {}).get("body") or {}
+        total = int(body.get("totalCount") or 0)
+        rows = _parse_items(raw)
+        return [_item_from_row(r) for r in rows], code, msg, total
 
     def probe(self) -> dict[str, Any]:
         """searchFestival2 / searchStay2 연결·응답 요약 (디버그용)."""

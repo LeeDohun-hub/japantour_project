@@ -857,6 +857,67 @@ class RouterItineraryRepairTests(unittest.TestCase):
         self.assertNotIn("씨라이프 부산 아쿠아리움", repaired)
         self.assertNotIn("참조 데이터", repaired)
 
+    def test_repair_removes_second_url_backed_attraction_after_url_backed_stop(self) -> None:
+        """Production case: _repair_itinerary_place_urls injects URLs before repair runs,
+        so companion attractions arrive with URLs — the url_match path must remove them."""
+        profile = {
+            "plan_mode": True,
+            "days": 5,
+            "regions": ["gyeongsang"],
+            "regionCities": "부산",
+        }
+        beach_url = "https://map.naver.com/p/search/%ED%95%B4%EC%9A%B4%EB%8C%80%ED%95%B4%EC%88%98%EC%9A%95%EC%9E%A5"
+        sea_url = "https://map.naver.com/p/search/%EC%94%A8%EB%9D%BC%EC%9D%B4%ED%94%84"
+        # Simulates the state AFTER _repair_itinerary_place_urls has injected URLs
+        reply = "\n".join([
+            "3日目(해운대 지역)",
+            "午後",
+            "해운대 해수욕장",
+            beach_url,
+            "씨라이프 부산 아쿠아리움",
+            sea_url,
+            "韓国屈指のビーチリゾートで散策を楽しめます。",
+        ])
+        places = [
+            self._attraction("해운대 해수욕장", "부산광역시 해운대구 해운대해변로", beach_url),
+            self._attraction("씨라이프 부산 아쿠아리움", "부산광역시 해운대구 해운대해변로 266", sea_url),
+        ]
+
+        repaired = _repair_wizard_itinerary_rules(reply, places, profile, "旅行プラン")
+
+        self.assertIn("해운대 해수욕장", repaired)
+        self.assertIn(beach_url, repaired)
+        self.assertNotIn("씨라이프 부산 아쿠아리움", repaired)
+        self.assertNotIn(sea_url, repaired)
+
+    def test_repair_removes_food_with_url_from_morning_slot(self) -> None:
+        """Production case: food card WITH injected URL must be removed from 午前 slot."""
+        profile = {
+            "plan_mode": True,
+            "days": 5,
+            "regions": ["gyeongsang"],
+            "regionCities": "부산",
+        }
+        food_url = "https://map.naver.com/p/search/%EA%B3%A0%ED%96%A5%EC%97%B0%ED%99%94"
+        # After _repair_itinerary_place_urls injects URL for 고향연화
+        reply = "\n".join([
+            "3日目(해운대 지역)",
+            "午前",
+            "해동 용궁사 부산",
+            "고향연화",
+            food_url,
+            "海を向いた絶景の寺院です。",
+        ])
+        places = [
+            self._restaurant("고향연화", "부산광역시 기장군 기장읍 연화길 33-8", food_url),
+        ]
+
+        repaired = _repair_wizard_itinerary_rules(reply, places, profile, "旅行プラン")
+
+        self.assertIn("해동 용궁사 부산", repaired)
+        self.assertNotIn("고향연화", repaired)
+        self.assertNotIn(food_url, repaired)
+
 
 if __name__ == "__main__":
     unittest.main()

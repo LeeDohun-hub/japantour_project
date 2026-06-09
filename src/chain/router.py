@@ -463,9 +463,9 @@ _REGION_DEFAULT_AREAS: dict[str, list[str]] = {
     "busan": ["부산", "해운대", "광안리", "영도", "서면"],
     "jeju": ["제주", "서귀포", "애월", "우도"],
     "gangwon": ["속초", "강릉", "양양", "춘천", "평창", "정선", "동해", "삼척"],
-    "chungcheong": ["대전", "공주", "부여", "보령", "태안", "단양", "청주", "천안", "제천", "아산", "서산", "청양"],
-    "jeolla": ["여수", "전주", "목포", "순천", "광주", "군산", "담양", "남원", "보성", "장성", "해남", "완도"],
-    "gyeongsang": ["경주", "부산", "대구", "거제", "통영", "안동", "포항", "남해", "영천", "함안", "산청", "합천"],
+    "chungcheong": ["태안", "공주", "부여", "단양", "보령", "서산", "대전", "청주", "충주", "제천", "아산", "천안"],
+    "jeolla": ["여수", "순천", "담양", "전주", "해남", "구례", "광주", "군산", "남원", "목포", "보성", "완도"],
+    "gyeongsang": ["경주", "통영", "거제", "안동", "포항", "남해", "부산", "대구", "하동", "합천", "영주", "산청"],
 }
 
 _SEOUL_DEFAULT_FOOD_AREAS = ["명동", "홍대"]
@@ -482,9 +482,9 @@ _RE_KR_METRO_GU = re.compile(
 )
 _RE_REGION_CITY_SPLIT = re.compile(r"[,、/・\n|]+")
 
-_MAX_ITINERARY_AREAS = 4
-_MAX_FOOD_PER_AREA = 5   # 에리어당 식당 수 — 다일정 점심+저녁 양쪽 커버용
-_MAX_ATTR_PER_AREA = 3
+_MAX_ITINERARY_AREAS = 5
+_MAX_FOOD_PER_AREA = 8   # 에리어당 식당 수 — 다일정 점심+저녁 양쪽 커버용
+_MAX_ATTR_PER_AREA = 5
 _NEARBY_FOOD_RADIUS_M = 5000
 _NEARBY_ATTRACTION_RADIUS_M = 8000
 _MAX_NEARBY_FOOD = 15   # 주변 식당 후보 확대 (기존 8 → 15)
@@ -624,8 +624,8 @@ def _itinerary_place_limits(traveler_profile: dict | None) -> dict[str, int]:
     if reroll > 0:
         return {
             "max_areas": 5,
-            "max_food_per_area": 7,
-            "max_attr_per_area": 4,
+            "max_food_per_area": 10,
+            "max_attr_per_area": 6,
             "max_nearby_food": 24,
             "max_nearby_attr": 12,
             "max_total": 50,
@@ -721,9 +721,10 @@ Real-time place search data is not available. Give a helpful answer using genera
         place_rule = """
 [ITINERARY PLACE RULE]
 STRICT SECTION USAGE — NON-NEGOTIABLE:
-  - [午前] slots: ONLY use entries from 「観光スポット候補（食事には使わない）」. NEVER place any restaurant, cafe, food stall, bar, dessert shop, market-food stop, or eating/drinking venue in 午前.
-  - [午後] slots: use entries from 「観光スポット候補（食事には使わない）」, and when the traveler selected cafe/coffee/cafe hopping, add at most one concrete 「カフェ候補」 as an afternoon location-card stop after at least one non-food stop.
-  - [昼食] and [夕食] slots: ONLY use entries from 「食事候補」. NEVER use 観光スポット候補 entries as meal items.
+  - [午前] slots: ONLY use entries from 「観光スポット候補（食事には使わない）」. NEVER place any restaurant, cafe, food stall, bar, dessert shop, market-food stop, or eating/drinking venue in 午前. Each slot = ONE attraction name + ONE Naver map URL. Do NOT add a second attraction URL as a "companion" in the same slot.
+  - [午後] slots: use entries from 「観光スポット候補（食事には使わない）」, and when the traveler selected cafe/coffee/cafe hopping, add at most one concrete 「カフェ候補」 as an afternoon location-card stop after at least one non-food stop. Each slot = ONE attraction name + ONE Naver map URL.
+  - [夜/밤] slots: ONLY sightseeing venues (night view, walk, park, cultural street, market browsing). NEVER place a 食事候補 restaurant in [夜/밤] — put it in [夕食] instead.
+  - [昼食] and [夕食] slots: ONLY use entries from 「食事候補」. NEVER use 観光スポット候補 entries as meal items. NEVER leave these slots empty on a sightseeing day — if no candidate, use the ZERO-CANDIDATE EXCEPTION below.
     ZERO-CANDIDATE EXCEPTION: If the 「食事候補」 section is completely empty (zero entries across ALL regions),
     you MAY use well-known real restaurants in the destination city from your training knowledge.
     Requirements for the exception: (a) Korean official name only; (b) map URL must use Naver search format:
@@ -1041,8 +1042,8 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "  市場内の飲食店・食堂・屋台（정솥밥・順豆腐・호떡など）を市場の直後・同スロット内に追加しない。\n"
             "  夕食を別の店で済ませた日は、市場は散策目的のみ — 市場に来て再び食べる行程にしない。\n"
             "- **1日の食事上限**: 昼食1件＋夕食1件が1日の最大食事数。同じ日に昼食・夕食以外の食事スロット（朝食除く）を追加しない。\n"
-            "- **同一スポット再利用禁止**: 観光スポット・カフェ・ショップもプラン全体で同じ場所名を2回使わない。\n"
-            "  選択肢が限られる日は目的エリア内の移動・休息ブロックに切り替える。遠方滞在中に宿泊エリア候補へ逃げない。\n"
+            "- **同一スポット再利用**: 同じ日に同じ場所を2回使うことは禁止。ただし異なる日への再利用は、他に候補がない場合のみ許可（食事スロットの空白・プレースホルダー防止を優先）。\n"
+            "  候補が少ない日は隣接エリアまたはVisitKorea候補から補完し、それでも足りない場合は既出の店を別日に再利用する。遠方滞在中に宿泊エリア候補へ逃げない。\n"
             "- **夕方・夜の具体候補優先**: 夜景・川沿い散策・市場・公園・文化通りなど夜に向く観光スポット候補があり、利用可能と判断できる場合は、\n"
             "  その具体施設名とURLを夜ブロックに使う。\n"
             "- **周辺散策の抽象文禁止**: 「ロッテワールドタワー周辺を散策」「〇〇周辺を散策」「近くを歩く」「ショッピングや散策」だけで済ませない。\n"
@@ -2356,8 +2357,14 @@ _REGION_CHIP_TO_AREAS: dict[str, list[str]] = {
     "jeju": ["제주", "서귀포", "애월", "우도"],
     "gangwon": ["속초", "강릉", "양양", "춘천", "평창", "정선", "동해", "삼척"],
     "chungcheong": _REGION_DEFAULT_AREAS["chungcheong"],
+    "chungbuk": ["단양", "제천", "충주", "청주", "보은", "괴산", "영동"],
+    "chungnam": ["태안", "공주", "부여", "서산", "보령", "아산", "당진"],
     "jeolla": _REGION_DEFAULT_AREAS["jeolla"],
+    "jeonbuk": ["전주", "남원", "무주", "부안", "군산", "고창", "완주"],
+    "jeonnam": ["여수", "순천", "담양", "해남", "구례", "강진", "완도"],
     "gyeongsang": _REGION_DEFAULT_AREAS["gyeongsang"],
+    "gyeongbuk": ["경주", "안동", "포항", "영주", "영덕", "문경", "울진"],
+    "gyeongnam": ["통영", "거제", "남해", "하동", "합천", "진주", "김해"],
 }
 
 _REGION_AREA_KEY_TO_AREAS: dict[str, list[str]] = {
@@ -2371,12 +2378,12 @@ _REGION_AREA_KEY_TO_AREAS: dict[str, list[str]] = {
     "sejong": ["세종"],
     "gyeonggi": _REGION_CHIP_TO_AREAS["gyeonggi"],
     "gangwon": _REGION_CHIP_TO_AREAS["gangwon"],
-    "chungbuk": ["청주", "충주", "제천", "보은", "옥천", "영동", "증평", "진천", "괴산", "음성", "단양"],
-    "chungnam": ["천안", "공주", "부여", "보령", "태안", "아산", "서산", "논산", "계룡", "당진", "금산", "서천", "청양", "홍성", "예산"],
-    "jeonbuk": ["전주", "군산", "익산", "정읍", "남원", "김제", "완주", "진안", "무주", "장수", "임실", "순창", "고창", "부안"],
-    "jeonnam": ["여수", "목포", "순천", "나주", "광양", "담양", "곡성", "구례", "고흥", "보성", "화순", "장흥", "강진", "해남", "영암", "무안", "함평", "영광", "장성", "완도", "진도", "신안"],
-    "gyeongbuk": ["경주", "안동", "포항", "김천", "구미", "영주", "영천", "상주", "문경", "경산", "군위", "의성", "청송", "영양", "영덕", "청도", "고령", "성주", "칠곡", "예천", "봉화", "울진", "울릉"],
-    "gyeongnam": ["창원", "진주", "통영", "사천", "김해", "밀양", "거제", "양산", "의령", "함안", "창녕", "경남고성", "남해", "하동", "산청", "함양", "거창", "합천"],
+    "chungbuk": ["단양", "제천", "충주", "청주", "보은", "괴산", "영동", "옥천", "음성", "진천", "증평"],
+    "chungnam": ["태안", "공주", "부여", "서산", "보령", "아산", "당진", "천안", "논산", "홍성", "예산", "청양", "금산", "서천", "계룡"],
+    "jeonbuk": ["전주", "남원", "무주", "부안", "군산", "고창", "완주", "익산", "정읍", "순창", "진안", "장수", "임실", "김제"],
+    "jeonnam": ["여수", "순천", "담양", "해남", "구례", "강진", "완도", "진도", "목포", "보성", "고흥", "장흥", "광양", "나주", "신안", "영암", "화순", "무안", "영광", "함평", "장성", "곡성"],
+    "gyeongbuk": ["경주", "안동", "포항", "영주", "영덕", "문경", "울진", "청송", "봉화", "구미", "영천", "상주", "김천", "경산", "울릉", "의성", "영양", "청도", "고령", "성주", "칠곡", "예천", "군위"],
+    "gyeongnam": ["통영", "거제", "남해", "하동", "합천", "진주", "김해", "창원", "밀양", "사천", "산청", "함양", "거창", "양산", "의령", "함안", "창녕", "경남고성"],
     "jeju": _REGION_CHIP_TO_AREAS["jeju"],
 }
 
@@ -2483,7 +2490,10 @@ def _append_local_fallback_areas(
 
 def _tourism_candidate_areas_for_plan(traveler_profile: dict | None) -> list[str]:
     """검색·후보 필터용 지역. 선택 군/시를 먼저 두고 부족분은 인접권역으로 보강."""
-    return _append_local_fallback_areas(list(_tourism_search_areas(traveler_profile)))
+    return _append_local_fallback_areas(
+        list(_tourism_search_areas(traveler_profile)),
+        limit=_MAX_ITINERARY_AREAS + 3,
+    )
 
 
 def _fmt_local_area_fallback_hint(traveler_profile: dict | None) -> str:
@@ -3627,6 +3637,21 @@ _ATTRACTION_TYPE_EXCLUDE = frozenset({
     "bank",
     "insurance_agency",
     "real_estate_agency",
+    # 통신·생활서비스
+    "telecommunications_service_provider",
+    "mobile_phone_store",
+    "electronics_store",
+    "convenience_store",
+    "gas_station",
+    "car_repair",
+    "laundry",
+    "dentist",
+    "veterinary_care",
+    "optician",
+    "financial_institution",
+    "atm",
+    "accounting",
+    "lawyer",
 })
 _ATTRACTION_NAME_EXCLUDE_RE = re.compile(
     r"노인회|대한노인회|노인복지|경로당|마을회관|복지관|"
@@ -3641,7 +3666,19 @@ _ATTRACTION_NAME_EXCLUDE_RE = re.compile(
     r"市役所|区役所|郡庁|道庁|役場|住民センター|行政福祉センター|警察署|消防署|郵便局|保健所|税務署|裁判所|検察庁|"
     r"tourist\s*information|visitor\s*center|information\s*center|"
     r"association|organization|office|senior|welfare|community\s*center|city\s*hall|district\s*office|county\s*office|"
-    r"police\s*station|fire\s*station|post\s*office|public\s*health\s*center|tax\s*office|court|prosecutor",
+    r"police\s*station|fire\s*station|post\s*office|public\s*health\s*center|tax\s*office|court|prosecutor|"
+    # 통신사 대리점·판매점
+    r"SK텔레콤|SKT\b|KT\s*(?:대리점|지점|플라자|샵|shop)|LG\s*U\+|"
+    r"이동통신|통신대리점|통신판매점|휴대폰\s*(?:대리점|판매점|샵)|핸드폰\s*(?:대리점|판매점)|"
+    r"PS&M|T월드|KT플라자|LGU\+|"
+    # 편의점 (단독 상호 — 시장·문화거리 내 편의점은 별도 구분 어려우나 단독은 제외)
+    r"\bGS25\b|\bCU\b(?!\s*문화)|\b세븐일레븐\b|\b이마트24\b|\b미니스톱\b|"
+    # 주유소·자동차
+    r"주유소|카센터|자동차\s*(?:정비|수리)|타이어\s*(?:센터|샵)|"
+    # 의료·동물
+    r"치과|한의원|정형외과|내과\b|안과\b|피부과|이비인후과|산부인과|동물병원|수의사|"
+    # 부동산·금융 보충
+    r"공인중개사|부동산\s*(?:중개|사무소)|분양사무소|대출|저축은행",
     re.IGNORECASE,
 )
 _CIVIC_OFFICE_URL_RE = re.compile(
@@ -3653,7 +3690,13 @@ _PERSONAL_CARE_CATEGORY_RE = re.compile(
     r"네일샵|네일아트|네일숍|"
     r"왁싱|속눈썹(?!전시|박물관)|눈썹문신|반영구화장|반영구 화장|"
     r"세탁소|코인세탁|"
-    r"hair\s*salon|beauty\s*salon|nail\s*salon|nail\s*art|barber\s*shop",
+    r"hair\s*salon|beauty\s*salon|nail\s*salon|nail\s*art|barber\s*shop|"
+    # 통신·전자 판매 (Naver 카테고리 매칭)
+    r"이동통신|통신기기|휴대폰판매|핸드폰판매|"
+    # 의료 (Naver 카테고리: "의료 > 병원 > ...")
+    r"치과|한의원|의원\b|클리닉(?!뮤지엄|박물관)|동물병원|"
+    # 생활편의
+    r"주유소|세차장|카센터|안경원(?!박물관)|렌즈샵|보청기",
     re.IGNORECASE,
 )
 
@@ -4042,222 +4085,18 @@ def _build_itinerary_food_queries(
     return queries
 
 
-# 에리어별 유명 관광지·랜드마크 직접 검색 쿼리
-_AREA_FAMOUS_SPOTS: dict[str, list[str]] = {
-    "명동": ["명동대성당 서울", "서울 남산 N타워", "남산골한옥마을 서울", "명동예술극장", "서울 남대문시장"],
-    "홍대": ["홍대 걷고싶은거리 서울", "홍대 상상마당 서울", "연남동 경의선숲길", "합정 양화진외국인선교사묘원", "당인리책발전소 서울"],
-    "강남": ["코엑스몰 강남", "봉은사 삼성동", "강남구청역 도산공원", "신사동 가로수길"],
-    "동대문": ["DDP 동대문 디자인플라자", "동대문 광장시장", "창경궁 서울", "낙산공원 서울"],
-    "인사동": ["경복궁 서울", "북촌한옥마을", "창덕궁 서울", "익선동 한옥마을", "인사동 쌈지길"],
-    "성수동": ["서울숲 성수동", "성수연방", "뚝섬한강공원"],
-    "이태원": ["리움미술관 이태원", "국립중앙박물관 서울", "용산가족공원"],
-    "한강": ["세빛섬 반포한강공원"],
-    "광장시장": ["광장시장 종로"],
-    "여의도": ["더현대서울 여의도", "여의도한강공원"],
-    "압구정": ["청담동 갤러리아백화점"],
-    "부산": ["감천문화마을 부산"],
-    "해운대": ["해운대해수욕장", "해동 용궁사 부산"],
-    "광안리": ["광안리해수욕장", "민락수변공원 부산"],
-    "영도": ["태종대 부산", "흰여울문화마을 영도"],
-    "서면": ["서면 젊음의거리 부산", "전포카페거리 부산"],
-    "제주": ["성산일출봉 제주", "만장굴 제주", "함덕해수욕장 제주"],
-    "서귀포": ["천지연폭포 서귀포", "정방폭포 서귀포", "중문관광단지"],
-    "애월": ["애월한담해안산책로", "곽지해수욕장 제주"],
-    "우도": ["우도봉 제주", "검멀레해변 우도"],
-    "대전": ["엑스포과학공원 대전"],
-    "공주": ["공산성 공주", "무령왕릉 공주"],
-    "부여": ["부소산성 부여", "궁남지 부여"],
-    "보령": ["대천해수욕장 보령", "개화예술공원 보령"],
-    "태안": ["안면도 꽃지해수욕장", "천리포수목원 태안"],
-    "단양": ["도담삼봉 단양", "만천하스카이워크 단양"],
-    "청주": ["청남대 청주", "수암골 청주"],
-    "천안": ["독립기념관 천안", "아라리오갤러리 천안"],
-    "전주": ["전주한옥마을"],
-    "여수": ["여수 해상케이블카", "오동도 여수", "이순신광장 여수", "돌산공원 여수"],
-    "목포": ["목포 해상케이블카", "갓바위 목포", "근대역사관 목포"],
-    "순천": ["순천만국가정원", "순천만습지", "낙안읍성 순천"],
-    "광주": [
-        "국립아시아문화전당 광주",
-        "양림동 펭귄마을 광주",
-        "양림동 역사문화마을 광주",
-        "동명동 카페거리 광주",
-        "국립광주박물관",
-        "무등산 국립공원 광주",
-        "광주 충장로",
-        "5·18기념문화센터 광주",
-        "광주비엔날레전시관",
-    ],
-    "군산": ["군산 시간여행마을", "초원사진관 군산"],
-    "담양": ["죽녹원 담양", "메타세쿼이아길 담양"],
-    "남원": ["광한루원 남원", "춘향테마파크 남원"],
-    "보성": ["보성 녹차밭", "대한다원 보성"],
-    "경주": ["불국사 경주", "첨성대 경주"],
-    "대구": ["김광석 다시그리기길 대구", "서문시장 대구"],
-    "거제": ["외도 보타니아 거제", "거제 해금강", "바람의 언덕 거제", "매미성 거제"],
-    "통영": ["동피랑 벽화마을 통영", "통영 케이블카", "이순신공원 통영"],
-    "안동": ["안동 하회마을", "월영교 안동", "도산서원 안동"],
-    "포항": ["스페이스워크 포항", "호미곶 포항", "영일대해수욕장 포항"],
-    "울산": ["태화강 국가정원 울산", "대왕암공원 울산", "간절곶 울산"],
-    "창원": ["진해 여좌천", "마산 어시장", "저도 콰이강의 다리 창원"],
-    "진주": ["진주성", "남강유등축제 진주"],
-    "남해": ["독일마을 남해", "보리암 남해", "다랭이마을 남해"],
-    "하동": ["화개장터 하동", "최참판댁 하동", "쌍계사 하동"],
-    "합천": ["해인사 합천", "합천 영상테마파크"],
-    "영주": ["부석사 영주", "소수서원 영주"],
-    "속초": ["설악산 국립공원 속초"],
-    "강릉": ["경포대 강릉", "강릉 오죽헌"],
-    "양양": ["낙산사 양양", "서피비치 양양"],
-    "춘천": ["남이섬 춘천", "소양강 스카이워크 춘천"],
-    "평창": ["대관령 양떼목장 평창", "월정사 평창"],
-    "정선": ["정선 아리랑시장", "화암동굴 정선"],
-    "동해": ["묵호등대 동해", "논골담길 동해"],
-    "삼척": ["삼척 해상케이블카", "장호항 삼척"],
-    "가평": ["남이섬 가평", "아침고요수목원 가평"],
-    "고양": ["일산 호수공원", "스타필드 고양"],
-    "수원": ["수원화성", "화성행궁 수원"],
-    "경기광주": ["남한산성 경기도 광주", "화담숲 곤지암", "곤지암리조트 경기도 광주"],
-    "파주": ["임진각 평화누리공원 파주", "헤이리 예술마을 파주", "파주출판도시"],
-    "용인": ["에버랜드 용인", "한국민속촌 용인"],
-    "안산": ["대부도 안산", "탄도항 안산", "구봉도 낙조전망대 안산", "방아머리해수욕장 대부도", "바다향기수목원 안산", "시화나래 조력문화관"],
-    "양평": ["두물머리 양평", "세미원 양평"],
-    "화성": ["제부도 화성", "궁평항 화성", "융건릉 화성"],
-    "과천": ["서울대공원 과천", "국립과천과학관"],
-    "인천": ["송월동 동화마을 인천", "차이나타운 인천", "월미도 인천"],
-    "송도": ["센트럴파크 송도", "트리플스트리트 송도"],
-}
 
 
-_AREA_SHOPPING_ANCHORS: dict[str, list[str]] = {
-    "명동": [
-        "명동거리 서울",
-        "롯데백화점 본점 명동",
-        "신세계백화점 본점 명동",
-        "눈스퀘어 명동",
-        "올리브영 명동 플래그십",
-    ],
-    "홍대": [
-        "AK플라자 홍대",
-        "홍대 걷고싶은거리 서울",
-        "무신사 스토어 홍대",
-        "카카오프렌즈 홍대",
-        "KT&G 상상마당 홍대",
-    ],
-    "강남": [
-        "스타필드 코엑스몰 강남",
-        "현대백화점 무역센터점",
-        "파르나스몰 삼성동",
-        "강남역 지하쇼핑센터",
-        "카카오프렌즈 강남",
-    ],
-    "동대문": [
-        "동대문디자인플라자 DDP",
-        "두타몰 동대문",
-        "현대시티아울렛 동대문점",
-        "밀리오레 동대문",
-        "apM PLACE 동대문",
-        "굿모닝시티 동대문",
-        "동대문종합시장",
-        "동대문 지하쇼핑센터",
-    ],
-    "성수동": [
-        "LCDC SEOUL 성수",
-        "무신사 스토어 성수",
-        "아모레 성수",
-        "성수동 카페거리 편집숍",
-        "디올 성수",
-    ],
-    "여의도": [
-        "더현대서울 여의도",
-        "IFC몰 여의도",
-        "현대백화점 더현대 서울",
-    ],
-    "압구정": [
-        "갤러리아백화점 명품관 압구정",
-        "압구정 로데오거리",
-        "신사동 가로수길",
-    ],
-    "잠실": [
-        "롯데월드몰 잠실",
-        "롯데백화점 잠실점",
-        "롯데월드타워몰 잠실",
-    ],
-    "수원": [
-        "스타필드 수원",
-        "AK플라자 수원",
-        "롯데몰 수원",
-        "수원 남문시장",
-    ],
-    "경기광주": [
-        "경안시장 경기도 광주",
-        "곤지암 도자공원",
-        "화담숲 곤지암",
-    ],
-    "고양": [
-        "스타필드 고양",
-        "현대백화점 킨텍스점",
-        "라페스타 일산",
-        "웨스턴돔 일산",
-    ],
-    "파주": [
-        "파주 프리미엄아울렛",
-        "롯데프리미엄아울렛 파주",
-        "헤이리 예술마을 편집숍",
-        "파주출판도시",
-    ],
-    "용인": [
-        "롯데프리미엄아울렛 기흥점",
-        "보정동 카페거리",
-        "에버랜드 기념품샵",
-    ],
-    "하남": [
-        "스타필드 하남",
-        "신세계백화점 하남점",
-    ],
-    "강릉": [
-        "강릉 중앙시장",
-        "월화거리 강릉",
-        "안목해변 카페거리",
-        "초당동 강릉 편집숍",
-    ],
-    "속초": [
-        "속초관광수산시장",
-        "속초 중앙로 상점가",
-        "아바이마을 속초",
-    ],
-    "춘천": [
-        "춘천 명동거리",
-        "춘천 중앙시장",
-        "육림고개 춘천",
-    ],
-    "부산": ["신세계백화점 센텀시티", "국제시장 부산", "부평깡통시장 부산"],
-    "해운대": ["신세계백화점 센텀시티", "해운대 전통시장", "해리단길"],
-    "광안리": ["밀락더마켓 부산", "광안리 카페거리"],
-    "서면": ["서면 지하상가", "전포카페거리 부산", "롯데백화점 부산본점"],
-    "제주": ["동문시장 제주", "칠성로 쇼핑거리 제주"],
-    "서귀포": ["서귀포 매일올레시장", "중문관광단지"],
-    "대전": ["성심당 대전 본점", "으능정이문화의거리 대전", "신세계 Art & Science 대전"],
-    "공주": ["공주 산성시장", "공주 한옥마을"],
-    "부여": ["부여 중앙시장", "궁남지 주변 상점가"],
-    "보령": ["대천해수욕장 머드광장", "보령 중앙시장"],
-    "태안": ["안면도 수산시장", "꽃지해수욕장 상점가"],
-    "단양": ["단양 구경시장", "단양강 잔도 주변"],
-    "전주": ["전주 남부시장", "전주 한옥마을 상점가", "객리단길 전주"],
-    "여수": ["여수 이순신광장", "여수 교동시장", "여수 낭만포차거리"],
-    "목포": ["목포 자유시장", "목포 근대역사거리"],
-    "순천": ["순천 웃장", "순천 아랫장", "순천만국가정원 기념품샵"],
-    "광주": ["충장로 광주", "양림동 펭귄마을", "1913송정역시장"],
-    "군산": ["군산 시간여행마을", "군산 공설시장"],
-    "담양": ["담양 메타프로방스", "담양 죽녹원 상점가"],
-    "경주": ["황리단길 경주", "경주 중앙시장", "불국사 상점가"],
-    "대구": ["동성로 대구", "서문시장 대구", "더현대 대구"],
-    "거제": ["고현종합시장 거제", "매미성 주변 상점가", "장승포항 거제"],
-    "통영": ["통영 중앙시장", "동피랑 벽화마을 상점가"],
-    "안동": ["안동구시장", "월영교 주변 상점가", "하회마을 상점가"],
-    "포항": ["죽도시장 포항", "영일대해수욕장 상점가"],
-    "울산": ["성남동 젊음의거리 울산", "태화강 국가정원 주변"],
-    "남해": ["남해 독일마을 상점가", "남해 전통시장"],
-    "속초": ["속초관광수산시장", "속초 중앙로 상점가", "아바이마을 속초"],
-}
+def _has_itinerary_nature_interest(traveler_profile: dict | None) -> bool:
+    """자연·힐링 관심사 여부 — GreenTourService1 조회 트리거."""
+    profile = traveler_profile or {}
+    acts = {str(a).lower() for a in profile.get("activities") or []}
+    additional = profile.get("additional") or {}
+    styles = {str(s).lower() for s in additional.get("travelStyles") or []}
+    tokens = acts | styles
+    return bool(
+        tokens & {"nature", "healing", "eco", "outdoor", "자연", "힐링", "생태"}
+    )
 
 
 def _has_itinerary_shopping_interest(traveler_profile: dict | None, text: str = "") -> bool:
@@ -4315,8 +4154,7 @@ def _build_itinerary_attraction_queries(
     for area in expanded_areas or areas:
         add(f"{area} 관광")
         add(f"{area} 명소")
-        for spot in _AREA_FAMOUS_SPOTS.get(area, []):
-            add(spot)
+        add(f"{area} 관광지")
         acts = {str(a).lower() for a in (traveler_profile or {}).get("activities") or []}
         if "nature" in acts:
             add(f"{area} 공원")
@@ -4341,8 +4179,7 @@ def _build_itinerary_attraction_queries(
         if has_shopping_interest:
             add(f"{area} 쇼핑")
             add(f"{area} 쇼핑몰")
-            for spot in _AREA_SHOPPING_ANCHORS.get(area, []):
-                add(spot)
+            add(f"{area} 전통시장")
         if has_cafe_interest:
             add(f"{area} 유명 카페")
             add(f"{area} 로컬 카페")
@@ -4358,8 +4195,6 @@ def _build_itinerary_attraction_queries(
                 add(f"{area} 로컬 카페")
             if has_shopping_interest:
                 add(f"{area} 쇼핑")
-                for spot in _AREA_SHOPPING_ANCHORS.get(area, []):
-                    add(spot)
 
     reroll = int((traveler_profile or {}).get("plan_reroll") or 0)
     if reroll > 0 and traveler_profile:
@@ -4446,31 +4281,8 @@ def _fallback_anchor_attraction_places(
     *,
     needed: int,
 ) -> list[NearbyPlace]:
-    if needed <= 0:
-        return []
-    areas = _expanded_tourism_areas_for_plan(traveler_profile, min_count=3)
-    out: list[NearbyPlace] = []
-    seen: set[str] = set()
-    for area in areas:
-        anchor_names = list(_AREA_FAMOUS_SPOTS.get(area, []))
-        has_shopping_interest = _has_itinerary_shopping_interest(traveler_profile)
-        if not has_shopping_interest:
-            anchor_names = [
-                name for name in anchor_names if not _SHOPPING_MALL_TEXT_RE.search(name)
-            ]
-        if has_shopping_interest:
-            anchor_names.extend(_AREA_SHOPPING_ANCHORS.get(area, []))
-        for name in anchor_names:
-            if _is_civic_office_text(name):
-                continue
-            key = _norm_plan_place_name(name)
-            if not key or key in seen:
-                continue
-            seen.add(key)
-            out.append(_anchor_place_from_query(name, area=area))
-            if len(out) >= needed:
-                return out
-    return out
+    # 하드코딩 제거 완료 — VK API priority 쿼리(관광지·쇼핑·생태)가 anchor 역할을 대체
+    return []
 
 
 def _itinerary_food_candidate_limit(
@@ -4720,13 +4532,19 @@ def _search_naver_places_for_itinerary(
                     seen_cafe_q.add(q)
                     cafe_queries.append(q)
     # Reserve separate slots so food queries don't crowd out attraction queries.
-    # Food: up to 10 queries (5 results each). Attractions: up to 8 queries (3 results each).
+    # VK 우선 쿼리는 항상 앞에 유지, 나머지 generic 쿼리만 reroll 시 shuffle
+    _n_vk = len(priority_attr_queries) if priority_attr_queries else 0
     _food_cap = 14 if reroll > 0 or avoid_keys else 10
-    _attr_cap = 18 if reroll > 0 or avoid_keys else 12
+    # VK priority 쿼리가 있으면 cap을 높여 전량 처리 + generic 쿼리도 일부 포함
+    _attr_cap_base = 18 if reroll > 0 or avoid_keys else 14
+    _attr_cap = max(_attr_cap_base, _n_vk + 6)
     _cafe_cap = 10 if has_cafe_interest else 0
     if reroll > 0:
         food_queries = _shuffled_copy(food_queries, seed)
-        attr_queries = _shuffled_copy(attr_queries, seed)
+        # VK 우선 쿼리(앞 _n_vk 개)는 순서 유지, generic만 shuffle
+        _vk_part = attr_queries[:_n_vk]
+        _generic_part = _shuffled_copy(attr_queries[_n_vk:], seed)
+        attr_queries = _vk_part + _generic_part
         cafe_queries = _shuffled_copy(cafe_queries, seed + 5)
     food_batch_queries = food_queries[:_food_cap]
     attr_batch_queries = attr_queries[:_attr_cap]
@@ -4792,11 +4610,12 @@ def _search_naver_places_for_itinerary(
                 area_hint=area_hint,
                 geocode=False,
             )
+            # 관광지는 VK 쿼리 자체가 지역을 포함 → 구 단위 destination 필터 미적용
+            # (_place_matches_destination_profile은 구 단위 선택 시 다른 서울 구를 모두 차단)
             attr_batches.append([
                 replace(p, search_area=area_hint or q[:40])
                 for p in places
                 if _is_korea_place(p)
-                and _place_matches_destination_profile(p, traveler_profile)
                 and _is_naver_attr_place(p)
                 and (has_shopping_interest or not _is_shopping_mall_place(p))
             ])
@@ -4967,7 +4786,7 @@ def _search_places_for_itinerary(
     def _fetch_food_query(text_query: str) -> list[NearbyPlace]:
         label = text_query.replace(" 맛집", "").replace(" 카페", "").strip() or text_query
         try:
-            fetch_n = min(limits["max_food_per_area"] * 4, 20)
+            fetch_n = min(limits["max_food_per_area"] * 4, 32)
             results, _ = pclient.search_by_text(
                 text_query=text_query,
                 max_results=fetch_n,
@@ -5496,12 +5315,157 @@ _BUSAN_DAY_AREA_ALIASES: dict[str, tuple[str, ...]] = {
     "영도": ("영도", "남포", "중구"),
 }
 
+_JPN_CITY_TO_KO: dict[str, str] = {
+    # 광역시
+    "釜山": "부산", "プサン": "부산",
+    "大邱": "대구", "テグ": "대구",
+    "仁川": "인천", "インチョン": "인천",
+    "光州": "광주", "クァンジュ": "광주",
+    "大田": "대전", "テジョン": "대전",
+    "蔚山": "울산", "ウルサン": "울산",
+    "世宗": "세종", "セジョン": "세종",
+    # 경상북도
+    "浦項": "포항", "ポハン": "포항",
+    "慶州": "경주", "キョンジュ": "경주",
+    "安東": "안동", "アンドン": "안동",
+    "亀尾": "구미", "クミ": "구미",
+    "聞慶": "문경", "ムンギョン": "문경",
+    "尚州": "상주", "サンジュ": "상주",
+    "栄州": "영주", "ヨンジュ": "영주",
+    "永川": "영천", "ヨンチョン": "영천",
+    "盈徳": "영덕", "ヨンドク": "영덕",
+    "青松": "청송", "チョンソン경북": "청송",
+    "蔚珍": "울진", "ウルジン": "울진",
+    "鬱陵": "울릉", "ウルルン": "울릉",
+    "奉化": "봉화", "ポンファ": "봉화",
+    "義城": "의성", "ウィソン": "의성",
+    "清道": "청도", "チョンド": "청도",
+    "漆谷": "칠곡", "チルゴク": "칠곡",
+    "醴泉": "예천", "イェチョン": "예천",
+    "慶山": "경산", "キョンサン": "경산",
+    "高霊": "고령", "コリョン": "고령",
+    "星州": "성주", "ソンジュ": "성주",
+    "金泉": "김천", "キムチョン": "김천",
+    # 경상남도
+    "統営": "통영", "トンヨン": "통영",
+    "巨済": "거제", "コジェ": "거제",
+    "昌原": "창원", "チャンウォン": "창원",
+    "晋州": "진주", "チンジュ": "진주",
+    "南海": "남해", "ナムヘ": "남해",
+    "河東": "하동", "ハドン": "하동",
+    "山清": "산청", "サンチョン": "산청",
+    "咸陽": "함양", "ハミャン": "함양",
+    "陜川": "합천", "ハプチョン": "합천",
+    "密陽": "밀양", "ミリャン": "밀양",
+    "梁山": "양산", "ヤンサン": "양산",
+    "金海": "김해", "キムヘ": "김해",
+    "泗川": "사천", "サチョン": "사천",
+    "居昌": "거창", "コチャン경남": "거창",
+    "昌寧": "창녕", "チャンニョン": "창녕",
+    "咸安": "함안", "ハマン": "함안",
+    "宜寧": "의령", "ウィリョン": "의령",
+    # 전라북도
+    "全州": "전주", "チョンジュ": "전주",
+    "群山": "군산", "クンサン": "군산",
+    "益山": "익산", "イクサン": "익산",
+    "井邑": "정읍", "チョンウプ": "정읍",
+    "南原": "남원", "ナムォン": "남원",
+    "茂朱": "무주", "ムジュ": "무주",
+    "扶安": "부안", "プアン": "부안",
+    "高敞": "고창", "コチャン전북": "고창",
+    "完州": "완주", "ワンジュ": "완주",
+    "淳昌": "순창", "スンチャン": "순창",
+    "任実": "임실", "イムシル": "임실",
+    "長水": "장수", "チャンス": "장수",
+    "鎭安": "진안", "チナン": "진안",
+    "金堤": "김제", "キムジェ": "김제",
+    # 전라남도
+    "麗水": "여수", "ヨス": "여수",
+    "順天": "순천", "スンチョン": "순천",
+    "木浦": "목포", "モクポ": "목포",
+    "潭陽": "담양", "タミャン": "담양",
+    "康津": "강진", "カンジン": "강진",
+    "高興": "고흥", "コフン": "고흥",
+    "곡성": "곡성", "コクソン": "곡성",
+    "光陽": "광양", "クァンヤン": "광양",
+    "求礼": "구례", "クリェ": "구례",
+    "羅州": "나주", "ナジュ": "나주",
+    "宝城": "보성", "ポソン": "보성",
+    "新安": "신안", "シンアン": "신안",
+    "霊光": "영광", "ヨングァン": "영광",
+    "霊巌": "영암", "ヨンアム": "영암",
+    "莞島": "완도", "ワンド": "완도",
+    "長城": "장성", "チャンソン": "장성",
+    "長興": "장흥", "チャンフン": "장흥",
+    "珍島": "진도", "チンド": "진도",
+    "咸平": "함평", "ハンピョン": "함평",
+    "海南": "해남", "ヘナム": "해남",
+    "和順": "화순", "ファスン": "화순",
+    # 충청북도
+    "清州": "청주", "チョンジュ충북": "청주",
+    "忠州": "충주", "チュンジュ": "충주",
+    "堤川": "제천", "チェチョン": "제천",
+    "丹陽": "단양", "タニャン": "단양",
+    "報恩": "보은", "ポウン": "보은",
+    "槐山": "괴산", "クェサン": "괴산",
+    "永同": "영동", "ヨンドン충북": "영동",
+    "沃川": "옥천", "オクチョン": "옥천",
+    # 충청남도
+    "公州": "공주", "コンジュ": "공주",
+    "扶余": "부여", "プヨ": "부여",
+    "瑞山": "서산", "ソサン": "서산",
+    "泰安": "태안", "テアン": "태안",
+    "牙山": "아산", "アサン": "아산",
+    "保寧": "보령", "ポリョン": "보령",
+    "論山": "논산", "ノンサン": "논산",
+    "錦山": "금산", "クムサン": "금산",
+    "唐津": "당진", "タンジン": "당진",
+    "礼山": "예산", "イェサン": "예산",
+    "洪城": "홍성", "ホンソン": "홍성",
+    "青陽": "청양", "チョンヤン": "청양",
+    "天安": "천안", "チョナン": "천안",
+    # 강원도
+    "江陵": "강릉", "カンヌン": "강릉",
+    "束草": "속초", "ソクチョ": "속초",
+    "春川": "춘천", "チュンチョン": "춘천",
+    "原州": "원주", "ウォンジュ": "원주",
+    "平昌": "평창", "ピョンチャン": "평창",
+    "襄陽": "양양", "ヤンヤン": "양양",
+    "東海": "동해", "トンヘ": "동해",
+    "三陟": "삼척", "サムチョク": "삼척",
+    "寧越": "영월", "ヨンウォル": "영월",
+    "旌善": "정선", "チョンソン강원": "정선",
+    "鉄原": "철원", "チョルォン": "철원",
+    "洪川": "홍천", "ホンチョン": "홍천",
+    "太白": "태백", "テベク": "태백",
+    "華川": "화천", "ファチョン": "화천",
+    "横城": "횡성", "フェンソン": "횡성",
+    "麟蹄": "인제", "インジェ": "인제",
+    # 경기도
+    "水原": "수원", "スウォン": "수원",
+    "龍仁": "용인", "ヨンイン": "용인",
+    "坡州": "파주", "パジュ": "파주",
+    "华城": "화성", "ファソン": "화성",
+    "高陽": "고양", "コヤン": "고양",
+    "城南": "성남", "ソンナム": "성남",
+    "南楊州": "남양주", "ナミャンジュ": "남양주",
+    "加平": "가평", "カピョン": "가평",
+    "楊平": "양평", "ヤンピョン": "양평",
+    "驪州": "여주", "ヨジュ": "여주",
+    "抱川": "포천", "ポチョン": "포천",
+    "漣川": "연천", "ヨンチョン경기": "연천",
+    "富川": "부천", "プチョン": "부천",
+    # 제주도
+    "済州": "제주", "チェジュ": "제주",
+    "西帰浦": "서귀포", "ソグィポ": "서귀포",
+}
+
 
 def _day_focus_area_tokens(line: str) -> tuple[str, ...]:
     text = str(line or "")
     tokens: list[str] = []
     had_group = False
-    for m in re.finditer(r"[（(]([^）)]+)[）)]", text):
+    for m in re.finditer(r"[（(【]([^）)】]+)[）)】]", text):
         had_group = True
         tokens.extend(_parse_region_city_tokens(m.group(1)))
     if not had_group:
@@ -5514,6 +5478,10 @@ def _day_focus_area_tokens(line: str) -> tuple[str, ...]:
     out: list[str] = []
     for token in tokens:
         clean = re.sub(r"(?:지역|エリア|周辺|観光|食事|일정|코스)$", "", token).strip()
+        for jpn, ko in _JPN_CITY_TO_KO.items():
+            if jpn in clean:
+                clean = ko
+                break
         if not re.search(r"[\u3131-\uD79D]", clean):
             continue
         if not clean:
@@ -5574,9 +5542,9 @@ def _repair_wizard_itinerary_rules(
         and not _is_meal_candidate_place(p)
         and not _foodish_signal(p),
     )
-    food_idx = 0
-    cafe_idx = 0
-    attr_idx = 0
+    used_food: set[str] = set()
+    used_cafe: set[str] = set()
+    used_attr: set[str] = set()
     for p in places or []:
         uri = p.google_maps_uri or ""
         key = _plan_maps_url_key(uri)
@@ -5660,22 +5628,18 @@ def _repair_wizard_itinerary_rules(
         return True
 
     def next_place_line(kind: str) -> list[str]:
-        nonlocal food_idx, cafe_idx, attr_idx
         queue = food_queue if kind == "food" else cafe_queue if kind == "cafe" else attr_queue
-        start = food_idx if kind == "food" else cafe_idx if kind == "cafe" else attr_idx
-        for idx2 in range(start, len(queue)):
-            p = queue[idx2]
-            if kind == "food":
-                food_idx = idx2 + 1
-            elif kind == "cafe":
-                cafe_idx = idx2 + 1
-            else:
-                attr_idx = idx2 + 1
+        used = used_food if kind == "food" else used_cafe if kind == "cafe" else used_attr
+        for p in queue:
+            pkey = f"{p.name}|{p.google_maps_uri}"
+            if pkey in used:
+                continue
             if (
                 p.name
                 and p.google_maps_uri
                 and _place_matches_day_focus(p, current_day_focus)
             ):
+                used.add(pkey)
                 return [p.name, p.google_maps_uri]
         return []
 
@@ -5853,7 +5817,11 @@ def _repair_wizard_itinerary_rules(
             remove_cafe = is_cafe_block and (
                 slot != "afternoon" or day_cafe_count >= 1 or wrong_day_area
             )
-            remove_attr = is_attr_block and (nonmeal_in_meal_slot or wrong_day_area)
+            remove_attr = is_attr_block and (
+                nonmeal_in_meal_slot
+                or wrong_day_area
+                or (slot in {"morning", "afternoon", "night"} and slot_plain_place_seen)
+            )
             if remove_food or remove_cafe or remove_attr:
                 replacement = []
                 if nonmeal_in_meal_slot and day_food_count < 2:
@@ -5885,6 +5853,8 @@ def _repair_wizard_itinerary_rules(
                 last_kept_place_food = False
             elif stripped:
                 last_kept_place_food = False
+                if slot in {"morning", "afternoon", "night"}:
+                    slot_plain_place_seen = True
             idx += 2
             continue
 
@@ -5900,33 +5870,146 @@ def _repair_wizard_itinerary_rules(
 
 # ─── Visit Korea (관광공사 API) ─────────────────────────────────────────
 _LEGACY_AREA_CODE_HINTS: dict[str, str] = {
-    "경기광주": "31", "경기도 광주": "31", "광주시": "31", "gwangju-si": "31",
-    "서울": "1", "ソウル": "1", "seoul": "1", "明洞": "1", "江南": "1", "강남": "1", "弘大": "1", "홍대": "1",
+    # ── 서울 ──
+    "서울": "1", "ソウル": "1", "seoul": "1",
+    "명동": "1", "明洞": "1", "강남": "1", "江南": "1", "홍대": "1", "弘大": "1",
     "경복궁": "1", "景福宮": "1", "광화문": "1", "光化門": "1", "북촌": "1", "北村": "1",
     "인사동": "1", "仁寺洞": "1", "창덕궁": "1", "昌德宮": "1", "덕수궁": "1", "德寿宮": "1",
     "경희궁": "1", "慶熙宮": "1", "남산": "1", "南山": "1", "한옥마을": "1", "韓屋村": "1",
     "종로": "1", "鐘路": "1", "이태원": "1", "梨泰院": "1", "동대문": "1", "東大門": "1",
-    "부산": "4", "釜山": "4", "busan": "4", "プサン": "4", "海雲台": "4",
-    "제주": "39", "済州": "39", "jeju": "39",
-    "인천": "2", "仁川": "2", "incheon": "2",
-    "대구": "3", "경주": "35", "慶州": "35", "gyeongju": "35",
-    "광주": "5", "전주": "38", "全州": "38",
-    "강원": "32", "춘천": "32", "江原": "32",
-    "수원": "31", "京畿": "31", "gyeonggi": "31", "京畿道": "31",
-    "대전": "25", "大田": "25", "daejeon": "25", "유성": "25", "忠清": "25", "chungcheong": "25",
+    # ── 인천 ──
+    "인천": "2", "仁川": "2", "incheon": "2", "インチョン": "2",
+    # ── 대전 ──
+    "대전": "3", "大田": "3", "daejeon": "3", "テジョン": "3", "유성": "3",
+    # ── 대구 ──
+    "대구": "4", "大邱": "4", "daegu": "4", "テグ": "4",
+    # ── 광주 ──
+    "광주광역시": "5", "광주시": "5", "gwangju": "5",
+    "경기광주": "31", "경기도 광주": "31",
+    "광주": "5",
+    # ── 부산 ──
+    "부산": "6", "釜山": "6", "busan": "6", "プサン": "6", "해운대": "6", "海雲台": "6",
+    # ── 울산 ──
+    "울산": "7", "蔚山": "7", "ulsan": "7", "ウルサン": "7",
+    # ── 세종 ──
+    "세종": "8", "世宗": "8", "sejong": "8", "セジョン": "8",
+    # ── 경기도 ──
+    "수원": "31", "京畿": "31", "gyeonggi": "31", "京畿道": "31", "キョンギ": "31",
+    "고양": "31", "성남": "31", "용인": "31", "파주": "31", "화성": "31",
+    "남양주": "31", "시흥": "31", "안산": "31", "안성": "31", "안양": "31",
+    "양평": "31", "여주": "31", "연천": "31", "포천": "31", "가평": "31",
+    "의정부": "31", "부천": "31", "하남": "31", "오산": "31", "이천": "31",
+    "평택": "31", "양주": "31", "광명": "31",
+    # ── 강원도 ──
+    "강원": "32", "江原": "32", "カンウォン": "32",
+    "강릉": "32", "江陵": "32", "속초": "32", "束草": "32",
+    "춘천": "32", "원주": "32", "평창": "32", "양양": "32",
+    "동해": "32", "삼척": "32", "영월": "32", "정선": "32",
+    "철원": "32", "홍천": "32", "태백": "32", "화천": "32",
+    "횡성": "32", "인제": "32",
+    # ── 충청북도 ──
+    "충북": "33", "忠清北": "33", "チュンチョンブク": "33",
+    "청주": "33", "충주": "33", "제천": "33", "단양": "33",
+    "보은": "33", "괴산": "33", "영동": "33", "옥천": "33",
+    # ── 충청남도 ──
+    "충남": "34", "忠清南": "34", "チュンチョンナム": "34",
+    "충청": "34", "忠清": "34", "chungcheong": "34",
+    "천안": "34", "공주": "34", "부여": "34", "서산": "34",
+    "태안": "34", "아산": "34", "보령": "34", "논산": "34",
+    "금산": "34", "당진": "34", "예산": "34", "홍성": "34", "청양": "34",
+    # ── 경상북도 ──
+    "경북": "35", "慶尚北": "35", "キョンサンブク": "35",
+    "포항": "35", "경주": "35", "慶州": "35", "gyeongju": "35",
+    "안동": "35", "구미": "35", "영주": "35", "영천": "35",
+    "영덕": "35", "청송": "35", "울진": "35", "울릉": "35",
+    "문경": "35", "상주": "35", "봉화": "35", "의성": "35",
+    "청도": "35", "칠곡": "35", "예천": "35", "경산": "35",
+    "고령": "35", "성주": "35", "김천": "35",
+    # ── 경상남도 ──
+    "경남": "36", "慶尚南": "36", "キョンサンナム": "36",
+    "창원": "36", "진주": "36", "통영": "36", "거제": "36",
+    "남해": "36", "하동": "36", "산청": "36", "함양": "36",
+    "합천": "36", "밀양": "36", "양산": "36", "김해": "36",
+    "사천": "36", "거창": "36", "창녕": "36", "함안": "36", "의령": "36",
+    # ── 전라북도 ──
+    "전북": "37", "전라북도": "37", "全羅北": "37", "チョルラブク": "37",
+    "전주": "37", "全州": "37",
+    "군산": "37", "익산": "37", "정읍": "37", "남원": "37",
+    "무주": "37", "부안": "37", "고창": "37", "완주": "37",
+    "순창": "37", "임실": "37", "장수": "37", "진안": "37", "김제": "37",
+    # ── 전라남도 ──
+    "전남": "38", "全羅南": "38", "チョルラナム": "38",
+    "여수": "38", "麗水": "38", "순천": "38", "목포": "38",
+    "담양": "38", "강진": "38", "고흥": "38", "곡성": "38",
+    "광양": "38", "구례": "38", "나주": "38", "보성": "38",
+    "신안": "38", "영광": "38", "영암": "38", "완도": "38",
+    "장성": "38", "장흥": "38", "진도": "38", "함평": "38",
+    "해남": "38", "화순": "38",
+    # ── 제주도 ──
+    "제주": "39", "済州": "39", "jeju": "39", "チェジュ": "39", "서귀포": "39",
 }
 
 # 위저드 region 칩 → TourAPI areaCode
 _REGION_CHIP_AREA: dict[str, str] = {
     "seoul": "1",
-    "gyeonggi": "31",
     "incheon": "2",
+    "daejeon": "3",
+    "daegu": "4",
+    "gwangju": "5",
+    "busan": "6",
+    "ulsan": "7",
+    "sejong": "8",
+    "gyeonggi": "31",
     "gangwon": "32",
-    "chungcheong": "25",
-    "jeolla": "38",
-    "gyeongsang": "4",
+    "chungbuk": "33",
+    "chungnam": "34",
+    "gyeongbuk": "35",
+    "gyeongnam": "36",
+    "jeonbuk": "37",
+    "jeonnam": "38",
     "jeju": "39",
 }
+
+# JpnService2 searchFestival2: areaCode 필터가 작동하지 않아 addr1 텍스트로 지역 필터링
+_AREA_CODE_JPN_ADDR: dict[str, tuple[str, ...]] = {
+    "1":  ("ソウル",),
+    "2":  ("インチョン", "仁川"),
+    "3":  ("テジョン", "大田"),
+    "4":  ("テグ", "大邱"),
+    "5":  ("クァンジュ", "光州"),
+    "6":  ("プサン", "釜山"),
+    "7":  ("ウルサン", "蔚山"),
+    "8":  ("セジョン", "世宗"),
+    "31": ("キョンギ", "京畿"),
+    "32": ("カンウォン", "江原"),
+    "33": ("チュンチョンブク", "忠清北", "清州"),
+    "34": ("チュンチョンナム", "忠清南", "天安"),
+    "35": ("キョンサンブク", "慶尚北", "慶州"),
+    "36": ("キョンサンナム", "慶尚南"),
+    "37": ("チョルラブク", "全羅北", "全州"),
+    "38": ("チョルラナム", "全羅南"),
+    "39": ("済州",),
+}
+
+
+def _filter_festivals_by_area(
+    items: list, area_codes: list[str]
+) -> list:
+    """addr1 텍스트로 해당 지역 축제만 필터링 (JpnService2 areaCode 필터 미작동 우회)."""
+    if not area_codes:
+        return items
+    keywords: set[str] = set()
+    for ac in area_codes:
+        keywords.update(_AREA_CODE_JPN_ADDR.get(ac, ()))
+    if not keywords:
+        return items
+    result = []
+    for item in items:
+        addr = getattr(item, "addr1", "") or ""
+        if any(kw in addr for kw in keywords):
+            result.append(item)
+    return result
+
 
 _FESTIVAL_INTENT_KEYWORDS = (
     "축제", "フェス", "フェスティバル", "festival", "祭", "祭り",
@@ -5991,7 +6074,9 @@ def _merge_tour_items(
     batches: list[list[TourApiItem]],
     *,
     limit: int = 12,
+    shuffle: bool = False,
 ) -> list[TourApiItem]:
+    import random
     out: list[TourApiItem] = []
     seen: set[str] = set()
     for batch in batches:
@@ -6002,9 +6087,9 @@ def _merge_tour_items(
             if cid:
                 seen.add(cid)
             out.append(item)
-            if len(out) >= limit:
-                return out
-    return out
+    if shuffle and out:
+        random.shuffle(out)
+    return out[:limit]
 
 
 _VACATION_STAY_KEYWORDS: dict[str, tuple[str, ...]] = {
@@ -6166,8 +6251,16 @@ def _wants_visitkorea_region_data(category: str) -> bool:
     return category in ("culture", "leisure", "itinerary")
 
 
-def _wants_festival_search(category: str, user_message: str, keyword: str) -> bool:
+def _wants_festival_search(
+    category: str,
+    user_message: str,
+    keyword: str,
+    traveler_profile: dict | None = None,
+) -> bool:
     if category in ("culture", "leisure", "itinerary"):
+        return True
+    acts = {str(a).lower() for a in (traveler_profile or {}).get("activities") or []}
+    if "festival" in acts:
         return True
     text = f"{user_message} {keyword}".lower()
     return any(k.lower() in text for k in _FESTIVAL_INTENT_KEYWORDS)
@@ -6220,6 +6313,65 @@ def _festival_date_range(
     return start_d, end_d
 
 
+def _enrich_festival_dates_from_web(
+    item: "TourApiItem",
+    wsc: "WebSearchClient",
+    travel_year: int,
+) -> "TourApiItem":
+    """날짜 없는 VK 축제 항목에 대해 DuckDuckGo 웹 검색으로 개최 날짜를 보완."""
+    from dataclasses import replace as _dc_replace
+    import re as _re
+    _KO_PAREN = _re.compile(r"[\uff08(]([^\uff09)]+)[\uff09)]")
+    m = _KO_PAREN.search(item.title or "")
+    ko_name = m.group(1).strip() if m else (item.title or "").strip()
+    if not ko_name:
+        return item
+    year_str = str(travel_year)
+    snippets: list[str] = []
+    for q in (
+        f"{ko_name} {year_str} 날짜 개최",
+        f"{ko_name} 축제 {year_str}",
+    ):
+        results = wsc.search(q, max_results=3)
+        snippets += [r.snippet for r in results]
+        if snippets:
+            break
+    combined = " ".join(snippets)
+    _p_full = _re.compile(r"(\d{4})[.\-/]?(\d{2})[.\-/]?(\d{2})")
+    _p_md = _re.compile(r"(\d{1,2})월\s*(\d{1,2})일")
+    dates: list[str] = []
+    for m2 in _p_full.finditer(combined):
+        if m2.group(1) == year_str:
+            dates.append(f"{m2.group(1)}{m2.group(2)}{m2.group(3)}")
+    if not dates:
+        for m2 in _p_md.finditer(combined):
+            dates.append(f"{year_str}{m2.group(1).zfill(2)}{m2.group(2).zfill(2)}")
+    if len(dates) >= 2:
+        ds = sorted(set(dates))
+        return _dc_replace(item, event_start_date=ds[0], event_end_date=ds[-1])
+    if len(dates) == 1:
+        return _dc_replace(item, event_start_date=dates[0], event_end_date=dates[0])
+    return item
+
+
+def _festival_in_date_range(
+    item: "TourApiItem",
+    start_d: "date",
+    end_d: "date",
+) -> bool:
+    """축제가 여행 날짜 범위와 겹치는지 확인. 날짜 미등록이면 True(포함)."""
+    if not item.event_start_date:
+        return True
+    try:
+        from datetime import datetime as _dt
+        fs = _dt.strptime(item.event_start_date, "%Y%m%d").date()
+        fe_str = item.event_end_date or item.event_start_date
+        fe = _dt.strptime(fe_str, "%Y%m%d").date()
+        return fs <= end_d and fe >= start_d
+    except ValueError:
+        return True
+
+
 def _fmt_visitkorea_stays(items: list[TourApiItem]) -> str:
     if not items:
         return "(Visit Korea 宿泊データなし)"
@@ -6241,26 +6393,41 @@ def _fmt_visitkorea_festivals(items: list[TourApiItem]) -> str:
     if not items:
         return "(Visit Korea イベントデータなし)"
     lines = []
-    for i, it in enumerate(items[:12], 1):
+    n = 0
+    for it in items[:24]:
+        uri = it.maps_uri()
+        if not uri:
+            continue
+        n += 1
+        if n > 12:
+            break
         period = it.event_period_display()
-        line = f"[{i}] {it.title}"
+        line = f"[{n}] {it.title}"
         if period:
             line += f" | {period}"
         if it.addr1:
             line += f" | {it.addr1}"
-        uri = it.maps_uri()
-        if uri:
-            line += f"\n    地図: {uri}"
+        line += f"\n    地図: {uri}"
         lines.append(line)
+    if not lines:
+        return "(Visit Korea イベントデータなし)"
     return "\n".join(lines)
 
 
 def _fmt_visitkorea_attractions(items: list[TourApiItem]) -> str:
     if not items:
         return "(Visit Korea 観光スポットデータなし)"
+    import re as _re
+    _KO_PAREN = _re.compile(r"[（(]([^）)]+)[）)]")
     lines = []
-    for i, it in enumerate(items[:12], 1):
-        line = f"[{i}] {it.title}"
+    for i, it in enumerate(items[:20], 1):
+        title = it.title or ""
+        # 괄호 안 한국어 이름을 앞에 표시해 LLM이 일본어 음독 대신 한국어 이름을 사용하도록
+        m = _KO_PAREN.search(title)
+        display_name = m.group(1).strip() if m else title
+        line = f"[{i}] {display_name}"
+        if m and display_name != title:
+            line += f" ({title})"
         if it.addr1:
             line += f" | {it.addr1}"
         if it.tel:
@@ -6415,6 +6582,350 @@ def _kto_candidate_queries(
         if len(out) >= limit:
             break
     return out
+
+
+def _vk_attraction_to_naver_queries(
+    items: "list[TourApiItem]",
+    area_codes: list[str] | None = None,
+    *,
+    limit: int = 15,
+) -> list[str]:
+    """VisitKorea 관광지 제목(JpnService2 일본어)에서 한국어 이름을 추출해 Naver 쿼리 생성.
+
+    JpnService2 제목 형식: "168階段（168계단）" → "168계단"
+    addr1으로 지역 접미어 추가: "プサン広域市..." → "부산"
+    """
+    import re
+
+    _ADDR_TO_REGION: list[tuple[str, str]] = [
+        # 구·군 단위 (도시보다 먼저 — 더 정확한 Naver 검색)
+        ("ヘウンデ区", "해운대"),      # 부산 해운대구
+        ("スヨン区", "수영"),           # 부산 수영구
+        ("プサンジン区", "부산진"),      # 부산 부산진구(서면)
+        ("サハ区", "사하"),             # 부산 사하구(감천문화마을)
+        ("ドンネ区", "동래"),           # 부산 동래구
+        ("キジャン郡", "기장"),          # 부산 기장군
+        ("ジョンノ区", "종로"),          # 서울 종로구
+        ("マポ区", "마포"),             # 서울 마포구
+        ("ヨンサン区", "용산"),          # 서울 용산구
+        ("カンナム区", "강남"),          # 서울 강남구
+        ("ソンパ区", "송파"),            # 서울 송파구
+        ("チョンノ区", "종로"),          # 서울 종로구(표기 변형)
+        ("ジュン区", "중구"),            # 서울/부산 중구
+        ("チェジュ市", "제주시"),         # 제주시 (도시 앞)
+        # 광역시 (먼저 — 광역도보다 구체적이므로)
+        ("ソウル", "서울"),
+        ("プサン", "부산"), ("釜山", "부산"),
+        ("インチョン", "인천"), ("仁川", "인천"),
+        ("テグ", "대구"), ("大邱", "대구"),
+        ("テジョン", "대전"), ("大田", "대전"),
+        ("クァンジュ市", "광주"), ("クァンジュ広域市", "광주"), ("光州", "광주"),
+        ("ウルサン", "울산"), ("蔚山", "울산"),
+        ("セジョン", "세종"), ("世宗", "세종"),
+        # 경상북도 도시 (도 이름보다 먼저)
+        ("ポハン", "포항"), ("浦項", "포항"),
+        ("キョンジュ", "경주"), ("慶州", "경주"),
+        ("アンドン", "안동"), ("安東", "안동"),
+        ("クミ", "구미"), ("亀尾", "구미"),
+        ("ムンギョン", "문경"), ("聞慶", "문경"),
+        ("サンジュ", "상주"), ("尚州", "상주"),
+        ("ヨンジュ", "영주"), ("栄州", "영주"),
+        ("ヨンチョン경북", "영천"), ("永川", "영천"),
+        ("ヨンドク", "영덕"), ("盈徳", "영덕"),
+        ("ウルジン", "울진"), ("蔚珍", "울진"),
+        ("ウルルン", "울릉"), ("鬱陵", "울릉"),
+        ("キョンサン市", "경산"), ("慶山", "경산"),
+        ("コリョン", "고령"), ("高霊", "고령"),
+        ("ポンファ", "봉화"), ("奉化", "봉화"),
+        ("チルゴク", "칠곡"), ("漆谷", "칠곡"),
+        ("慶尚北", "경북"), ("キョンサンブク", "경북"),
+        # 경상남도 도시
+        ("トンヨン", "통영"), ("統営", "통영"),
+        ("コジェ", "거제"), ("巨済", "거제"),
+        ("チャンウォン", "창원"), ("昌原", "창원"),
+        ("チンジュ", "진주"), ("晋州", "진주"),
+        ("ナムヘ", "남해"), ("南海", "남해"),
+        ("ハドン", "하동"), ("河東", "하동"),
+        ("サンチョン경남", "산청"), ("山清", "산청"),
+        ("ハミャン", "함양"), ("咸陽", "함양"),
+        ("ハプチョン", "합천"), ("陜川", "합천"),
+        ("ミリャン", "밀양"), ("密陽", "밀양"),
+        ("ヤンサン", "양산"), ("梁山", "양산"),
+        ("キムヘ", "김해"), ("金海", "김해"),
+        ("サチョン", "사천"), ("泗川", "사천"),
+        ("チャンニョン", "창녕"), ("昌寧", "창녕"),
+        ("ハマン", "함안"), ("咸安", "함안"),
+        ("慶尚南", "경남"), ("キョンサンナム", "경남"),
+        # 전라북도 도시
+        ("チョンジュ", "전주"), ("全州", "전주"),
+        ("クンサン", "군산"), ("群山", "군산"),
+        ("イクサン", "익산"), ("益山", "익산"),
+        ("ナムォン", "남원"), ("南原", "남원"),
+        ("ムジュ", "무주"), ("茂朱", "무주"),
+        ("プアン", "부안"), ("扶安", "부안"),
+        ("全羅北", "전북"), ("チョルラブク", "전북"), ("チョンブク", "전북"),
+        # 전라남도 도시
+        ("ヨス", "여수"), ("麗水", "여수"),
+        ("スンチョン", "순천"), ("順天", "순천"),
+        ("モクポ", "목포"), ("木浦", "목포"),
+        ("タミャン", "담양"), ("潭陽", "담양"),
+        ("クァンヤン", "광양"), ("光陽", "광양"),
+        ("クリェ", "구례"), ("求礼", "구례"),
+        ("カンジン", "강진"), ("康津", "강진"),
+        ("ヘナム", "해남"), ("海南", "해남"),
+        ("ワンド", "완도"), ("莞島", "완도"),
+        ("チンド", "진도"), ("珍島", "진도"),
+        ("ポソン", "보성"), ("宝城", "보성"),
+        ("全羅南", "전남"), ("チョルラナム", "전남"),
+        # 충청북도 도시
+        ("チェチョン", "제천"), ("堤川", "제천"),
+        ("タニャン", "단양"), ("丹陽", "단양"),
+        ("チュンジュ", "충주"), ("忠州", "충주"),
+        ("チョンジュ충북", "청주"), ("清州", "청주"),
+        ("忠清北", "충북"), ("チュンチョンブク", "충북"),
+        # 충청남도 도시
+        ("コンジュ", "공주"), ("公州", "공주"),
+        ("プヨ", "부여"), ("扶余", "부여"),
+        ("ソサン", "서산"), ("瑞山", "서산"),
+        ("テアン", "태안"), ("泰安", "태안"),
+        ("アサン", "아산"), ("牙山", "아산"),
+        ("ポリョン", "보령"), ("保寧", "보령"),
+        ("チョナン", "천안"), ("天安", "천안"),
+        ("忠清南", "충남"), ("チュンチョンナム", "충남"),
+        # 강원도 도시
+        ("カンヌン", "강릉"), ("江陵", "강릉"),
+        ("ソクチョ", "속초"), ("束草", "속초"),
+        ("チュンチョン", "춘천"), ("春川", "춘천"),
+        ("ウォンジュ", "원주"), ("原州", "원주"),
+        ("ピョンチャン", "평창"), ("平昌", "평창"),
+        ("ヤンヤン", "양양"), ("襄陽", "양양"),
+        ("トンヘ", "동해"), ("東海", "동해"),
+        ("サムチョク", "삼척"), ("三陟", "삼척"),
+        ("カンウォン", "강원"), ("江原", "강원"),
+        # 경기도 도시
+        ("スウォン", "수원"), ("水原", "수원"),
+        ("ヨンイン", "용인"), ("龍仁", "용인"),
+        ("パジュ", "파주"), ("坡州", "파주"),
+        ("カピョン", "가평"), ("加平", "가평"),
+        ("ヤンピョン", "양평"), ("楊平", "양평"),
+        ("ポチョン", "포천"), ("抱川", "포천"),
+        ("京畿", "경기"), ("キョンギ", "경기"),
+        # 제주도
+        ("チェジュ市", "제주"), ("ソグィポ", "서귀포"), ("西帰浦", "서귀포"),
+        ("済州", "제주"), ("チェジュ", "제주"),
+    ]
+
+    _KO_RE = re.compile(r"[（(]([^）)]+)[）)]")
+
+    # 관광지(76) > 생태(78) > 기타 > 쇼핑(79) 순 정렬, 같은 타입 내에서는 원래 순서 유지
+    _TYPE_PRIORITY = {"76": 0, "78": 1, "79": 3}
+    ordered = sorted(
+        items,
+        key=lambda it: _TYPE_PRIORITY.get(it.content_type_id or "", 2),
+    )
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in ordered:
+        title = item.title or ""
+        # 괄호 안 한국어 추출 (예: "168階段（168계단）" → "168계단")
+        m = _KO_RE.search(title)
+        ko_name = m.group(1).strip() if m else ""
+        # 한국어가 없으면 제목 전체 사용 (영문 명소 등)
+        if not ko_name:
+            ko_name = title.strip()
+        if not ko_name:
+            continue
+        # addr1에서 지역 추출해 접미어로
+        addr = item.addr1 or ""
+        region_suffix = ""
+        for jpn_keyword, ko_region in _ADDR_TO_REGION:
+            if jpn_keyword in addr:
+                region_suffix = ko_region
+                break
+        query = f"{ko_name} {region_suffix}".strip() if region_suffix else ko_name
+        key = query.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(query)
+        if len(out) >= limit:
+            break
+    return out
+
+
+# (province_area_code, city_ko) → sigungu_code for JpnService2 areaBasedList2
+# probe_sigungu.py 탐침 결과로 확인된 전국 시군구 코드
+_VK_CITY_SIGUNGU: dict[tuple[str, str], str] = {
+    # 경기도 (31)
+    ("31", "가평"): "1",
+    ("31", "고양"): "2",
+    ("31", "과천"): "3",
+    ("31", "광명"): "4",
+    ("31", "경기광주"): "5",
+    ("31", "구리"): "6",
+    ("31", "군포"): "7",
+    ("31", "남양주"): "9",
+    ("31", "동두천"): "10",
+    ("31", "부천"): "11",
+    ("31", "성남"): "12",
+    ("31", "수원"): "13",
+    ("31", "시흥"): "14",
+    ("31", "안산"): "15",
+    ("31", "안성"): "16",
+    ("31", "안양"): "17",
+    ("31", "양주"): "18",
+    ("31", "양평"): "19",
+    ("31", "여주"): "20",
+    ("31", "연천"): "21",
+    ("31", "오산"): "22",
+    ("31", "용인"): "23",
+    ("31", "의왕"): "24",
+    ("31", "의정부"): "25",
+    ("31", "이천"): "26",
+    ("31", "파주"): "27",
+    ("31", "평택"): "28",
+    ("31", "포천"): "29",
+    ("31", "하남"): "30",
+    ("31", "화성"): "31",
+    # 강원도 (32)
+    ("32", "강릉"): "1",
+    ("32", "고성"): "2",
+    ("32", "동해"): "3",
+    ("32", "삼척"): "4",
+    ("32", "속초"): "5",
+    ("32", "양구"): "6",
+    ("32", "양양"): "7",
+    ("32", "영월"): "8",
+    ("32", "원주"): "9",
+    ("32", "인제"): "10",
+    ("32", "정선"): "11",
+    ("32", "철원"): "12",
+    ("32", "춘천"): "13",
+    ("32", "태백"): "14",
+    ("32", "평창"): "15",
+    ("32", "홍천"): "16",
+    ("32", "화천"): "17",
+    ("32", "횡성"): "18",
+    # 충청북도 (33)
+    ("33", "괴산"): "1",
+    ("33", "단양"): "2",
+    ("33", "보은"): "3",
+    ("33", "영동"): "4",
+    ("33", "옥천"): "5",
+    ("33", "음성"): "6",
+    ("33", "제천"): "7",
+    ("33", "진천"): "8",
+    ("33", "청주"): "10",
+    ("33", "충주"): "11",
+    ("33", "증평"): "12",
+    # 충청남도 (34)
+    ("34", "공주"): "1",
+    ("34", "금산"): "2",
+    ("34", "논산"): "3",
+    ("34", "당진"): "4",
+    ("34", "보령"): "5",
+    ("34", "부여"): "6",
+    ("34", "서산"): "7",
+    ("34", "서천"): "8",
+    ("34", "아산"): "9",
+    ("34", "예산"): "11",
+    ("34", "천안"): "12",
+    ("34", "청양"): "13",
+    ("34", "태안"): "14",
+    ("34", "홍성"): "15",
+    # 경상북도 (35)
+    ("35", "경산"): "1",
+    ("35", "경주"): "2",
+    ("35", "고령"): "3",
+    ("35", "구미"): "4",
+    ("35", "김천"): "6",
+    ("35", "문경"): "7",
+    ("35", "봉화"): "8",
+    ("35", "상주"): "9",
+    ("35", "성주"): "10",
+    ("35", "안동"): "11",
+    ("35", "영덕"): "12",
+    ("35", "영양"): "13",
+    ("35", "영주"): "14",
+    ("35", "영천"): "15",
+    ("35", "예천"): "16",
+    ("35", "울릉"): "17",
+    ("35", "울진"): "18",
+    ("35", "의성"): "19",
+    ("35", "청도"): "20",
+    ("35", "청송"): "21",
+    ("35", "칠곡"): "22",
+    ("35", "포항"): "23",
+    # 경상남도 (36)
+    ("36", "거제"): "1",
+    ("36", "거창"): "2",
+    ("36", "고성"): "3",
+    ("36", "김해"): "4",
+    ("36", "남해"): "5",
+    ("36", "밀양"): "7",
+    ("36", "사천"): "8",
+    ("36", "산청"): "9",
+    ("36", "양산"): "10",
+    ("36", "의령"): "12",
+    ("36", "진주"): "13",
+    ("36", "창녕"): "15",
+    ("36", "창원"): "16",
+    ("36", "통영"): "17",
+    ("36", "하동"): "18",
+    ("36", "함안"): "19",
+    ("36", "함양"): "20",
+    ("36", "합천"): "21",
+    # 전라북도 (37)
+    ("37", "고창"): "1",
+    ("37", "군산"): "2",
+    ("37", "김제"): "3",
+    ("37", "남원"): "4",
+    ("37", "무주"): "5",
+    ("37", "부안"): "6",
+    ("37", "순창"): "7",
+    ("37", "완주"): "8",
+    ("37", "익산"): "9",
+    ("37", "임실"): "10",
+    ("37", "장수"): "11",
+    ("37", "전주"): "12",
+    ("37", "정읍"): "13",
+    ("37", "진안"): "14",
+    # 전라남도 (38)
+    ("38", "강진"): "1",
+    ("38", "고흥"): "2",
+    ("38", "곡성"): "3",
+    ("38", "광양"): "4",
+    ("38", "구례"): "5",
+    ("38", "나주"): "6",
+    ("38", "담양"): "7",
+    ("38", "목포"): "8",
+    ("38", "무안"): "9",
+    ("38", "보성"): "10",
+    ("38", "순천"): "11",
+    ("38", "신안"): "12",
+    ("38", "여수"): "13",
+    ("38", "영광"): "16",
+    ("38", "영암"): "17",
+    ("38", "완도"): "18",
+    ("38", "장성"): "19",
+    ("38", "장흥"): "20",
+    ("38", "진도"): "21",
+    ("38", "함평"): "22",
+    ("38", "해남"): "23",
+    ("38", "화순"): "24",
+    # 제주도 (39)
+    ("39", "서귀포"): "3",
+    ("39", "제주"): "4",
+}
+
+
+def _get_city_sigungu(area_code: str, text: str) -> str:
+    """area_code 내에서 text에 등장하는 도시의 sigungu_code 반환. 없으면 ''."""
+    for (ac, city), sgu in _VK_CITY_SIGUNGU.items():
+        if ac == area_code and city in text:
+            return sgu
+    return ""
 
 
 # ─── 위저드 플랜 생성 (분류 오류·general 폴백 방지) ─────────────────────
@@ -6800,35 +7311,84 @@ def route_and_answer(
                     vk_rows = 14
                 fest_batches: list[list[TourApiItem]] = []
                 attr_batches: list[list[TourApiItem]] = []
-                if _wants_festival_search(category, user_message, keyword):
+                if _wants_festival_search(category, user_message, keyword, traveler_profile):
                     start_d, end_d = _festival_date_range(traveler_profile)
+                    # JpnService2 searchFestival2는 areaCode 필터 미작동 → 전국 조회 후 addr1 필터
+                    batch, _, _, _ = vk.search_festival(
+                        start=start_d,
+                        end=end_d,
+                        area_code="",
+                        num_of_rows=100,
+                    )
                     if area_codes:
-                        for ac in area_codes:
-                            batch, _, _, _ = vk.search_festival(
-                                start=start_d,
-                                end=end_d,
-                                area_code=ac,
-                                num_of_rows=vk_rows,
+                        batch = _filter_festivals_by_area(batch, area_codes)
+                    fest_batches.append(batch)
+                    # areaBasedList2(contentTypeId=85): 날짜 없는 축제도 포함
+                    if area_codes:
+                        _wsc_fest = WebSearchClient()
+                        seen_fest_ids = {it.content_id for it in batch if it.content_id}
+                        for _ac in area_codes:
+                            _sgu_f = _get_city_sigungu(_ac, f"{user_message} {keyword}")
+                            _undated, _, _, _ = vk.search_attractions(
+                                area_code=_ac,
+                                sigungu_code=_sgu_f,
+                                content_type_id="85",
+                                num_of_rows=30,
                             )
-                            fest_batches.append(batch)
-                    else:
-                        batch, _, _, _ = vk.search_festival(
-                            start=start_d,
-                            end=end_d,
-                            area_code="",
-                            num_of_rows=vk_rows,
-                        )
-                        fest_batches.append(batch)
+                            enriched_undated: list = []
+                            for _fst in _undated:
+                                if _fst.content_id in seen_fest_ids:
+                                    continue  # searchFestival2에서 이미 가져옴
+                                if not _fst.event_start_date and _wsc_fest.is_available:
+                                    _fst = _enrich_festival_dates_from_web(
+                                        _fst, _wsc_fest, start_d.year
+                                    )
+                                if _festival_in_date_range(_fst, start_d, end_d):
+                                    enriched_undated.append(_fst)
+                            if enriched_undated:
+                                fest_batches.append(enriched_undated)
                 if area_codes:
+                    _vk_ctx = f"{user_message} {keyword}"
                     for ac in area_codes:
+                        sgu = _get_city_sigungu(ac, _vk_ctx)
                         batch, _, _, _ = vk.search_attractions_mixed(
                             area_code=ac,
-                            num_of_rows=vk_rows,
+                            sigungu_code=sgu,
+                            num_of_rows=25 if sgu else 30,
                         )
                         attr_batches.append(batch)
                 vk_limit = 14 if int((traveler_profile or {}).get("plan_reroll") or 0) > 0 else 10
                 festivals = _merge_tour_items(fest_batches, limit=vk_limit)
-                attractions = _merge_tour_items(attr_batches, limit=vk_limit)
+                attractions = _merge_tour_items(attr_batches, limit=25, shuffle=True)
+
+                # 쇼핑 관심사 선택 시 contentTypeId=79 데이터를 관광지 풀에 추가
+                if _has_itinerary_shopping_interest(traveler_profile) and area_codes:
+                    shopping_batches: list[list[TourApiItem]] = []
+                    for ac in area_codes:
+                        batch, _, _, _ = vk.search_shopping(area_code=ac, num_of_rows=20)
+                        shopping_batches.append(batch)
+                    shopping_items = _merge_tour_items(shopping_batches, limit=15, shuffle=True)
+                    if shopping_items:
+                        attractions = _merge_tour_items(
+                            [attractions, shopping_items], limit=35, shuffle=True
+                        )
+                        logger.info("VisitKorea shopping items injected: %d", len(shopping_items))
+
+                # 자연·힐링 관심사 선택 시 GreenTourService1 생태관광지를 관광지 풀에 추가
+                if _has_itinerary_nature_interest(traveler_profile) and area_codes:
+                    green_batches: list[list[TourApiItem]] = []
+                    for ac in area_codes:
+                        try:
+                            batch, _, _, _ = vk.search_green_spots(area_code=ac, num_of_rows=20)
+                            green_batches.append(batch)
+                        except Exception as _ge:
+                            logger.info("GreenTour fetch skipped [%s]: %s", ac, _ge)
+                    green_items = _merge_tour_items(green_batches, limit=15, shuffle=True)
+                    if green_items:
+                        attractions = _merge_tour_items(
+                            [attractions, green_items], limit=40, shuffle=True
+                        )
+                        logger.info("GreenTour eco spots injected: %d", len(green_items))
 
             areas_label = ",".join(area_codes) if area_codes else "(nationwide)"
             logger.info(
@@ -7184,13 +7744,15 @@ def route_and_answer(
             a in activities
             for a in ("drama", "performance", "performances", "theater", "musical")
         )
-        if not (wants_kpop or wants_performance or _env_flag("ENABLE_EVENT_ENRICHMENT", "0")):
+        wants_festival = "festival" in activities
+        if not (wants_kpop or wants_performance or wants_festival or _env_flag("ENABLE_EVENT_ENRICHMENT", "0")):
             return []
         genre_slugs: list[str] = []
         if wants_kpop:
             genre_slugs.append("concert")
         if wants_performance:
             genre_slugs.extend(["play", "musical"])
+        # festival 선택 시 KOPIS 전 장르 조회 (KOPIS에 축제 전용 코드 없음)
         try:
             return fetch_ticket_platform_events(
                 traveler_profile,
@@ -7233,7 +7795,14 @@ def route_and_answer(
         _f_sports   = _pool.submit(_do_sports)
         _f_vk       = _pool.submit(_do_visitkorea)
         _f_kto_dl   = _pool.submit(_do_kto_datalab)
-        _f_itinerary_places = _pool.submit(_do_itinerary_places)
+
+        def _do_itinerary_with_vk_priority() -> list:
+            # VK 완료 대기 후 관광지 목록을 priority 쿼리로 주입 — 하드코딩 앵커 대체
+            _vk_s, _vk_f, _vk_a, _ = _f_vk.result()
+            vk_pq = _vk_attraction_to_naver_queries(_vk_a, limit=20) if _vk_a else None
+            return _do_itinerary_places(priority_attr_queries=vk_pq)
+
+        _f_itinerary_places = _pool.submit(_do_itinerary_with_vk_priority)
         _f_gyeonggi = _pool.submit(_do_gyeonggi)
         _f_websearch = _pool.submit(_do_web_search)
         _f_ticketpf = _pool.submit(_do_ticket_platform)
@@ -7531,7 +8100,7 @@ def route_and_answer(
                 "- 候補があるのに「宿泊先で休息」「静かな夜を満喫」「宿泊先周辺のレストランやカフェで軽食・休息」だけで済ませない。\n"
                 "- 場所を書く形式は必ず2行: 1行目=候補リストと完全一致する場所名、2行目=その候補の地図URL（map.naver.com）。説明文や評価はその後に1文だけ。\n"
                 "- 「外観写真」「評価」「営業中」「住所」「地図」「経路」「지도」「통로」等のカードUI文言は本文に書かない。\n"
-                "- 同じ場所名を同じ日や別日に再利用しない。選択肢が限られる場合は、その日のスポット数を減らして移動・休憩に回す。\n"
+                "- 同じ日に同じ場所を2回使うことは禁止。異なる日への再利用は候補不足時のみ許可（食事スロット空白防止優先）。候補が少ない日は隣接エリアまたはVisitKorea候補から補完し、それでも足りない場合は既出の店を別日に再利用する。\n"
                 "- Reference Data不足、食事候補リスト不足、候補が足りない、候補が全部終わった、時間外の可能性、現地で探す、当日確認、店名未記載という説明を本文に出さない。\n"
             )
     if sports_events:
