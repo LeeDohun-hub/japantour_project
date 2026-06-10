@@ -661,7 +661,11 @@ def _build_answer_system(
         "Korean script is allowed only inside proper nouns (shop names, addresses). "
         "Use headings 「1日目」「2日目」— never ■1일째 or Korean day headers."
         if reply_language == "日本語"
-        else "You MUST reply in Korean (한국어) only."
+        else (
+            "You MUST reply in Korean (한국어) only. "
+            "Day headings must be exactly 「1일째」「2일째」…「최종일」 — "
+            "never add ★, region names, themes, or any extra text to the heading line."
+        )
     )
 
     # ── 핵심 원칙 ──────────────────────────────────────────────────────
@@ -6059,21 +6063,27 @@ def _score_wizard_plan_quality(
     5. [25%] 관광 Day마다 지도 URL(map.naver.com / maps.google.com) 최소 1개 존재
     6. [10%] 후보군이 있는데 식사 슬롯에 URL·food명 모두 없으면 실격 (item 2와 별도)
     7. [5%]  plan Day 수가 traveler_profile.days와 일치하는가
+    8. [bonus] 일자 헤더에 ★·지역명 등 추가 텍스트가 있으면 실격 패널티
+    9. [bonus] 관광 슬롯에 식사 후보 URL이 삽입되면 실격 (카드 불일치)
     """
     if not plan_text:
         return 0, ["plan_empty"]
 
-    # food / attr 이름 집합 빌드
+    # food / attr 이름·URL 집합 빌드
     food_names: set[str] = set()
     attr_names: set[str] = set()
+    food_url_keys: set[str] = set()
     for p in (places or []):
         key = _norm_plan_place_name(p.name)
-        if not key:
-            continue
+        url_key = _plan_maps_url_key(p.google_maps_uri) if p.google_maps_uri else ""
         if _is_meal_candidate_place(p) and not _is_cafe_candidate_place(p):
-            food_names.add(key)
+            if key:
+                food_names.add(key)
+            if url_key:
+                food_url_keys.add(url_key)
         elif not _is_meal_candidate_place(p) and not _is_cafe_candidate_place(p):
-            attr_names.add(key)
+            if key:
+                attr_names.add(key)
 
     try:
         total_days = int((traveler_profile or {}).get("days") or 0) or None
@@ -6102,6 +6112,10 @@ def _score_wizard_plan_quality(
     # 중복 관광지 감지용: mapsUrlKey → 처음 등장한 day
     seen_attr_url_keys: dict[str, int] = {}
     duplicate_attr_days: set[int] = set()
+    # 규칙 8: 일자 헤더 형식 위반 (★·지역명 등 추가 텍스트)
+    bad_header_days: set[int] = set()
+    # 규칙 9: 관광 슬롯에 식사 후보 URL 삽입 (카드 불일치)
+    food_url_in_attr_days: set[int] = set()
 
     def _flush() -> None:
         nonlocal slot_has_url, slot_name_keys
@@ -6118,12 +6132,19 @@ def _score_wizard_plan_quality(
         slot_has_url = False
         slot_name_keys = []
 
+    _DAY_HEADER_EXTRA_RE = re.compile(
+        r"^\s*(?:#{1,6}\s*)?\d+\s*(?:日目|일째|일차)\s*(\S.*)$", re.I
+    )
+
     for line in plan_text.splitlines():
         s = line.strip()
         if _ITINERARY_DAY_RE.match(s):
             _flush()
             current_day = _itinerary_day_number(s, total_days)
             current_slot = ""
+            # 규칙 8: 헤더에 추가 텍스트가 있으면 bad_header 기록
+            if current_day is not None and _DAY_HEADER_EXTRA_RE.match(s):
+                bad_header_days.add(current_day)
             continue
         new_slot = _itinerary_slot_from_line(s)
         if new_slot:
@@ -6133,11 +6154,15 @@ def _score_wizard_plan_quality(
         # 현재 day에 지도 URL이 있으면 기록 (슬롯 무관)
         if current_day is not None and _MAPS_URL_IN_TEXT_RE.search(s):
             day_has_any_url[current_day] = True
-            # 식사 슬롯 밖 지도 URL = 관광지 링크 → 중복 감지
+            # 식사 슬롯 밖 지도 URL = 관광지 링크 → 중복 감지 + 규칙 9 체크
             if current_slot not in ("lunch", "dinner"):
                 for m in _MAPS_URL_IN_TEXT_RE.finditer(s):
                     raw_url = m.group(0)
-                    # google maps URL key 추출
+                    url_key = _plan_maps_url_key(raw_url)
+                    # 규칙 9: 관광 슬롯에 식사 후보 URL → 카드 불일치
+                    if food_url_keys and url_key in food_url_keys:
+                        food_url_in_attr_days.add(current_day)
+                    # 중복 관광지 감지
                     uk = raw_url.split("?")[0].rstrip("/").split("/")[-1][:40]
                     if uk in seen_attr_url_keys:
                         if seen_attr_url_keys[uk] != current_day:
@@ -6200,16 +6225,28 @@ def _score_wizard_plan_quality(
         for missing_day in range(plan_max_day + 1, total_days + 1):
             failures.append(f"day{missing_day}_entirely_missing")
 
+    # E: 일자 헤더 형식 위반 (규칙 8 — 감점 페널티)
+    for bad_day in bad_header_days:
+        failures.append(f"day{bad_day}_bad_header_format")
+
+    # F: 관광 슬롯에 식사 후보 URL 삽입 (규칙 9 — 감점 페널티)
+    for mismatch_day in food_url_in_attr_days:
+        failures.append(f"day{mismatch_day}_food_url_in_attr_slot")
+
     if meal_expected == 0 and url_expected == 0:
         return 100, []
 
     # 가중치: 식사(60%) + URL(25%) + Day수일치(10%) + 중복페널티(-5%)
+    # 규칙 8 위반: 헤더 형식 위반 day당 2점 차감
+    # 규칙 9 위반: 카드 불일치 day당 3점 차감
     meal_score  = (meal_ok / meal_expected * 60)  if meal_expected  else 60.0
     url_score   = (url_ok  / url_expected  * 25)  if url_expected   else 25.0
     day_score   = 10.0 if day_count_ok else 0.0
-    dup_penalty = min(5.0, len(duplicate_attr_days) * 1.0)
+    dup_penalty        = min(5.0,  len(duplicate_attr_days)  * 1.0)
+    header_penalty     = min(10.0, len(bad_header_days)      * 2.0)
+    card_mismatch_penalty = min(15.0, len(food_url_in_attr_days) * 3.0)
 
-    raw = meal_score + url_score + day_score - dup_penalty
+    raw = meal_score + url_score + day_score - dup_penalty - header_penalty - card_mismatch_penalty
     score = max(0, min(100, int(round(raw))))
     return score, failures
 
@@ -8578,6 +8615,12 @@ def route_and_answer(
                 "=== ウィザードプラン出力形式（厳守）===\n"
                 "- 本文は日本語のみ（韓国語の説明文禁止。店名の韓国語表記は可）。\n"
                 "- 見出しは「1日目」「2日目」…「最終日」。■1일째・Day1英語のみは不可。\n"
+                "- 【한국어 출력 시 추가 규칙】일자 헤더는 정확히 「1일째」「2일째」…「최종일」형식만 사용. "
+                "★·지역명·테마·이모지 등 어떤 추가 텍스트도 헤더 줄에 작성 금지. "
+                "예: 「3일째 ★명동·K-POP」→ 금지, 「3일째」→ 허용.\n"
+                "- 【공통 규칙】관광스팟 후보의 지도 URL을 식사(점심·저녁) 슬롯에 사용 금지. "
+                "반대로 식사 후보의 지도 URL을 관광(오전·오후·밤) 슬롯에 사용 금지. "
+                "슬롯과 URL 출처 후보군이 반드시 일치해야 한다.\n"
                 "- 各ブロックは ①②③ または 午前・昼食・午後・夕食。\n"
                 "- 午前は観光地・公園・展望台・体験施設なら可。朝食・朝ごはん・朝カフェ・ブランチ・食堂・レストラン・カフェは書かない。\n"
                 "- カフェ好き/カフェ巡り希望があり「カフェ候補」がある場合、観光可能日の午後に1件まで具体店名＋地図URL（map.naver.com）を入れる。チェーンよりローカル・有名カフェを優先。「午後: カフェ休憩」だけのテキストは禁止。\n"
