@@ -99,6 +99,7 @@ class NaverPlace:
     quality_reason: str | None = None
     mapx: str | None = None
     mapy: str | None = None
+    name_ja: str | None = None
 
 
 class NaverSearchClient:

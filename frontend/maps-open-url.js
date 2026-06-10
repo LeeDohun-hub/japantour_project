@@ -84,12 +84,38 @@
     return "韓国";
   }
 
+  function _hasKana(str) {
+    return /[぀-ゟ゠-ヿ]/.test(String(str || ""));
+  }
+
+  // CJK 한자만 있고 한글이 없으면 일본어 한자로 간주 (上道門石垣村 등 VK 일본어 타이틀)
+  function _hasJapanese(str) {
+    const s = String(str || "");
+    if (_hasKana(s)) return true;
+    return /[一-鿿㐀-䶿]/.test(s) && !/[가-힣]/.test(s);
+  }
+
+  function _extractKoreanFromParens(str) {
+    const m = String(str || "").match(/[（(]([가-힣][가-힣\s·]{0,40})[)）]/);
+    return m ? m[1].trim() : null;
+  }
+
+  function _koreanSearchName(name, place) {
+    if (!_hasJapanese(name)) return name;
+    const koFromParens = _extractKoreanFromParens(name);
+    if (koFromParens) return koFromParens;
+    const korAddr = String(place?.address || "").trim();
+    if (korAddr) return korAddr;
+    return name;
+  }
+
   function disambiguatedSearchQuery(name, place, opts) {
     const n = String(name || "").trim();
     if (!n) return "";
+    const searchBase = _koreanSearchName(n, place);
     const hint = locationHint(place, opts);
-    const parts = [n];
-    if (hint && hint !== "韓国" && !n.includes(hint)) parts.push(hint);
+    const parts = [searchBase];
+    if (hint && hint !== "韓国" && !searchBase.includes(hint)) parts.push(hint);
     const joined = parts.join(" ");
     if (!/韓国|대한민국|Korea|South Korea/i.test(joined)) parts.push("韓国");
     return parts.join(" ");
@@ -101,7 +127,10 @@
   }
 
   function naverCoordUrl(name, lat, lng) {
-    const q = encodeURIComponent(String(name || `${lat},${lng}`).trim());
+    const displayName = _koreanSearchName(name, null);
+    // 한국어로 변환 실패 시(일본어 한자 잔류 등) 좌표만 검색어로 사용
+    const searchTerm = _hasJapanese(displayName) ? `${lat},${lng}` : (displayName || `${lat},${lng}`);
+    const q = encodeURIComponent(searchTerm.trim());
     return `https://map.naver.com/p/search/${q}?c=${lng},${lat},16,0,0,0,dh`;
   }
 
@@ -122,7 +151,21 @@
         ? Number(place.longitude)
         : null;
 
-    if (/map\.naver\.com/i.test(raw)) return raw;
+    if (/map\.naver\.com/i.test(raw)) {
+      // Naver URL 검색어가 일본어인 경우: name 필드로 판정 (URL은 퍼센트인코딩이라 직접 판정 불가)
+      if (_hasJapanese(name)) {
+        // ① 괄호 안 한국어명이 있으면 그걸로 검색 (景福宮（경복궁）→ 경복궁)
+        const koFromParens = _extractKoreanFromParens(name);
+        if (koFromParens) {
+          return naverSearchUrl(disambiguatedSearchQuery(koFromParens, place, opts));
+        }
+        // ② 한국어명 추출 불가(上道門石垣村 등) → 좌표로 정확한 위치 직접 오픈
+        if (lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng) && isKoreanCoords(lat, lng)) {
+          return `https://map.naver.com/p/search/${lat},${lng}?c=${lng},${lat},16,0,0,0,dh`;
+        }
+      }
+      return raw;
+    }
 
     if (lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng) && isKoreanCoords(lat, lng)) {
       return naverCoordUrl(name, lat, lng);

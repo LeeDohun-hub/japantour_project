@@ -23,15 +23,16 @@ window.REGION_AREA_LABELS = {
 };
 
 // Existing planner/search logic still groups some regions by broad tourism buckets.
+// 독립 광역시는 자체 키를 사용 (gyeongsang/jeolla/chungcheong에 묶지 않음)
 window.REGION_BUCKET_BY_AREA = {
   seoul: "seoul",
-  busan: "gyeongsang",
-  daegu: "gyeongsang",
+  busan: "busan",
+  daegu: "daegu",
   incheon: "incheon",
-  gwangju: "jeolla",
-  daejeon: "chungcheong",
-  ulsan: "gyeongsang",
-  sejong: "chungcheong",
+  gwangju: "gwangju",
+  daejeon: "daejeon",
+  ulsan: "ulsan",
+  sejong: "sejong",
   gyeonggi: "gyeonggi",
   gangwon: "gangwon",
   chungbuk: "chungcheong",

@@ -1252,19 +1252,58 @@ const AIRLINE_NAME_JA = {
   "에어부산": "エアプサン",
   "에어서울": "エアソウル",
   "이스타항공": "イースター航空",
+  "이스타": "イースター航空",
+  "부활절 항공": "イースター航空",
+  "부활절항공": "イースター航空",
+  "이스터항공": "イースター航空",
   "제주항공": "チェジュ航空",
   "티웨이항공": "ティーウェイ航空",
+  "티웨이": "ティーウェイ航空",
   "에어로케이항공": "エアロK",
+  "에어로케이": "エアロK",
   "에어프레미아": "エアプレミア",
   "에어프레미아항공": "エアプレミア",
   "플라이강원": "フライ江原",
   "에티오피아항공": "エチオピア航空",
   "파라타항공": "パラタ航空",
+  "에어인천": "エアインチョン",
+  "에어인천국제항공": "エアインチョン",
+  "하이에어": "ハイエア",
+  "코리아익스프레스에어": "コリアエクスプレスエア",
   "ZIPAIR": "ZIPAIR",
 };
 
 const AIRLINE_CODE_NAME_JA = {
+  KE: "大韓航空",
+  OZ: "アシアナ航空",
+  LJ: "ジンエアー",
+  BX: "エアプサン",
+  RS: "エアソウル",
+  ZE: "イースター航空",
+  "7C": "チェジュ航空",
+  TW: "ティーウェイ航空",
+  RF: "エアプレミア",
+  YP: "エアインチョン",
+  KJ: "エアインチョン",
+  "4H": "ハイエア",
+  ZG: "ZIPAIR",
+  NH: "ANA",
+  JL: "JAL",
+  MM: "Peach",
+  "7G": "StarFlyer",
+  GK: "Jetstar Japan",
+  BC: "Skymark",
   ET: "エチオピア航空",
+  SQ: "シンガポール航空",
+  CX: "キャセイパシフィック航空",
+  MH: "マレーシア航空",
+  TG: "タイ国際航空",
+  CI: "チャイナエアライン",
+  BR: "エバー航空",
+  CA: "中国国際航空",
+  MU: "中国東方航空",
+  CZ: "中国南方航空",
+  OA: "オリンピック航空",
 };
 
 function displayAirlineName(name, code = "") {
@@ -2258,7 +2297,7 @@ function buildPrompt(isReroll = false) {
   const aMap = { food:"グルメ", shopping:"ショッピング", nightview:"夜景", tradition:"伝統文化",
                  festival:"祭り", hallyu:"韓流・K-pop", drama:"公演", kpop:"K-pop", cafe:"カフェ巡り",
                  nature:"自然", photo:"フォトスポット", sports:"スポーツ観戦", vacation:"バカンス" };
-  const vacMap = { poolvilla:"プールヴィラ", camping:"キャンピング" };
+  const vacMap = { hotel_poolvilla:"ホテルプールヴィラ", pension_poolvilla:"ペンションプールヴィラ", poolvilla:"プールヴィラ", camping:"キャンピング", beach:"ビーチ・海水浴場" };
   const tsMap = {
     experience:"体験・アクティビティ", sns_hot:"SNS人気スポット", nature:"自然と一緒に",
     must_see:"有名観光地は必須", healing:"ゆったり癒し", culture:"文化・芸術・歴史",
@@ -2407,7 +2446,7 @@ function buildPrompt(isReroll = false) {
   const vacTypes = d.vacationTypes || [];
   const vacParts = vacTypes.map((v) => vacMap[v] || v);
   if (vacParts.length || actMerged.includes("vacation")) {
-    const VACS_REF_ONLY = "【厳守】プールヴィラ・キャンピング場などのバカンス宿泊施設は、下部の「バカンス宿泊候補」参照データに掲載されるため、日程本文（Day1〜最終日）のどのコマにも施設名・スポット名として記載しないこと。日程には「プールヴィラでリゾート体験」等の概要説明のみ記述すること";
+    const VACS_REF_ONLY = "【厳守】プールヴィラ・キャンピング場などのバカンス宿泊施設名は、日程本文（Day1〜最終日）の各コマに記載しないこと。各日の日程には「プールヴィラでリゾート体験」等の概要のみ記述すること。ただし、全日程終了後に「## バカンス宿泊候補」という独立したセクションを必ず作成し、参照データ（宿泊候補リスト）に掲載された施設を種別ごとに番号付きリスト形式で出力すること（例: **풀빌라** \\n1. 〇〇펜션 | 住所 \\n**캠핑장** \\n1. 〇〇글램핑 | 住所）。";
     lines.push(`【バカンス】${vacParts.length ? vacParts.join("・") : "バカンス"} — バカンス気分を意識した日程にすること。${VACS_REF_ONLY}`);
   }
 
@@ -2541,6 +2580,12 @@ const LOCAL_RAIL_OFFICIAL_LINKS = `
 <a href="https://english1.visitkorea.or.kr/common_intl/subway.kto?lang=1" target="_blank" rel="noopener">韓国観光公社 地下鉄ルート検索</a>
 <div class="ti-links-note">※ 一部の交通公社公式サイトは日本から開けない場合があります。</div>`;
 
+const KORAIL_REGIONAL_NOTE = `<div class="ti-card"><strong>🚄 KTX・KORAIL（地方都市への長距離移動）</strong>
+仁川空港から釜山・大邱・大田・光州など地方都市へはKTX（高速鉄道）・ITX-セマウルが便利です。<br>
+仁川空港駅または光明（こうみょう）駅からKTXに乗車することで、地方都市へ直行できます（例: ソウル↔釜山 約2時間20分）。<br>
+<strong>⚠️ ご注意:</strong> KORAIL公式サイト（korail.com）は日本国内から安全保障上の制限でアクセスできない場合があります。<br>
+出発前に<strong>韓国内の代理購入サービス</strong>（Klook・KTXラボ等）やKTX駅窓口でのご購入をお勧めします。</div>`;
+
 const TRANSPORT_RAIL_BY_AIRPORT = {
   ICN: `<div class="ti-card"><strong>🚆 鉄道・地下鉄（AREX・広域鉄道）</strong>
 仁川空港↔ソウル駅 AREX直通約43分 / 一般約51分。乗換で広域鉄道・地下鉄（1・9号線等）<br>
@@ -2570,6 +2615,13 @@ const TRANSPORT_INFO = {
   arex: TRANSPORT_RAIL_BY_AIRPORT.ICN,
 };
 
+const _KORAIL_REGION_SIDOS = ["부산광역시", "울산광역시", "경상남도", "대구광역시", "대전광역시", "광주광역시"];
+
+function _accomIsKorailRegion() {
+  const addr = (wizardData.accommodation?.address || "") + " " + (wizardData.accommodation?.region || "");
+  return _KORAIL_REGION_SIDOS.some((sido) => addr.includes(sido));
+}
+
 function syncTransportChipsForAirport() {
   const iata = getArrivalAirportIata();
   const label = AIRPORT_IATA_LABELS[iata] || iata;
@@ -2582,16 +2634,25 @@ function syncTransportChipsForAirport() {
     hint.textContent = `到着空港: ${label} — 利用可能な交通手段を表示しています。`;
   }
 
-  const showRail = iata === "ICN" || iata === "GMP";
+  const isKorailRegion = _accomIsKorailRegion();
+  const showRail = iata === "ICN" || iata === "GMP" || isKorailRegion;
 
   if (chipRail) {
     chipRail.style.display = showRail ? "" : "none";
-    chipRail.textContent =
-      iata === "GMP"
-        ? "🚆 地下鉄・広域鉄道"
-        : "🚆 鉄道・地下鉄（AREX・広域鉄道）";
+    if (isKorailRegion && iata === "ICN") {
+      chipRail.textContent = "🚆 KTX・鉄道・地下鉄（AREX・広域鉄道）";
+    } else if (iata === "GMP") {
+      chipRail.textContent = "🚆 地下鉄・広域鉄道";
+    } else if (isKorailRegion) {
+      chipRail.textContent = "🚆 鉄道・地方鉄道";
+    } else {
+      chipRail.textContent = "🚆 鉄道・地下鉄（AREX・広域鉄道）";
+    }
     if (!showRail && chipRail.classList.contains("selected")) chipRail.classList.remove("selected");
     TRANSPORT_INFO.rail = TRANSPORT_RAIL_BY_AIRPORT[iata] || TRANSPORT_RAIL_BY_AIRPORT.ICN;
+    if (isKorailRegion) {
+      TRANSPORT_INFO.rail = (TRANSPORT_RAIL_BY_AIRPORT[iata] || TRANSPORT_RAIL_BY_AIRPORT.ICN) + KORAIL_REGIONAL_NOTE;
+    }
     TRANSPORT_INFO.subway = TRANSPORT_INFO.rail;
     TRANSPORT_INFO.arex = TRANSPORT_INFO.rail;
   }
@@ -3707,8 +3768,8 @@ function _tryRenderPlaceCard(indexes, rendered, url, renderedScope) {
     return false;
   }
   const pk = _placeRenderKey(place);
-  if (pk && rendered.has(pk)) return false;
-  if (pk && renderedScope?.has(pk)) return false;
+  if (pk && rendered.has(pk)) { rendered.add(key); return false; }
+  if (pk && renderedScope?.has(pk)) { rendered.add(key); return false; }
   rendered.add(key);
   if (pk) rendered.add(pk);
   renderedScope?.add(key);

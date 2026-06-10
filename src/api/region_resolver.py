@@ -251,6 +251,52 @@ REGION_CITY_ID_TO_ITINERARY_AREA: dict[str, str] = {
     "gyeongnam:hapcheon": "합천",
     "jeju:jeju_city": "제주",
     "jeju:seogwipo": "서귀포",
+    # 광주광역시 5개 구
+    "gwangju:dong_gu": "광주 동구",
+    "gwangju:seo_gu": "광주 서구",
+    "gwangju:nam_gu": "광주 남구",
+    "gwangju:buk_gu": "광주 북구",
+    "gwangju:gwangsan_gu": "광주 광산",
+    # 대구광역시 8개 구·군
+    "daegu:jung_gu": "대구 중구",
+    "daegu:dong_gu": "대구 동구",
+    "daegu:seo_gu": "대구 서구",
+    "daegu:nam_gu": "대구 남구",
+    "daegu:buk_gu": "대구 북구",
+    "daegu:suseong_gu": "대구 수성",
+    "daegu:dalseo_gu": "대구 달서",
+    "daegu:dalseong_gun": "달성",
+    # 대전광역시 5개 구
+    "daejeon:dong_gu": "대전 동구",
+    "daejeon:jung_gu": "대전 중구",
+    "daejeon:seo_gu": "대전 서구",
+    "daejeon:yuseong_gu": "유성",
+    "daejeon:daedeok_gu": "대덕",
+    # 울산광역시 5개 구·군
+    "ulsan:jung_gu": "울산 중구",
+    "ulsan:nam_gu": "울산 남구",
+    "ulsan:dong_gu": "울산 동구",
+    "ulsan:buk_gu": "울산 북구",
+    "ulsan:ulju_gun": "울주",
+    # 세종특별자치시
+    "sejong:sejong": "세종",
+    # 부산광역시 16개 구·군 (gyeongsang 네임스페이스 중복 허용)
+    "busan:jung_gu": "부산 중구",
+    "busan:seo_gu": "부산 서구",
+    "busan:dong_gu": "부산 동구",
+    "busan:yeongdo_gu": "영도",
+    "busan:busanjin_gu": "부산진",
+    "busan:dongnae_gu": "동래",
+    "busan:nam_gu": "부산 남구",
+    "busan:buk_gu": "부산 북구",
+    "busan:haeundae_gu": "해운대",
+    "busan:saha_gu": "사하",
+    "busan:geumjeong_gu": "금정",
+    "busan:gangseo_gu": "강서",
+    "busan:yeonje_gu": "연제",
+    "busan:suyeong_gu": "수영",
+    "busan:sasang_gu": "사상",
+    "busan:gijang_gun": "기장",
 }
 
 
@@ -299,6 +345,27 @@ REGION_ADDR_KEYWORDS: dict[str, tuple[str, ...]] = {
         "경상", "gyeongsang", "대구", "경주", "창원", "포항", "울산", "진주", "거제", "고성", "영천", "함안", "경북", "경남",
         "daegu", "gyeongju", "changwon", "pohang", "ulsan", "jinju", "geoje", "goseong", "yeongcheon", "haman",
     ),
+    # 독립 광역시 — 각각 고유 키로 관리 (jeolla/gyeongsang 등에 종속되지 않음)
+    "gwangju": (
+        "광주광역시", "gwangju metropolitan", "gwangju, south korea",
+        "gwangsan-gu", "dong-gu, gwangju", "seo-gu, gwangju",
+        "nam-gu, gwangju", "buk-gu, gwangju",
+    ),
+    "daegu": (
+        "대구광역시", "daegu metropolitan", "daegu, south korea",
+        "수성구", "달서구", "달성군",
+    ),
+    "daejeon": (
+        "대전광역시", "daejeon metropolitan", "daejeon, south korea",
+        "유성구", "대덕구",
+    ),
+    "ulsan": (
+        "울산광역시", "ulsan metropolitan", "ulsan, south korea",
+        "울주군",
+    ),
+    "sejong": (
+        "세종특별자치시", "세종시", "sejong",
+    ),
 }
 
 
@@ -336,6 +403,62 @@ CITY_ID_ADDR_KEYWORDS: dict[str, tuple[str, ...]] = {
         "광주광역시", "gwangju metropolitan", "gwangju, south korea", "gwangju-si, gwangju",
         "gwangsan-gu", "buk-gu, gwangju", "dong-gu, gwangju", "seo-gu, gwangju", "nam-gu, gwangju",
     ),
+    # 광주광역시 구 단위 — 어느 구든 "광주광역시"가 주소에 포함
+    "gwangju:dong_gu": ("광주광역시", "gwangju metropolitan", "동구, 광주", "dong-gu, gwangju"),
+    "gwangju:seo_gu": ("광주광역시", "gwangju metropolitan", "서구, 광주", "seo-gu, gwangju"),
+    "gwangju:nam_gu": ("광주광역시", "gwangju metropolitan", "남구, 광주", "nam-gu, gwangju"),
+    "gwangju:buk_gu": ("광주광역시", "gwangju metropolitan", "북구, 광주", "buk-gu, gwangju"),
+    "gwangju:gwangsan_gu": ("광주광역시", "gwangju metropolitan", "광산구", "gwangsan-gu"),
+    # 대구광역시 구 단위
+    "daegu:jung_gu": ("대구광역시", "daegu metropolitan", "중구, 대구"),
+    "daegu:dong_gu": ("대구광역시", "daegu metropolitan", "동구, 대구"),
+    "daegu:seo_gu": ("대구광역시", "daegu metropolitan", "서구, 대구"),
+    "daegu:nam_gu": ("대구광역시", "daegu metropolitan", "남구, 대구"),
+    "daegu:buk_gu": ("대구광역시", "daegu metropolitan", "북구, 대구"),
+    "daegu:suseong_gu": ("대구광역시", "daegu metropolitan", "수성구"),
+    "daegu:dalseo_gu": ("대구광역시", "daegu metropolitan", "달서구"),
+    "daegu:dalseong_gun": ("대구광역시", "daegu metropolitan", "달성군"),
+    # 대전광역시 구 단위
+    "daejeon:dong_gu": ("대전광역시", "daejeon metropolitan", "동구, 대전"),
+    "daejeon:jung_gu": ("대전광역시", "daejeon metropolitan", "중구, 대전"),
+    "daejeon:seo_gu": ("대전광역시", "daejeon metropolitan", "서구, 대전"),
+    "daejeon:yuseong_gu": ("대전광역시", "daejeon metropolitan", "유성구"),
+    "daejeon:daedeok_gu": ("대전광역시", "daejeon metropolitan", "대덕구"),
+    # 울산광역시 구·군 단위
+    "ulsan:jung_gu": ("울산광역시", "ulsan metropolitan", "중구, 울산"),
+    "ulsan:nam_gu": ("울산광역시", "ulsan metropolitan", "남구, 울산"),
+    "ulsan:dong_gu": ("울산광역시", "ulsan metropolitan", "동구, 울산"),
+    "ulsan:buk_gu": ("울산광역시", "ulsan metropolitan", "북구, 울산"),
+    "ulsan:ulju_gun": ("울산광역시", "ulsan metropolitan", "울주군"),
+    # 세종특별자치시
+    "sejong:sejong": ("세종특별자치시", "세종시", "sejong"),
+    # 부산광역시 구·군 단위 (busan 네임스페이스)
+    "busan:jung_gu": ("부산광역시", "busan metropolitan", "중구, 부산"),
+    "busan:seo_gu": ("부산광역시", "busan metropolitan", "서구, 부산"),
+    "busan:dong_gu": ("부산광역시", "busan metropolitan", "동구, 부산"),
+    "busan:yeongdo_gu": ("부산광역시", "busan metropolitan", "영도구"),
+    "busan:busanjin_gu": ("부산광역시", "busan metropolitan", "부산진구"),
+    "busan:dongnae_gu": ("부산광역시", "busan metropolitan", "동래구"),
+    "busan:nam_gu": ("부산광역시", "busan metropolitan", "남구, 부산"),
+    "busan:buk_gu": ("부산광역시", "busan metropolitan", "북구, 부산"),
+    "busan:haeundae_gu": ("부산광역시", "busan metropolitan", "해운대구"),
+    "busan:saha_gu": ("부산광역시", "busan metropolitan", "사하구"),
+    "busan:geumjeong_gu": ("부산광역시", "busan metropolitan", "금정구"),
+    "busan:gangseo_gu": ("부산광역시", "busan metropolitan", "강서구, 부산"),
+    "busan:yeonje_gu": ("부산광역시", "busan metropolitan", "연제구"),
+    "busan:suyeong_gu": ("부산광역시", "busan metropolitan", "수영구"),
+    "busan:sasang_gu": ("부산광역시", "busan metropolitan", "사상구"),
+    "busan:gijang_gun": ("부산광역시", "busan metropolitan", "기장군"),
+    # 서울특별시 — 행정구 이름과 itinerary area 명칭이 다른 구들
+    "seoul:jung": ("중구", "명동", "을지로", "남대문", "충무로", "청계천"),
+    "seoul:mapo": ("마포", "홍대", "연남", "합정", "상암", "망원", "홍은"),
+    "seoul:yongsan": ("용산", "이태원", "한남", "후암", "보광", "서빙고"),
+    "seoul:seongdong": ("성동", "성수", "왕십리", "마장", "행당", "응봉", "금호", "옥수"),
+    "seoul:songpa": ("송파", "잠실", "석촌", "방이", "문정", "가락", "거여", "마천", "위례", "오금"),
+    "seoul:yeongdeungpo": ("영등포", "여의도", "당산", "문래", "도림", "신길"),
+    "seoul:seocho": ("서초", "반포", "양재", "내곡", "방배"),
+    "seoul:gangnam": ("강남", "역삼", "삼성", "청담", "신사", "논현", "개포"),
+    "seoul:jongno": ("종로", "경복궁", "광화문", "인사동", "북촌", "삼청", "청운"),
 }
 
 
@@ -356,6 +479,12 @@ CITY_ID_ADDR_NEGATIVE_KEYWORDS: dict[str, tuple[str, ...]] = {
         "강원도", "강원특별자치도", "gangwon-do", "gangwon do", "ganseong", "geojin",
         "toseong", "간성", "거진", "토성", "현내", "죽왕",
     ),
+    # 광주광역시 구들 — 경기도 광주시(gonjiam 등)가 매칭되지 않도록
+    "gwangju:dong_gu": ("경기도 광주", "경기광주", "gwangju-si, gyeonggi", "gwangju-si, gyeonggi-do", "gonjiam", "곤지암", "남한산성"),
+    "gwangju:seo_gu": ("경기도 광주", "경기광주", "gwangju-si, gyeonggi", "gwangju-si, gyeonggi-do", "gonjiam", "곤지암", "남한산성"),
+    "gwangju:nam_gu": ("경기도 광주", "경기광주", "gwangju-si, gyeonggi", "gwangju-si, gyeonggi-do", "gonjiam", "곤지암", "남한산성"),
+    "gwangju:buk_gu": ("경기도 광주", "경기광주", "gwangju-si, gyeonggi", "gwangju-si, gyeonggi-do", "gonjiam", "곤지암", "남한산성"),
+    "gwangju:gwangsan_gu": ("경기도 광주", "경기광주", "gwangju-si, gyeonggi", "gwangju-si, gyeonggi-do", "gonjiam", "곤지암", "남한산성"),
 }
 
 FREE_TEXT_CITY_ALIASES: dict[str, str] = {
@@ -386,11 +515,17 @@ DEST_REGION_TEXT_KEYWORDS: dict[str, tuple[str, ...]] = {
     "incheon": ("인천", "incheon", "仁川"),
     "gyeonggi": ("경기", "경기도", "gyeonggi"),
     "gangwon": ("강원", "강원도", "gangwon"),
-    "chungcheong": ("충청", "충북", "충남", "대전", "세종", "chungcheong", "daejeon", "sejong"),
-    "jeolla": ("전라", "전북", "전남", "광주광역시", "jeolla"),
-    "gyeongsang": ("경상", "경북", "경남", "대구", "울산", "gyeongsang", "daegu", "ulsan"),
+    "chungcheong": ("충청", "충북", "충남", "chungcheong"),
+    "jeolla": ("전라", "전북", "전남", "jeolla"),
+    "gyeongsang": ("경상", "경북", "경남", "gyeongsang"),
     "busan": ("부산", "busan", "釜山"),
     "jeju": ("제주", "제주도", "jeju", "済州"),
+    # 독립 광역시 — 텍스트 쿼리에서 인식 (단축 도시명 포함)
+    "gwangju": ("광주광역시", "gwangju metropolitan", "광주광역"),
+    "daegu": ("대구광역시", "daegu metropolitan", "대구광역", "대구", "daegu"),
+    "daejeon": ("대전광역시", "daejeon metropolitan", "대전광역", "대전", "daejeon"),
+    "ulsan": ("울산광역시", "ulsan metropolitan", "울산광역", "울산", "ulsan"),
+    "sejong": ("세종특별자치시", "세종시", "세종", "sejong"),
 }
 
 AMBIGUOUS_FREE_TEXT_LABELS = {"고성", "goseong"}
@@ -412,6 +547,18 @@ def _dest_region_from_city_id(city_id: str) -> str:
         return "seoul"
     if prefix == "incheon":
         return "incheon"
+    if prefix == "busan":
+        return "busan"
+    if prefix == "gwangju":
+        return "gwangju"
+    if prefix == "daegu":
+        return "daegu"
+    if prefix == "daejeon":
+        return "daejeon"
+    if prefix == "ulsan":
+        return "ulsan"
+    if prefix == "sejong":
+        return "sejong"
     if prefix == "jeju":
         return "jeju"
     return ""

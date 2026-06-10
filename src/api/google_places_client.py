@@ -84,7 +84,8 @@ _MEAL_NAME_EXCLUDE_RE = re.compile(
     r"コンベンション|컨벤션|convention|"
     r"結婚式|예식|식장|ウェディングホール|웨딩홀|"
     r"イベントホール|event\s*venue|宴会場|연회장|"
-    r"葬儀|장례|funeral|チャペル|예식장",
+    r"葬儀|장례|funeral|チャペル|예식장|"
+    r"휴게소|고속도로\s*휴게소|SA\b|highway\s*rest\s*stop",  # 고속도로 휴게소 제외
     re.IGNORECASE,
 )
 _DELIVERY_ONLY_RE = re.compile(
@@ -96,6 +97,22 @@ _DELIVERY_ONLY_RE = re.compile(
 _CIVIC_OFFICE_RE = re.compile(
     r"구청|시청|군청|도청|읍사무소|면사무소|동사무소|주민센터|행정복지센터|"
     r"city\s*hall|district\s*office|community\s*service\s*center",
+    re.IGNORECASE,
+)
+# 통신사 대리점·약국·부동산 등 명백한 비식음료 업종 (Naver 검색 오진 방지)
+_NON_FOOD_SHOP_RE = re.compile(
+    r"(SK\s*텔레콤|LG\s*유플러스|KT\s*플라자|KT\s*대리점|"
+    r"삼성\s*디지털\s*프라자|갤럭시스토어|애플스토어|"
+    r"다이소|올리브영|CU\s*편의점|GS\s*25|세븐일레븐|"
+    r"약국|Pharmacy|부동산|공인중개사|헬스장|피트니스|"
+    r"미용실|헤어샵|네일샵|마사지\s*숍|안경원|렌즈샵)",
+    re.IGNORECASE,
+)
+# 여행 추천 불필요 — 전 세계 어디서나 있는 글로벌 패스트푸드 체인
+_GLOBAL_FAST_FOOD_RE = re.compile(
+    r"^(버거킹|맥도날드|McDonald|KFC|kfc|서브웨이|Subway|피자헛|Pizza\s*Hut|"
+    r"도미노\s*피자|Domino|쉐이크쉑|Shake\s*Shack|파이브가이즈|Five\s*Guys|"
+    r"웬디스?|Wendy|버거\s*킹|Burger\s*King)",
     re.IGNORECASE,
 )
 _MEAL_TYPE_EXCLUDE = frozenset({
@@ -160,7 +177,16 @@ def is_suitable_meal_place(place: NearbyPlace) -> bool:
     blob = f"{name} {addr}"
     if _CIVIC_OFFICE_RE.search(blob):
         return False
+    if _GLOBAL_FAST_FOOD_RE.search(name):
+        return False
+    if _NON_FOOD_SHOP_RE.search(name):
+        return False
     if _MEAL_NAME_EXCLUDE_RE.search(blob) or _DELIVERY_ONLY_RE.search(blob):
+        return False
+    # Naver 검색 결과는 블로그 리뷰 최소치 미달 시 제외 (통신사/잡화점 오진 방지)
+    naver_score = getattr(place, "naver_score", None)
+    blog_count = getattr(place, "blog_review_count", None)
+    if naver_score is not None and blog_count is not None and blog_count < 30:
         return False
 
     cat = (place.category or "").strip().lower()

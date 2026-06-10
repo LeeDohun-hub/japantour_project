@@ -281,8 +281,19 @@ function naverCoordsFromPlaceOrUrl(p) {
   return { lat: parsedLat, lng: parsedLng };
 }
 
+function _koreanLabel(p) {
+  const name = String(p?.name || "").trim();
+  const addr = String(p?.address || "").trim();
+  const hasKana = /[぀-ゟ゠-ヿ]/.test(name);
+  if (hasKana) {
+    const koFromParens = name.match(/[（(]([가-힣][가-힣\s·]{0,40})[)）]/)?.[1]?.trim();
+    return koFromParens || addr || name;
+  }
+  return name || addr;
+}
+
 function directionsUrl(p) {
-  const label = String(p?.name || p?.address || "").trim();
+  const label = _koreanLabel(p);
   const coords = naverCoordsFromPlaceOrUrl(p);
   if (coords) {
     const q = encodeURIComponent(label || `${coords.lat},${coords.lng}`);
@@ -328,8 +339,46 @@ function naverPhotoUrlForPlace(p) {
     || (naverQuery ? `/api/naver-photo/?q=${encodeURIComponent(naverQuery)}${naverCoord}&image_fallback=1` : "");
 }
 
+const _KO_KW_TO_JA = {
+  "음식이 맛있어요": "料理がおいしい",
+  "양이 많아요": "量が多い",
+  "가성비가 좋아요": "コスパが良い",
+  "분위기가 좋아요": "雰囲気が良い",
+  "친절해요": "スタッフが親切",
+  "매장이 넓어요": "店内が広い",
+  "혼자 가기 좋아요": "一人でも入りやすい",
+  "특별한 메뉴가 있어요": "特別なメニューがある",
+  "재료가 신선해요": "食材が新鮮",
+  "뷰가 좋아요": "眺めが良い",
+  "포장이 친절해요": "テイクアウトOK",
+  "주차가 편해요": "駐車が便利",
+  "안이 넓어요": "広い店内",
+  "여럿이 가기 좋아요": "グループ向き",
+  "아이와 함께 가기 좋아요": "お子様連れ可",
+  "데이트하기 좋아요": "デートにおすすめ",
+  "혼밥하기 좋아요": "一人食事OK",
+  "웨이팅이 없어요": "並ばずに入れる",
+  "인스타감성": "インスタ映え",
+  "가격이 저렴해요": "リーズナブル",
+  "신선한 재료를 사용해요": "新鮮素材使用",
+  "줄서서 먹는 맛집": "行列の価値あり",
+  "포장 가능해요": "テイクアウト可",
+  "조용해요": "静かな雰囲気",
+  "인테리어가 예뻐요": "内装がおしゃれ",
+  "전망이 좋아요": "眺望が良い",
+  "산책하기 좋아요": "散歩におすすめ",
+  "사진찍기 좋아요": "写真映えする",
+  "힐링이 돼요": "癒しになる",
+  "접근이 쉬워요": "アクセス便利",
+};
+
+function _translateKwJa(keywords) {
+  return keywords.map((k) => _KO_KW_TO_JA[k.trim()] || k);
+}
+
 function renderInlinePlaceCard(p, lang) {
-  const name = escapeHtml(p?.name || p?.address || "");
+  const isJa = lang === "日本語";
+  const name = escapeHtml(p?.name_ja && isJa ? p.name_ja : (p?.name || p?.address || ""));
   if (!name) return "";
   const guide = placeGuideLine(p, lang);
   const ratingNum = Number(p?.rating);
@@ -346,8 +395,10 @@ function renderInlinePlaceCard(p, lang) {
   const blogRefs = Number.isFinite(blogRefsNum) && blogRefsNum > 0
     ? `<span class="plan-place-card__reviews">Blog ${blogRefsNum.toLocaleString()}</span>`
     : "";
-  const keywordHtml = Array.isArray(p?.review_keywords) && p.review_keywords.length
-    ? `<span class="plan-place-card__price">${escapeHtml(p.review_keywords.slice(0, 2).join(" / "))}</span>`
+  const rawKeywords = Array.isArray(p?.review_keywords) ? p.review_keywords.slice(0, 2) : [];
+  const displayKeywords = isJa ? _translateKwJa(rawKeywords) : rawKeywords;
+  const keywordHtml = displayKeywords.length
+    ? `<span class="plan-place-card__price">${escapeHtml(displayKeywords.join(" / "))}</span>`
     : "";
   const openBadge = p?.is_open_now === true
     ? `<span class="plan-place-card__open">${lang === "日本語" ? "営業中" : "영업중"}</span>`
