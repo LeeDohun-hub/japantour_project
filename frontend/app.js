@@ -380,6 +380,8 @@ function renderInlinePlaceCard(p, lang) {
   const isJa = lang === "日本語";
   const name = escapeHtml(p?.name_ja && isJa ? p.name_ja : (p?.name || p?.address || ""));
   if (!name) return "";
+  const rawCategory = (p?.category || "").split(/[,/・|]/)[0].trim();
+  const guideHtml = rawCategory ? `<p class="plan-place-card__guide">${escapeHtml(rawCategory)}</p>` : "";
   const ratingNum = Number(p?.rating);
   const rating = Number.isFinite(ratingNum) && ratingNum > 0 ? `★${ratingNum.toFixed(1)}` : "";
   const reviewsNum = Number(p?.user_rating_count);
@@ -429,7 +431,7 @@ function renderInlinePlaceCard(p, lang) {
   const routeLabel = lang === "日本語" ? "経路" : "경로";
   const photoLabel = lang === "日本語" ? "外観写真" : "외관사진";
   const thumbLink = mapsUri || dirUri || "#";
-  return `<div class="plan-inline-spot"><article class="plan-place-card"><a class="plan-place-card__thumb-link" href="${escapeHtml(thumbLink)}" target="_blank" rel="noopener">${thumb}<span class="plan-place-card__photo-label">${p?.photo_name || naverPhotoUrl ? photoLabel : "Naver"}</span></a><div class="plan-place-card__body"><h4 class="plan-place-card__name">${name}</h4>${meta ? `<div class="plan-place-card__meta">${meta}</div>` : ""}${addr}<div class="plan-place-card__actions">${mapsUri ? `<a href="${escapeHtml(mapsUri)}" target="_blank" rel="noopener" class="plan-place-card__btn">${mapLabel}</a>` : ""}<a href="${escapeHtml(dirUri)}" target="_blank" rel="noopener" class="plan-place-card__btn plan-place-card__btn--route">${routeLabel}</a></div></div></article></div>`;
+  return `<div class="plan-inline-spot"><article class="plan-place-card"><a class="plan-place-card__thumb-link" href="${escapeHtml(thumbLink)}" target="_blank" rel="noopener">${thumb}<span class="plan-place-card__photo-label">${p?.photo_name || naverPhotoUrl ? photoLabel : "Naver"}</span></a><div class="plan-place-card__body"><h4 class="plan-place-card__name">${name}</h4>${guideHtml}${meta ? `<div class="plan-place-card__meta">${meta}</div>` : ""}${addr}<div class="plan-place-card__actions">${mapsUri ? `<a href="${escapeHtml(mapsUri)}" target="_blank" rel="noopener" class="plan-place-card__btn">${mapLabel}</a>` : ""}<a href="${escapeHtml(dirUri)}" target="_blank" rel="noopener" class="plan-place-card__btn plan-place-card__btn--route">${routeLabel}</a></div></div></article></div>`;
 }
 
 function renderMapUrlFallbackCard(url, queryLabel, lang) {

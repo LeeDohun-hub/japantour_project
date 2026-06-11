@@ -3675,8 +3675,32 @@ function _placeGuideLine(p) {
   return "この日の移動ルートに組み込みやすい、参照データで確認済みのスポット。";
 }
 
-function _renderInlinePlaceCard(p) {
+function _renderInlinePlaceCard(p, proseHint) {
   const name = _escapeHtml(p.name || "");
+  // Guide: category badge + description extracted from LLM prose
+  const rawCategory = (p.category || "").split(/[,/・|]/)[0].trim();
+  let guideDesc = "";
+  if (proseHint) {
+    let desc = String(proseHint)
+      .replace(/^\[[\d:〜~\-]+\]\s*/, "")
+      .replace(/^[-・*①②③④⑤⑥⑦⑧⑨⑩]\s*/, "")
+      .trim();
+    desc = desc.replace(/[「『][^」』]{1,40}[」』]/g, "").trim();
+    desc = desc.replace(/（[^）]{1,40}）/g, "").trim();
+    if (p.name) {
+      const pNorm = p.name.replace(/\s+/g, "").toLowerCase();
+      const dNorm = desc.toLowerCase().replace(/\s+/g, "");
+      if (pNorm.length > 1 && dNorm.startsWith(pNorm)) {
+        desc = desc.slice(p.name.length).trim();
+      }
+    }
+    desc = desc.replace(/^[でをにはがのへ]\s*/, "").trim();
+    desc = desc.replace(/^에서\s+/, "").trim();
+    guideDesc = desc;
+  }
+  const guideParts = [rawCategory, guideDesc].filter(Boolean);
+  const guide = guideParts.join(guideParts.length > 1 ? " · " : "");
+  const guideHtml = guide ? `<p class="plan-place-card__guide">${_escapeHtml(guide)}</p>` : "";
   const rating = p.rating ? `★${Number(p.rating).toFixed(1)}` : "";
   const reviews = p.user_rating_count
     ? `<span class="plan-place-card__reviews">(${Number(p.user_rating_count).toLocaleString()}件)</span>`
@@ -3718,7 +3742,7 @@ function _renderInlinePlaceCard(p) {
   const meta = [rating && `<span class="plan-place-card__rating">${rating}${reviews}</span>`, naverScore && `<span class="plan-place-card__rating">${naverScore}${blogRefs}</span>`, keywordHtml, openBadge, priceLabel]
     .filter(Boolean).join("");
   const thumbLink = mapsUri || dirUri;
-  return `<div class="plan-inline-spot"><article class="plan-place-card"><a class="plan-place-card__thumb-link" href="${_escapeHtml(thumbLink)}" target="_blank" rel="noopener">${thumb}<span class="plan-place-card__photo-label">${p.photo_name || naverPhotoUrl ? "外観写真" : "Naver"}</span></a><div class="plan-place-card__body"><h4 class="plan-place-card__name">${name}</h4>${meta ? `<div class="plan-place-card__meta">${meta}</div>` : ""}${addr}<div class="plan-place-card__actions">${mapsUri ? `<a href="${_escapeHtml(mapsUri)}" target="_blank" rel="noopener" class="plan-place-card__btn">地図</a>` : ""}<a href="${_escapeHtml(dirUri)}" target="_blank" rel="noopener" class="plan-place-card__btn plan-place-card__btn--route">経路</a></div></div></article></div>`;
+  return `<div class="plan-inline-spot"><article class="plan-place-card"><a class="plan-place-card__thumb-link" href="${_escapeHtml(thumbLink)}" target="_blank" rel="noopener">${thumb}<span class="plan-place-card__photo-label">${p.photo_name || naverPhotoUrl ? "外観写真" : "Naver"}</span></a><div class="plan-place-card__body"><h4 class="plan-place-card__name">${name}</h4>${guideHtml}${meta ? `<div class="plan-place-card__meta">${meta}</div>` : ""}${addr}<div class="plan-place-card__actions">${mapsUri ? `<a href="${_escapeHtml(mapsUri)}" target="_blank" rel="noopener" class="plan-place-card__btn">地図</a>` : ""}<a href="${_escapeHtml(dirUri)}" target="_blank" rel="noopener" class="plan-place-card__btn plan-place-card__btn--route">経路</a></div></div></article></div>`;
 }
 
 const _PLAN_CLOCK_RE = /\[[\d０-９]{1,2}\s*[:：]\s*[\d０-９]{2}[^\]]*\]/g;
@@ -3809,7 +3833,12 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
     out.push(`<li class="plan-timeline-item"><div class="plan-timeline-body">${innerHtml}</div></li>`);
   };
 
-  const emitCard = (place) => _renderInlinePlaceCard(place);
+  let _pendingProse = null;
+  const emitCard = (place) => {
+    const prose = _pendingProse;
+    _pendingProse = null;
+    return _renderInlinePlaceCard(place, prose);
+  };
 
   const ticketIdx = ticketEventIndex || {};
   const LP = window.LinkPreview;
@@ -3977,10 +4006,12 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
       if (lines[j].trim()) { nextNonEmpty = lines[j]; break; }
     }
     if (lineLooksLikePlaceLabelBeforeUrl(lines[i], nextNonEmpty)) {
+      _pendingProse = trimmed;
       continue;
     }
 
     if (_isPlanDayHeader(trimmed)) {
+      _pendingProse = null;
       renderedDayPlaces = new Set();
       openTimeline(`<h3 class="plan-day-heading">${_formatPlanTextLine(trimmed)}</h3>`);
       continue;
