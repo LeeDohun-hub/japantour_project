@@ -634,9 +634,7 @@ def fetch_ticket_platform_events(
 
     merged: list[TicketPlatformEvent] = []
     genres = _kopis_genres_for_profile(traveler_profile, genre_slugs)
-    # Fetch a wider candidate pool than the final display cap. Major summer
-    # festivals can sit beyond the first 30 KOPIS rows for a short trip window.
-    rows_per_genre = max(50, min(100, max_total * 2))
+    rows_per_genre = max(8, min(30, max_total))
     for genre_code, genre_slug, genre_label in genres:
         merged.extend(
             _fetch_kopis_genre(

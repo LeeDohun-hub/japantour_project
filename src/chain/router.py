@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 import concurrent.futures
-import hashlib
 import json
 import logging
 import random
@@ -6796,106 +6795,6 @@ def _naver_vacation_stays(
     return out
 
 
-_NAVER_LODGING_CATEGORY_KEYWORDS: tuple[str, ...] = (
-    "숙박",
-    "호텔",
-    "펜션",
-    "리조트",
-    "풀빌라",
-    "모텔",
-    "게스트하우스",
-)
-
-
-def _tour_item_from_naver_lodging(place: Any) -> TourApiItem | None:
-    name = (getattr(place, "name", "") or "").strip()
-    if not name:
-        return None
-    category = (getattr(place, "category", "") or "").strip()
-    address = (getattr(place, "address", "") or "").strip()
-    if category and not any(k in category for k in _NAVER_LODGING_CATEGORY_KEYWORDS):
-        return None
-    key = f"{name}|{address}|{getattr(place, 'mapx', '')}|{getattr(place, 'mapy', '')}"
-    digest = hashlib.sha1(key.encode("utf-8", errors="ignore")).hexdigest()[:16]
-    return TourApiItem(
-        content_id=f"naver-lodging-{digest}",
-        content_type_id="32",
-        title=name,
-        addr1=address,
-        mapx=str(getattr(place, "longitude", "") or ""),
-        mapy=str(getattr(place, "latitude", "") or ""),
-        cat1="B02",
-        cat2="B0201",
-    )
-
-
-def _naver_lodging_stays(
-    traveler_profile: dict | None,
-    user_message: str,
-    keyword: str,
-    vacation_types: list[str] | None = None,
-    *,
-    limit: int = 8,
-) -> list[TourApiItem]:
-    try:
-        from src.api.naver_search_client import NaverSearchClient
-    except Exception:
-        return []
-    client = NaverSearchClient()
-    if not client.is_configured:
-        return []
-
-    areas = _vacation_stay_search_areas(traveler_profile, user_message, keyword)
-    terms: list[str] = []
-    seen_terms: set[str] = set()
-
-    def add_term(value: str) -> None:
-        cleaned = " ".join(str(value or "").split()).strip()
-        if cleaned and cleaned not in seen_terms:
-            seen_terms.add(cleaned)
-            terms.append(cleaned)
-
-    # Exact user/LLM keyword first: handles named stays such as "까사32".
-    add_term(keyword)
-    add_term(user_message)
-
-    vtypes = vacation_types or []
-    type_terms: list[str] = []
-    if "poolvilla" in vtypes:
-        type_terms.append("풀빌라")
-    if "pension" in vtypes:
-        type_terms.append("펜션")
-    if not type_terms:
-        type_terms.extend(["숙소", "펜션", "리조트"])
-    for area in areas[:4]:
-        for term in type_terms:
-            add_term(f"{area} {term}")
-
-    out: list[TourApiItem] = []
-    seen_items: set[str] = set()
-    for term in terms:
-        if len(out) >= limit:
-            return out
-        area_hint = next((area for area in areas if area and area in term), "")
-        try:
-            places = client.search_places(term, display=6, area_hint=area_hint, geocode=False)
-        except Exception as exc:
-            logger.info("Naver lodging search skipped [%s]: %s", term, exc)
-            continue
-        for place in places:
-            item = _tour_item_from_naver_lodging(place)
-            if item is None:
-                continue
-            key = f"{item.title}|{item.addr1}"
-            if key in seen_items:
-                continue
-            seen_items.add(key)
-            out.append(item)
-            if len(out) >= limit:
-                return out
-    return out
-
-
 def _gocamping_vacation_stays(
     traveler_profile: dict | None,
     vacation_types: list[str],
@@ -8097,14 +7996,6 @@ def route_and_answer(
                     area_code=primary_area or SEOUL_AREA_CODE,
                     num_of_rows=8,
                 )
-                naver_stays = _naver_lodging_stays(
-                    traveler_profile,
-                    user_message,
-                    keyword,
-                    vacation_types,
-                    limit=8,
-                )
-                stays = _merge_tour_items([naver_stays, stays], limit=14)
             elif category == "itinerary" and vacation_types:
                 stay_batches: list[list[TourApiItem]] = []
                 for ac in (area_codes or [primary_area or SEOUL_AREA_CODE])[:3]:
@@ -8123,20 +8014,13 @@ def route_and_answer(
                     vacation_types,
                     limit=8,
                 )
-                naver_lodging_stays = _naver_lodging_stays(
-                    traveler_profile,
-                    user_message,
-                    keyword,
-                    vacation_types,
-                    limit=8,
-                )
                 camping_stays = _gocamping_vacation_stays(
                     traveler_profile,
                     vacation_types,
                     limit=8,
                 )
                 stays = _merge_tour_items(
-                    [camping_stays, naver_lodging_stays, naver_stays, *stay_batches],
+                    [camping_stays, naver_stays, *stay_batches],
                     limit=14,
                 )
 

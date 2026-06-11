@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import unittest
-from types import SimpleNamespace
-from unittest.mock import patch
 
 from src.api.region_resolver import (
     address_matches_destination,
@@ -31,9 +29,7 @@ try:
         _place_matches_destination_profile,
         _repair_wizard_itinerary_rules,
         _tourism_candidate_areas_for_plan,
-        _tour_item_from_naver_lodging,
     )
-    from src.api import ticket_platform_events_client as ticket_events
     from src.api.ticket_platform_events_client import _kopis_genres_for_profile
     from src.api.web_search_client import WebSearchResult
 except ModuleNotFoundError as exc:
@@ -54,9 +50,7 @@ except ModuleNotFoundError as exc:
     _place_matches_destination_profile = None
     _repair_wizard_itinerary_rules = None
     _tourism_candidate_areas_for_plan = None
-    _tour_item_from_naver_lodging = None
     _kopis_genres_for_profile = None
-    ticket_events = None
     WebSearchResult = None
     _ROUTER_IMPORT_ERROR = exc
 else:
@@ -498,64 +492,6 @@ class RouterItineraryPlaceBalanceTests(unittest.TestCase):
         genres = _kopis_genres_for_profile({"activities": ["drama"]})
 
         self.assertEqual([g[1] for g in genres], ["play", "musical"])
-
-    def test_kopis_fetch_uses_wider_candidate_rows_than_display_cap(self) -> None:
-        if ticket_events is None:
-            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
-
-        requested_rows: list[int] = []
-
-        def fake_fetch(*args, **kwargs):
-            requested_rows.append(kwargs["rows"])
-            return []
-
-        with (
-            patch.object(ticket_events, "_kopis_api_key", return_value="test-key"),
-            patch.object(
-                ticket_events,
-                "_travel_window",
-                return_value=(
-                    ticket_events.date(2026, 7, 23),
-                    ticket_events.date(2026, 7, 27),
-                ),
-            ),
-            patch.object(
-                ticket_events,
-                "_kopis_genres_for_profile",
-                return_value=(("CCCD", "concert", "대중음악"),),
-            ),
-            patch.object(ticket_events, "_fetch_kopis_genre", side_effect=fake_fetch),
-        ):
-            ticket_events.fetch_ticket_platform_events(
-                {"activities": ["kpop"]},
-                max_total=36,
-            )
-
-        self.assertEqual(requested_rows, [72])
-
-    def test_naver_lodging_place_converts_to_tour_item(self) -> None:
-        if _tour_item_from_naver_lodging is None:
-            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
-
-        place = SimpleNamespace(
-            name="\uae4c\uc0ac32 \ub9ac\uc870\ud2b8",
-            category="\uc219\ubc15>\ud39c\uc158",
-            address="\uacbd\uae30\ub3c4 \uac00\ud3c9\uad70 \uc124\uc545\uba74 \uc720\uba85\ub85c 2384 \uae4c\uc0ac32 \ub9ac\uc870\ud2b8",
-            longitude=127.4454639,
-            latitude=37.7111421,
-            mapx="1274454639",
-            mapy="377111421",
-        )
-
-        item = _tour_item_from_naver_lodging(place)
-
-        self.assertIsNotNone(item)
-        assert item is not None
-        self.assertTrue(item.content_id.startswith("naver-lodging-"))
-        self.assertEqual(item.title, "\uae4c\uc0ac32 \ub9ac\uc870\ud2b8")
-        self.assertEqual(item.content_type_id, "32")
-        self.assertEqual(item.mapx, "127.4454639")
-        self.assertEqual(item.mapy, "37.7111421")
 
     def test_kpop_web_filter_rejects_generic_city_pages(self) -> None:
         if _is_reliable_kpop_web_result is None or WebSearchResult is None:
