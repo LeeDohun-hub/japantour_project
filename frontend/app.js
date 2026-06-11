@@ -252,8 +252,12 @@ function buildPlaceIndexes(places) {
   for (const p of places || []) {
     const uri = p.google_maps_uri || p.maps_url;
     if (uri) byUrl[mapsUrlKey(uri)] = p;
-    const nk = normalizePlaceName(p.name);
-    if (nk && !byName[nk]) byName[nk] = p;
+    const names = [p.name, p.name_ja].filter(Boolean);
+    if (p.name && p.name_ja) names.push(`${p.name_ja} (${p.name})`);
+    for (const name of names) {
+      const nk = normalizePlaceName(name);
+      if (nk && !byName[nk]) byName[nk] = p;
+    }
   }
   return { byUrl, byName };
 }
@@ -264,6 +268,39 @@ function mapOpenUrl(p) {
   if (raw) return raw;
   const q = encodeURIComponent(p?.name || p?.address || "");
   return q ? `https://map.naver.com/p/search/${q}` : "#";
+}
+
+function hasJapanesePlaceText(text) {
+  const s = String(text || "");
+  return /[\u3040-\u30ff]/.test(s) || (/[\u3400-\u9fff]/.test(s) && !/[가-힣]/.test(s));
+}
+
+function extractKoreanPlaceName(text) {
+  const m = String(text || "").match(/[（(]([가-힣][가-힣\s·]{0,40})[)）]/);
+  return m ? m[1].trim() : "";
+}
+
+function koreanPlaceName(p) {
+  const name = String(p?.name || "").trim();
+  const fromName = extractKoreanPlaceName(name);
+  if (fromName) return fromName;
+  const fromJa = extractKoreanPlaceName(p?.name_ja || "");
+  if (fromJa) return fromJa;
+  if (/[가-힣]/.test(name) && !hasJapanesePlaceText(name)) return name;
+  return "";
+}
+
+function displayPlaceName(p, lang) {
+  const ko = koreanPlaceName(p);
+  const ja = String(p?.name_ja || "").trim();
+  const raw = String(p?.name || p?.address || "").trim();
+  if (lang === "日本語" && ja && ko && ja.replace(/\s+/g, "") !== ko.replace(/\s+/g, "")) {
+    const koEsc = ko.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`[（(]${koEsc}[)）]`).test(ja)) return ja;
+    return `${ja} (${ko})`;
+  }
+  if (raw && hasJapanesePlaceText(raw)) return raw;
+  return raw || ja || ko;
 }
 
 function naverCoordsFromPlaceOrUrl(p) {
@@ -282,13 +319,12 @@ function naverCoordsFromPlaceOrUrl(p) {
 }
 
 function _koreanLabel(p) {
+  const ko = koreanPlaceName(p);
+  if (ko) return ko;
   const name = String(p?.name || "").trim();
   const addr = String(p?.address || "").trim();
-  const hasKana = /[぀-ゟ゠-ヿ]/.test(name);
-  if (hasKana) {
-    const koFromParens = name.match(/[（(]([가-힣][가-힣\s·]{0,40})[)）]/)?.[1]?.trim();
-    return koFromParens || addr || name;
-  }
+  const hasKana = /[\u3040-\u30ff]/.test(name);
+  if (hasKana) return addr || name;
   return name || addr;
 }
 
@@ -376,11 +412,37 @@ function _translateKwJa(keywords) {
   return keywords.map((k) => _KO_KW_TO_JA[k.trim()] || k);
 }
 
+const _CATEGORY_LABEL = {
+  tourist_attraction: { ja: "観光スポット", ko: "관광 명소" },
+  point_of_interest:  { ja: "観光スポット", ko: "관광 명소" },
+  park:               { ja: "公園",         ko: "공원" },
+  museum:             { ja: "博物館",        ko: "박물관" },
+  art_gallery:        { ja: "美術館",        ko: "미술관" },
+  aquarium:           { ja: "水族館",        ko: "수족관" },
+  amusement_park:     { ja: "遊園地",        ko: "놀이공원" },
+  zoo:                { ja: "動物園",        ko: "동물원" },
+  natural_feature:    { ja: "自然",          ko: "자연" },
+  stadium:            { ja: "スタジアム",    ko: "경기장" },
+  lodging:            { ja: "ホテル",        ko: "숙소" },
+  restaurant:         { ja: "レストラン",    ko: "식당" },
+  cafe:               { ja: "カフェ",        ko: "카페" },
+  shopping_mall:      { ja: "ショッピングモール", ko: "쇼핑몰" },
+  establishment:      { ja: "施設",          ko: "시설" },
+};
+
+function _translateCategory(cat, lang) {
+  const key = String(cat || "").trim().toLowerCase().replace(/\s+/g, "_");
+  const entry = _CATEGORY_LABEL[key];
+  if (!entry) return cat;
+  return lang === "日本語" ? entry.ja : entry.ko;
+}
+
 function renderInlinePlaceCard(p, lang) {
   const isJa = lang === "日本語";
-  const name = escapeHtml(p?.name_ja && isJa ? p.name_ja : (p?.name || p?.address || ""));
+  const name = escapeHtml(displayPlaceName(p, lang));
   if (!name) return "";
-  const rawCategory = (p?.category || "").split(/[,/・|]/)[0].trim();
+  const _defaultCatLabel = isJa ? "観光スポット" : "관광 명소";
+  const rawCategory = _translateCategory((p?.category || "").split(/[,/・|]/)[0].trim(), lang) || _defaultCatLabel;
   const guideHtml = rawCategory ? `<p class="plan-place-card__guide">${escapeHtml(rawCategory)}</p>` : "";
   const ratingNum = Number(p?.rating);
   const rating = Number.isFinite(ratingNum) && ratingNum > 0 ? `★${ratingNum.toFixed(1)}` : "";
@@ -396,7 +458,9 @@ function renderInlinePlaceCard(p, lang) {
   const blogRefs = Number.isFinite(blogRefsNum) && blogRefsNum > 0
     ? `<span class="plan-place-card__reviews">Blog ${blogRefsNum.toLocaleString()}</span>`
     : "";
-  const rawKeywords = Array.isArray(p?.review_keywords) ? p.review_keywords.slice(0, 2) : [];
+  const showReviewKeywords = /식당|맛집|restaurant|레스토랑|카페|커피|cafe|coffee|베이커리|디저트|해물|대게|칼국수|막국수|순두부|짬뽕/i
+    .test(`${p?.name || ""} ${p?.category || ""}`);
+  const rawKeywords = showReviewKeywords && Array.isArray(p?.review_keywords) ? p.review_keywords.slice(0, 2) : [];
   const displayKeywords = isJa ? _translateKwJa(rawKeywords) : rawKeywords;
   const keywordHtml = displayKeywords.length
     ? `<span class="plan-place-card__price">${escapeHtml(displayKeywords.join(" / "))}</span>`
@@ -460,6 +524,7 @@ function queryLabelForMapUrl(lines, lineIdx, url) {
     let label = t.replace(/^[-・*①②③④⑤⑥⑦⑧⑨⑩]\s*/, "").trim();
     const qm = label.match(/[「『]([^」』]{1,40})[」』]/);
     if (qm) return qm[1].trim();
+    label = label.replace(/[：:].+$/, "").trim();
     label = label.replace(/（[^）]{1,40}）/g, "").trim();
     label = label.replace(/\s*\([^)]{1,40}\)\s*$/, "").trim();
     label = label.replace(/\s*[でをにはが].+$/, "").trim();

@@ -135,8 +135,8 @@ JSONL_PATH = PROJECT_ROOT / "data" / "processed" / "tour_knowledge.jsonl"
 # ─── LLM 설정 ───────────────────────────────────────────────────────────
 CLASSIFIER_MODEL = "gpt-4.1-mini"
 ANSWER_MODEL = "gpt-4.1-mini"
-# itinerary는 공간 추론(에리어 분리·이동 계산·날짜 배정)이 복잡하므로 full 모델 사용
-# 환경변수로 오버라이드 가능: ITINERARY_MODEL=gpt-4.1-mini
+# itinerary는 공간 추론(에리어 분리·이동 계산·날짜 배정)이 복잡하므로 추론 모델 사용
+# 환경변수로 오버라이드 가능: ITINERARY_MODEL=gpt-4.1
 import os as _os
 
 
@@ -150,6 +150,11 @@ def _google_places_enabled() -> bool:
 
 ITINERARY_MODEL = _os.environ.get("ITINERARY_MODEL", "gpt-4.1")
 ANSWER_TEMPERATURE = 0.3   # 0.7 → 0.3: 사실성 향상
+
+
+def _is_reasoning_model(model: str) -> bool:
+    """o1/o3/o4 계열 추론 모델 여부 — temperature 파라미터 미지원."""
+    return bool(re.match(r"o[1-9][\w-]*", model.lower()))
 RAG_TOP_K = 8              # 5 → 8: 멀티 에리어 병합 시 area당 결과 수 확보
 HISTORY_WINDOW = 6         # 최근 N턴만 컨텍스트에 포함
 
@@ -729,8 +734,10 @@ STRICT SECTION USAGE — NON-NEGOTIABLE:
   - [午前] slots: ONLY use entries from 「観光スポット候補（食事には使わない）」. NEVER place any restaurant, cafe, food stall, bar, dessert shop, market-food stop, or eating/drinking venue in 午前. Each slot = ONE attraction name + ONE Naver map URL. Do NOT add a second attraction URL as a "companion" in the same slot.
   - ABSOLUTE — Naver map URL search queries MUST be written in Korean or romanized English. NEVER use Japanese characters in a Naver map URL search term. Wrong: map.naver.com/p/search/幸州山城歴史公園 — Right: map.naver.com/p/search/행주산성%20역사공원. Copy URLs verbatim from Reference Data; when generating a fallback URL, use the Korean official name only.
   - [午後] slots: use entries from 「観光スポット候補（食事には使わない）」, and when the traveler selected cafe/coffee/cafe hopping, add at most one concrete 「カフェ候補」 as an afternoon location-card stop after at least one non-food stop. Each slot = ONE attraction name + ONE Naver map URL.
+  - NEVER replace a concrete afternoon/night stop with generic text such as 「市内の自然や海岸沿いで過ごす」「フォトスポットとして撮影を楽しむ」「周辺でゆったり」. Pick one verified venue/beach/park/street candidate and write its exact name + Naver map URL.
   - [夜/밤] slots: ONLY sightseeing venues (night view, walk, park, cultural street, market browsing). NEVER place a 食事候補 restaurant in [夜/밤] — put it in [夕食] instead.
   - [昼食] and [夕食] slots: ONLY use entries from 「食事候補」. NEVER use 観光スポット候補 entries as meal items. NEVER leave these slots empty on a sightseeing day — if no candidate, use the ZERO-CANDIDATE EXCEPTION below.
+  - Meal slots must be a concrete restaurant/cafe food venue name, never an attraction or generic food sentence. Forbidden examples: 「キッザニア ソウル」「ロッテワールドタワー」「公園近くの飲食店」「잠실 지역의 한국 음식점」「현지 맛을 즐길 수 있습니다」.
     ZERO-CANDIDATE EXCEPTION: If the 「食事候補」 section is completely empty (zero entries across ALL regions),
     you MAY use well-known real restaurants in the destination city from your training knowledge.
     Requirements for the exception: (a) Korean official name only; (b) map URL must use Naver search format:
@@ -1029,6 +1036,7 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "  ② 該当日の未使用店が1件のみ → もう一方は同一エリア/近接エリアの検証済み候補から選ぶ（帰還日・宿泊エリアは帰還後の夕食だけ）\n"
             "  ③ 候補が完全に空（全エリア0件） → AIが確実に知っている当該都市の実在飲食店名（韓国語正式表記）を使用し、地図URLは「https://map.naver.com/v5/search/[URL-encoded-name]」形式。架空・創作名は禁止。「식사 후보 리스트에 해당하는 가게가 없습니다」等のデータ不足通知を本文に書くことは禁止。\n"
             "    【厳禁】「[地域名]의 실재점」「실재점」「実在店」「の実在店」をそのまま店名として使うことは絶対禁止。\n"
+            "    【厳禁】「예) 광안리 회집」「예) ○○식당」のように「예)」(例えば)を店名の前につけることは絶対禁止。실제 고유 가게명만 사용할 것。\n"
             "    必ず具体的な韓国語店名（例: 광주식당、미가식당、국밥집 등 固有名詞）を書く。\n"
             "  ▶ 食事メニュー未選択の場合: 候補リストの中から多様なジャンルの店を自由に選んでよい。\n"
             "- **朝の扱い**: 午前に観光地・公園・展望台・体験施設を入れるのは可。ただし朝食・朝ごはん・朝カフェ・ブランチ・食堂・レストラン・カフェは入れない。朝の飲食店訪問は禁止。食事店は昼食・夕食だけ。\n"
@@ -4282,6 +4290,11 @@ def _build_itinerary_attraction_queries(
             add(f"{area} 사진 명소")
             add(f"{area} SNS 명소")
             add(f"{area} 야경 포토스팟")
+        if "nightview" in acts:
+            add(f"{area} 야경")
+            add(f"{area} 야경 명소")
+            add(f"{area} 야경 포인트")
+            add(f"{area} 전망대")
         if "tradition" in acts:
             add(f"{area} 전통문화")
             add(f"{area} 한옥")
@@ -4676,6 +4689,8 @@ def _search_naver_places_for_itinerary(
             if area and area in q:
                 area_hint = area
                 break
+        if not area_hint and areas:
+            area_hint = areas[0]
         try:
             places = client.search_places(
                 q,
@@ -4699,6 +4714,8 @@ def _search_naver_places_for_itinerary(
             if area and area in q:
                 area_hint = area
                 break
+        if not area_hint and areas:
+            area_hint = areas[0]
         try:
             places = client.search_places(
                 q,
@@ -4720,6 +4737,8 @@ def _search_naver_places_for_itinerary(
             if area and area in q:
                 area_hint = area
                 break
+        if not area_hint and areas:
+            area_hint = areas[0]
         try:
             places = client.search_places(
                 q,
@@ -5174,6 +5193,35 @@ def _fetch_category_places(
     return merged[:max_results]
 
 
+def _filter_ref_data_quality(
+    places: list[NearbyPlace],
+    *,
+    require_address: bool = False,
+) -> list[NearbyPlace]:
+    """LLM Reference Data에 전달하기 전 품질 필터링.
+
+    - anchor:/cafe-anchor: 플레이스홀더 제거 (Naver URL만 있고 실체 없는 항목)
+    - 주소도 좌표도 없는 항목 제거 (카드 렌더링 불가 → LLM에 줘봐야 카드 실패)
+    - require_address=True (식당·카페): 주소 없으면 제거
+    """
+    out = []
+    for p in places:
+        pid = getattr(p, "place_id", "") or ""
+        if pid.startswith("anchor:") or pid.startswith("cafe-anchor:"):
+            continue
+        has_addr = bool(getattr(p, "address", None))
+        has_coord = (
+            getattr(p, "latitude", None) is not None
+            and getattr(p, "longitude", None) is not None
+        )
+        if not has_addr and not has_coord:
+            continue
+        if require_address and not has_addr:
+            continue
+        out.append(p)
+    return out
+
+
 def _fmt_places(
     places: list[NearbyPlace],
     *,
@@ -5187,7 +5235,16 @@ def _fmt_places(
         if getattr(p, "source", "") == "naver_search" or getattr(p, "naver_score", None) is not None:
             area_tag = f" [{p.search_area}]" if getattr(p, "search_area", None) else ""
             score = getattr(p, "naver_score", None)
-            score_str = f"Naver quality {float(score):.1f}/100" if score is not None else "Naver quality"
+            # 점수 티어 표시: LLM이 고품질 후보를 우선 선택하도록 유도
+            if score is not None:
+                if score >= 70:
+                    score_str = f"Naver quality {float(score):.1f}/100 ★高品質"
+                elif score >= 45:
+                    score_str = f"Naver quality {float(score):.1f}/100"
+                else:
+                    score_str = f"Naver quality {float(score):.1f}/100 ▲低"
+            else:
+                score_str = "Naver quality —"
             line = f"{line_prefix}[{i}] {p.name}{area_tag} | {score_str}"
             blog_count = getattr(p, "blog_review_count", None)
             if blog_count:
@@ -5199,9 +5256,11 @@ def _fmt_places(
             if quality_reason:
                 line += f"\n    Quality signal: {quality_reason}"
             if p.address:
-                line += f"\n    菴乗園: {p.address}"
+                line += f"\n    住所: {p.address}"
+            else:
+                line += "\n    住所: (未確認)"
             if p.google_maps_uri:
-                line += f"\n    蝨ｰ蝗ｳ: {p.google_maps_uri}"
+                line += f"\n    地図: {p.google_maps_uri}"
             return line
         raw = _fmt_place_line(i, p)
         return f"{line_prefix}{raw}" if line_prefix else raw
@@ -5383,6 +5442,9 @@ _ITINERARY_DAY_RE = re.compile(r"^\s*(?:#{1,6}\s*)?(?:\d+\s*日目|\d+\s*일째|
 _ITINERARY_BAD_PLACEHOLDER_RE = re.compile(
     r"(?:周辺を散策|周辺散策|近くを歩く|쇼핑이나\s*산책|주변(?:을|에서)?\s*산책|일대\s*산책|"
     r"롯데월드타워\s*주변|宿泊先周辺のレストラン|カフェで軽食|カフェタイム|카페\s*타임|"
+    r"(?:市内|시내|海岸沿い|해안가|自然|자연).{0,24}(?:過ご|楽し|撮影|보내|즐기|촬영)|"
+    r"(?:지역|에리어|エリア|근처|주변|일대|近く|周辺).{0,12}(?:음식점|식당|맛집|한국음식|요리|レストラン|食堂|食事)|"
+    r"(?:현지|当地|地元|한국\s*같은|韓国らしい).{0,12}(?:맛|요리|음식|グルメ|料理|食事)|"
     r"候補が(?:足りない|全部終わった)|"
     r"候補不足|時間外の可能性|現地で探す|店名は記載しない|コンビニ|軽食|間食)",
     re.I,
@@ -6147,6 +6209,16 @@ def _score_wizard_plan_quality(
     # 규칙 10: 관광목적지(후보군 중심점)에서 너무 먼 장소
     _FAR_THRESHOLD_M = 25_000   # 25km 초과 시 감점 (예: 서울→제주 460km)
     far_place_days: set[int] = set()
+    # 규칙 11: "예) 장소명" 형식 placeholder — LLM이 실제 레스토랑 대신 예시 표기
+    _YE_PLACEHOLDER_RE = re.compile(r'^예\)\s+\S|^例\)\s+\S', re.I)
+    placeholder_days: set[int] = set()
+    # 규칙 12: Naver URL에 일본어(히라가나/가타카나) 포함 — Naver 지도에서 검색 불가
+    _JP_CHAR_RE = re.compile(r'[ぁ-んァ-ヶ]')
+    japanese_url_days: set[int] = set()
+    # 규칙 13: 구체 장소명 없이 "시내/해안/자연에서 시간을 보냄" 같은 일반 활동문
+    generic_activity_days: set[int] = set()
+    # 규칙 14: 식사 슬롯에 구체 식당명 없이 "지역 음식점/근처 음식점/현지 맛" 같은 일반문
+    generic_meal_days: set[int] = set()
 
     def _flush() -> None:
         nonlocal slot_has_url, slot_name_keys
@@ -6229,6 +6301,28 @@ def _score_wizard_plan_quality(
             nk = _norm_plan_place_name(s)
             if nk and 2 <= len(nk) <= 30:
                 slot_name_keys.append(nk)
+        # 규칙 11: "예) 장소명" placeholder 감지
+        if current_day is not None and _YE_PLACEHOLDER_RE.match(s):
+            placeholder_days.add(current_day)
+        # 규칙 12: Naver URL에 일본어 문자 포함 감지
+        if current_day is not None and _MAPS_URL_IN_TEXT_RE.search(s):
+            for m in _MAPS_URL_IN_TEXT_RE.finditer(s):
+                if _JP_CHAR_RE.search(m.group(0)):
+                    japanese_url_days.add(current_day)
+        if (
+            current_day is not None
+            and current_slot in ("morning", "afternoon", "night")
+            and not _MAPS_URL_IN_TEXT_RE.search(s)
+            and _ITINERARY_BAD_PLACEHOLDER_RE.search(s)
+        ):
+            generic_activity_days.add(current_day)
+        if (
+            current_day is not None
+            and current_slot in ("lunch", "dinner")
+            and not _MAPS_URL_IN_TEXT_RE.search(s)
+            and _ITINERARY_BAD_PLACEHOLDER_RE.search(s)
+        ):
+            generic_meal_days.add(current_day)
     _flush()
 
     # ── 채점 ──────────────────────────────────────────────────────────────
@@ -6291,6 +6385,22 @@ def _score_wizard_plan_quality(
     for far_day in far_place_days:
         failures.append(f"day{far_day}_far_from_destination")
 
+    # H: "예) 장소명" placeholder (규칙 11 — 감점 페널티)
+    for ph_day in placeholder_days:
+        failures.append(f"day{ph_day}_placeholder_restaurant")
+
+    # I: Naver URL에 일본어 (규칙 12 — 감점 페널티, 사실상 실격)
+    for jp_day in japanese_url_days:
+        failures.append(f"day{jp_day}_japanese_in_naver_url")
+
+    # J: 구체 장소 없는 일반 활동문 (규칙 13 — 재시도 유도)
+    for generic_day in generic_activity_days:
+        failures.append(f"day{generic_day}_generic_activity_without_place")
+
+    # K: 식사 슬롯 일반문 (규칙 14 — 재시도 유도)
+    for generic_meal_day in generic_meal_days:
+        failures.append(f"day{generic_meal_day}_generic_meal_without_restaurant")
+
     if meal_expected == 0 and url_expected == 0:
         return 100, []
 
@@ -6298,6 +6408,10 @@ def _score_wizard_plan_quality(
     # 규칙 8 위반: 헤더 형식 위반 day당 2점 차감
     # 규칙 9 위반: 카드 불일치 day당 3점 차감
     # 규칙 10 위반: 목적지 25km 초과 장소 day당 10점 차감 (최대 35점) — 실질 실격
+    # 규칙 11 위반: "예) 장소명" placeholder day당 8점 차감 (최대 24점) — 재시도 유도
+    # 규칙 12 위반: Naver URL에 일본어 day당 12점 차감 (최대 36점) — 실질 실격
+    # 규칙 13 위반: 구체 장소 없는 일반 활동문 day당 8점 차감 (최대 24점) — 재시도 유도
+    # 규칙 14 위반: 식사 슬롯 일반문 day당 12점 차감 (최대 36점) — 강한 재시도 유도
     meal_score  = (meal_ok / meal_expected * 60)  if meal_expected  else 60.0
     url_score   = (url_ok  / url_expected  * 25)  if url_expected   else 25.0
     day_score   = 10.0 if day_count_ok else 0.0
@@ -6305,8 +6419,12 @@ def _score_wizard_plan_quality(
     header_penalty        = min(10.0, len(bad_header_days)        * 2.0)
     card_mismatch_penalty = min(15.0, len(food_url_in_attr_days)  * 3.0)
     far_penalty           = min(35.0, len(far_place_days)         * 10.0)
+    placeholder_penalty   = min(24.0, len(placeholder_days)       * 8.0)
+    japanese_url_penalty  = min(36.0, len(japanese_url_days)      * 12.0)
+    generic_penalty       = min(24.0, len(generic_activity_days)  * 8.0)
+    generic_meal_penalty  = min(36.0, len(generic_meal_days)      * 12.0)
 
-    raw = meal_score + url_score + day_score - dup_penalty - header_penalty - card_mismatch_penalty - far_penalty
+    raw = meal_score + url_score + day_score - dup_penalty - header_penalty - card_mismatch_penalty - far_penalty - placeholder_penalty - japanese_url_penalty - generic_penalty - generic_meal_penalty
     score = max(0, min(100, int(round(raw))))
     return score, failures
 
@@ -7237,6 +7355,26 @@ def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
+_VK_DRAMA_SET_RE = re.compile(r"드라마\s*세트|촬영지|로케이션|세트장|오픈\s*세트", re.I)
+
+
+def _clean_vk_ko_name(raw: str) -> str:
+    """VK 한국어 장소명에서 [유네스코 세계유산] 등 주석과 인물명 괄호를 제거.
+
+    e.g. "서울 헌릉(태종, 전경왕후)과 인릉(순조, 순원왕후)[유네스코 세계유산(문화유산)]"
+      → "서울 헌릉과 인릉"
+    """
+    # 대괄호·겹낫표 주석 제거 (유네스코, 세계유산 등)
+    cleaned = re.sub(r"\s*[\[【][^\]】]{1,200}[\]】]", "", raw).strip()
+    # 쉼표 포함 인물명 괄호 제거 (태종, 전경왕후) — 쉼표 없는 괄호는 유지
+    cleaned = re.sub(
+        r"\s*[（(][가-힣\s,·]{2,40}[)）]",
+        lambda m: "" if "," in m.group() else m.group(),
+        cleaned,
+    ).strip()
+    return cleaned or raw
+
+
 def _vk_attractions_to_naver_places(items: "list[TourApiItem]") -> list:
     """VK TourApiItem → NaverPlace 변환 (추가 API 호출 없음).
 
@@ -7259,10 +7397,18 @@ def _vk_attractions_to_naver_places(items: "list[TourApiItem]") -> list:
             lng = float(item.mapx)
         except ValueError:
             continue
-        ko_match = re.search(r"[（(]([가-힣][가-힣\s·]{0,40})[)）]", str(item.title or ""))
+        raw_title = str(item.title or "").strip()
+        ko_match = re.search(r"[（(]([가-힣][가-힣\s·]{0,40})[)）]", raw_title)
         ko_name = ko_match.group(1).strip() if ko_match else None
-        name = ko_name or str(item.title or "").strip()
+        name_ja = ""
+        if ko_name:
+            name_ja = re.sub(r"\s*[（(][가-힣][가-힣\s·]{0,40}[)）]\s*", "", raw_title).strip()
+        name = ko_name or _clean_vk_ko_name(raw_title)
         if not name:
+            continue
+        # 드라마 촬영지·세트장은 관광명소 후보에서 제외 (LLM이 드라마 제목을 지명으로 오용 방지)
+        if _VK_DRAMA_SET_RE.search(name):
+            logger.debug("_vk_attractions_to_naver_places: skipped drama set item %r", name)
             continue
         if ko_name:
             maps_url = naver_map_search_url(ko_name, lat, lng)
@@ -7286,6 +7432,7 @@ def _vk_attractions_to_naver_places(items: "list[TourApiItem]") -> list:
                 search_area=area,
                 source="visitkorea",
                 naver_score=None,
+                name_ja=name_ja or None,
             )
         )
     logger.info("_vk_attractions_to_naver_places: converted %d VK items", len(out))
@@ -8570,11 +8717,15 @@ def route_and_answer(
         has_shopping_interest = _has_itinerary_shopping_interest(
             traveler_profile, user_message
         )
-        cafe_places = [p for p in itinerary_places if _is_cafe_candidate_place(p)]
-        food_places = [
-            p for p in itinerary_places
-            if _is_meal_candidate_place(p) and not _is_cafe_candidate_place(p)
-        ]
+        cafe_places = _filter_ref_data_quality(
+            [p for p in itinerary_places if _is_cafe_candidate_place(p)],
+            require_address=True,
+        )
+        food_places = _filter_ref_data_quality(
+            [p for p in itinerary_places
+             if _is_meal_candidate_place(p) and not _is_cafe_candidate_place(p)],
+            require_address=True,
+        )
         if prefs:
             # _refine_itinerary_food_places 에서 이미 선호+소프트폴백을 처리했으므로
             # 여기서 재필터 하지 않음 → 소프트폴백 식당이 소멸되는 이중필터 버그 방지.
@@ -8582,7 +8733,14 @@ def route_and_answer(
             pref_matched = _filter_places_by_food_preferences(food_places, prefs)
             matched_keys = {f"{p.name}|{p.address}" for p in pref_matched}
             others = [p for p in food_places if f"{p.name}|{p.address}" not in matched_keys]
-            food_places = pref_matched + others  # 선호 매칭 우선, 나머지 뒤에
+            # 선호 매칭 우선, 그 안에서 naver_score 내림차순 정렬
+            pref_matched.sort(key=lambda p: getattr(p, "naver_score", None) or 0.0, reverse=True)
+            others.sort(key=lambda p: getattr(p, "naver_score", None) or 0.0, reverse=True)
+            food_places = pref_matched + others
+        else:
+            # 선호 없으면 naver_score 내림차순 정렬 → LLM이 고품질 후보를 우선 선택
+            food_places.sort(key=lambda p: getattr(p, "naver_score", None) or 0.0, reverse=True)
+        cafe_places.sort(key=lambda p: getattr(p, "naver_score", None) or 0.0, reverse=True)
         stay_areas = _accommodation_food_areas(traveler_profile)
         needs_stay_buffer = _needs_accommodation_buffer_candidates(
             traveler_profile, travel_areas
@@ -8594,13 +8752,13 @@ def route_and_answer(
             ]
         # 목적 관광지 기반 관광 스팟 필터 (식사와 동일 기준)
         cafe_keys = {f"{p.name}|{p.address}" for p in cafe_places}
-        attr_all_places = [
-            p for p in itinerary_places
-            if not _is_meal_candidate_place(p)
-            and not _foodish_signal(p)
-            and f"{p.name}|{p.address}" not in cafe_keys
-            and (has_shopping_interest or not _is_shopping_mall_place(p))
-        ]
+        attr_all_places = _filter_ref_data_quality(
+            [p for p in itinerary_places
+             if not _is_meal_candidate_place(p)
+             and not _foodish_signal(p)
+             and f"{p.name}|{p.address}" not in cafe_keys
+             and (has_shopping_interest or not _is_shopping_mall_place(p))],
+        )
         stay_attr_places: list[NearbyPlace] = []
         if needs_stay_buffer and stay_areas:
             stay_attr_places = [
@@ -8904,11 +9062,12 @@ def route_and_answer(
 
     # ── streaming 모드: token generator를 RouteResult에 포함해 반환 ──────
     if _stream:
+        _reasoning = _is_reasoning_model(_model)
         try:
             _stream_obj = openai_client.chat.completions.create(
                 model=_model,
                 messages=messages,
-                temperature=answer_temperature,
+                **({} if _reasoning else {"temperature": answer_temperature}),
                 stream=True,
             )
         except Exception as _stream_exc:
@@ -8931,7 +9090,7 @@ def route_and_answer(
                         _retry_stream = openai_client.chat.completions.create(
                             model=_model,
                             messages=messages,
-                            temperature=min(0.9, answer_temperature + _s_attempt * 0.07),
+                            **({} if _reasoning else {"temperature": min(0.9, answer_temperature + _s_attempt * 0.07)}),
                             stream=True,
                         )
                         _gen = (_chunk.choices[0].delta.content or "" for _chunk in _retry_stream)
@@ -8982,11 +9141,12 @@ def route_and_answer(
             _best_reply: str | None = None
             _best_score = -1
             _best_failures: list[str] = []
+            _reasoning = _is_reasoning_model(_model)
             for _attempt in range(_effective_max_retries + 1):
                 _comp = openai_client.chat.completions.create(
                     model=_model,
                     messages=messages,
-                    temperature=min(0.9, answer_temperature + _attempt * 0.07),
+                    **({} if _reasoning else {"temperature": min(0.9, answer_temperature + _attempt * 0.07)}),
                 )
                 _candidate = _finalize_answer_text(_comp.choices[0].message.content or "")
                 _score, _failures = _score_wizard_plan_quality(
@@ -9012,7 +9172,7 @@ def route_and_answer(
             completion = openai_client.chat.completions.create(
                 model=_model,
                 messages=messages,
-                temperature=answer_temperature,
+                **({} if _reasoning else {"temperature": answer_temperature}),
             )
             reply = _finalize_answer_text(completion.choices[0].message.content or "")
     except Exception as _ans_exc:

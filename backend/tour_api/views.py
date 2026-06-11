@@ -148,6 +148,8 @@ def api_places_search(request):
         query = build_hotel_search_query(sido, sigungu)
     if not query:
         return JsonResponse({"places": []})
+    if _is_bad_place_query(query):
+        return JsonResponse({"places": [], "total": 0, "filtered_out": 0, "provider": "blocked_bad_query"})
     fetch_all = request.GET.get("all", "").lower() in ("1", "true", "yes")
     try:
         limit = min(max(int(request.GET.get("limit", 5)), 1), 20)
@@ -394,6 +396,42 @@ def _is_korean_coord(lat: float | None, lng: float | None) -> bool:
     )
 
 
+def _has_japanese_place_text(text: str | None) -> bool:
+    value = str(text or "")
+    return bool(re.search(r"[\u3040-\u30ff]", value) or (re.search(r"[\u3400-\u9fff]", value) and not re.search(r"[가-힣]", value)))
+
+
+_BAD_PLACE_QUERY_RE = re.compile(
+    r"^(?:곳|장소|지점|스팟|후보|카페|식당|맛집|관광|명소|주변|근처|일대|"
+    r"エリア|スポット|場所|カフェ|レストラン|観光|名所)$",
+    re.I,
+)
+
+
+def _is_bad_place_query(text: str | None) -> bool:
+    value = re.sub(r"\s+", " ", str(text or "")).strip()
+    compact = re.sub(r"\s+", "", value)
+    if len(compact) < 2:
+        return True
+    if _BAD_PLACE_QUERY_RE.search(compact):
+        return True
+    if re.search(r"(?:지역|에리어|エリア|근처|주변|일대|近く|周辺).{0,12}(?:음식점|식당|맛집|한국음식|요리|レストラン|食堂|食事)", value, re.I):
+        return True
+    if re.search(r"(?:현지|当地|地元|한국\s*같은|韓国らしい).{0,12}(?:맛|요리|음식|グルメ|料理|食事)", value, re.I):
+        return True
+    if re.search(r"(?:공원|公園|타워|タワー|관광지|観光地).{0,10}(?:근처|주변|近く|周辺).{0,12}(?:음식점|식당|맛집|食事|レストラン)", value, re.I):
+        return True
+    if re.search(r"^\d+\s*곳$", value):
+        return True
+    if re.search(r"^(?:具体|구체|현지|人気|有名|추천|人気の)?\s*(?:곳|장소|スポット|場所)$", value, re.I):
+        return True
+    if re.search(r"실제.{0,20}(?:요리점|음식점|식당|레스토랑)", value, re.I):
+        return True
+    if re.search(r"을\s*사용$", value):
+        return True
+    return False
+
+
 @require_GET
 def api_maps_driving_route(request):
     """Proxy Naver Directions 5 driving route without exposing server API secret."""
@@ -638,6 +676,8 @@ def api_places_enrich(request):
     if _places_provider() in ("naver", "naver_maps") or not _google_places_enabled():
         sclient = NaverSearchClient()
         nclient = NaverMapsClient()
+        # "대전・유성구" 형태에서 첫 번째 토큰만 area_hint로 사용 (Naver 검색 정확도)
+        _enrich_area_hint = re.split(r"[・,、/\s]+", region_cities.strip())[0].strip() if region_cities else ""
         enriched: dict[str, dict] = {}
         for raw in items:
             if not isinstance(raw, dict):
@@ -653,11 +693,15 @@ def api_places_enrich(request):
                     query = urllib.parse.unquote_plus(m.group(1)).strip()
             if not query:
                 continue
-            scored = sclient.search_places(query, display=1, area_hint=region_cities) if sclient.is_configured else []
+            if _is_bad_place_query(query):
+                continue
+            scored = sclient.search_places(query, display=1, area_hint=_enrich_area_hint) if sclient.is_configured else []
             if scored:
                 p = scored[0]
+                name_ja = query if _has_japanese_place_text(query) and query != p.name else ""
                 enriched[url] = {
                     "name": p.name,
+                    **({"name_ja": name_ja} if name_ja else {}),
                     "category": p.category,
                     "address": p.address,
                     "latitude": p.latitude,
@@ -692,8 +736,10 @@ def api_places_enrich(request):
             found = nclient.geocode(query, limit=1)
             if found:
                 p = found[0]
+                name_ja = query if _has_japanese_place_text(query) else ""
                 enriched[url] = {
                     "name": query,
+                    **({"name_ja": name_ja} if name_ja else {}),
                     "category": "",
                     "address": p.address,
                     "latitude": p.latitude,

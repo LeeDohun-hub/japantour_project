@@ -61,6 +61,73 @@ def _parse_yyyymmdd(text: str | None) -> datetime | None:
         return None
 
 
+# 제너릭 검색어 키워드 — 이 단어가 포함된 쿼리는 장소명 일치 검사를 건너뜀
+# e.g. "홍대 맛집", "유성구 관광" 등은 반환 이름이 달라도 정상
+_GENERIC_QUERY_WORDS: frozenset[str] = frozenset([
+    "맛집", "관광", "명소", "거리", "카페", "식당", "레스토랑", "음식점",
+    "체험", "박물관", "공원", "쇼핑", "시장", "축제", "온천", "볼거리",
+    "야경", "관광지", "음식", "여행", "뷔페", "분식", "술집", "포차",
+])
+
+_BAD_PLACE_QUERY_RE = re.compile(
+    r"^(?:곳|장소|지점|스팟|후보|카페|식당|맛집|관광|명소|주변|근처|일대|"
+    r"エリア|スポット|場所|カフェ|レストラン|観光|名所)$",
+    re.I,
+)
+
+
+def _is_bad_place_query(query: str) -> bool:
+    value = re.sub(r"\s+", " ", str(query or "")).strip()
+    compact = re.sub(r"\s+", "", value)
+    if len(compact) < 2:
+        return True
+    if _BAD_PLACE_QUERY_RE.search(compact):
+        return True
+    if re.search(r"(?:지역|에리어|エリア|근처|주변|일대|近く|周辺).{0,12}(?:음식점|식당|맛집|한국음식|요리|レストラン|食堂|食事)", value, re.I):
+        return True
+    if re.search(r"(?:현지|当地|地元|한국\s*같은|韓国らしい).{0,12}(?:맛|요리|음식|グルメ|料理|食事)", value, re.I):
+        return True
+    if re.search(r"(?:공원|公園|타워|タワー|관광지|観光地).{0,10}(?:근처|주변|近く|周辺).{0,12}(?:음식점|식당|맛집|食事|レストラン)", value, re.I):
+        return True
+    if re.search(r"^\d+\s*곳$", value):
+        return True
+    if re.search(r"실제.{0,20}(?:요리점|음식점|식당|레스토랑)", value, re.I):
+        return True
+    if re.search(r"을\s*사용$", value):
+        return True
+    return False
+
+
+def _is_specific_place_query(query: str) -> bool:
+    """쿼리가 특정 장소명(고유명사)인지 판단. 제너릭 단어 포함 시 False."""
+    tokens = re.findall(r"[가-힣]{2,}", query)
+    if not tokens:
+        return False  # 한글 없으면 판단 불가 — 검사 skip
+    return not any(t in _GENERIC_QUERY_WORDS for t in tokens)
+
+
+def _name_matches_query(name: str, query: str) -> bool:
+    """반환된 장소명이 쿼리와 충분히 겹치는지 확인.
+
+    - 제너릭 쿼리("홍대 맛집")는 항상 True(필터 없음)
+    - 특정 장소명 쿼리("유성불고기")에서 반환 이름("버거킹")과 한글 토큰 겹침이
+      전혀 없으면 False — 체인 오점 반환 방지
+    """
+    if not _is_specific_place_query(query):
+        return True
+    q_tokens = set(re.findall(r"[가-힣]{2,}", query))
+    n_tokens = set(re.findall(r"[가-힣]{2,}", name))
+    if not q_tokens or not n_tokens:
+        return True  # 토큰 추출 불가 — 허용
+    # 부분문자열 일치 (공백 제거): "홍대개미" ⊂ "홍대개미식당" → OK
+    q_compact = re.sub(r"\s+", "", query)
+    n_compact = re.sub(r"\s+", "", name)
+    if q_compact in n_compact or n_compact in q_compact:
+        return True
+    # 토큰 교집합 존재: {"상상마당"} ∩ {"상상마당", "홍대점"} → OK
+    return bool(q_tokens & n_tokens)
+
+
 POSITIVE_KEYWORDS = {
     "음식이 맛있어요": ("맛있", "음식", "라멘", "맛집", "존맛"),
     "양이 많아요": ("양이", "푸짐", "많", "든든"),
@@ -234,6 +301,9 @@ class NaverSearchClient:
         area_hint: str = "",
         geocode: bool = True,
     ) -> list[NaverPlace]:
+        if _is_bad_place_query(query):
+            logger.debug("Naver search skipped bad place query: %r", query)
+            return []
         # area_hint를 로컬 검색 쿼리에 포함하여 같은 이름 다른 지점 혼동 방지
         # 예: "KT&G 상상마당" + area_hint="홍대" → "KT&G 상상마당 홍대" → 홍대점 반환
         local_search_q = f"{query} {area_hint}".strip() if area_hint and area_hint not in query else query
@@ -243,6 +313,11 @@ class NaverSearchClient:
         for idx, item in enumerate(local_items):
             name = _clean_html(item.get("title"))
             if not name:
+                continue
+            # 장소명이 쿼리와 무관한 다른 가게인 경우 제외
+            # e.g. "유성불고기" 검색 → "버거킹" 반환 → 토큰 겹침 없음 → skip
+            if not _name_matches_query(name, query):
+                logger.debug("Naver name mismatch filtered: query=%r returned=%r", query, name)
                 continue
             address = _clean_html(item.get("roadAddress")) or _clean_html(item.get("address"))
             key = f"{_norm(name)}|{_norm(address)}"

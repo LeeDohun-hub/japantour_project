@@ -10,15 +10,15 @@
   const KR_LNG_MAX = 132.0;
 
   const REGION_LABEL = {
-    gangwon: "江原",
-    busan: "釜山",
-    jeju: "済州",
-    gyeonggi: "京畿",
-    seoul: "ソウル",
-    incheon: "仁川",
-    chungcheong: "大田",
-    jeolla: "全州",
-    gyeongsang: "大邱",
+    gangwon: "강원",
+    busan: "부산",
+    jeju: "제주",
+    gyeonggi: "경기",
+    seoul: "서울",
+    incheon: "인천",
+    chungcheong: "대전",
+    jeolla: "전주",
+    gyeongsang: "대구",
   };
 
   const ADDR_CITY_RE =
@@ -81,18 +81,22 @@
     if (regions.length === 1 && REGION_LABEL[regions[0]]) {
       return REGION_LABEL[regions[0]];
     }
-    return "韓国";
+    return "대한민국";
   }
 
   function _hasKana(str) {
-    return /[぀-ゟ゠-ヿ]/.test(String(str || ""));
+    return /[\u3040-\u30ff]/.test(String(str || ""));
+  }
+
+  function _hasKorean(str) {
+    return /[가-힣]/.test(String(str || ""));
   }
 
   // CJK 한자만 있고 한글이 없으면 일본어 한자로 간주 (上道門石垣村 등 VK 일본어 타이틀)
   function _hasJapanese(str) {
     const s = String(str || "");
     if (_hasKana(s)) return true;
-    return /[一-鿿㐀-䶿]/.test(s) && !/[가-힣]/.test(s);
+    return /[\u3400-\u9fff]/.test(s) && !/[가-힣]/.test(s);
   }
 
   function _extractKoreanFromParens(str) {
@@ -100,7 +104,33 @@
     return m ? m[1].trim() : null;
   }
 
+  function _naverSearchTerm(url) {
+    try {
+      const m = String(url || "").match(/\/search\/([^?#]+)/i);
+      return m ? decodeURIComponent(m[1].replace(/\+/g, " ")).trim() : "";
+    } catch {
+      return "";
+    }
+  }
+
+  function _bestKoreanName(place, fallbackName) {
+    const name = String(place?.name || "").trim();
+    const fromNameParens = _extractKoreanFromParens(name);
+    if (fromNameParens) return fromNameParens;
+    const jpName = String(place?.name_ja || place?.display_name_ja || "").trim();
+    const fromJaParens = _extractKoreanFromParens(jpName);
+    if (fromJaParens) return fromJaParens;
+    if (name && _hasKorean(name) && !_hasJapanese(name)) return name;
+    const fallbackParens = _extractKoreanFromParens(fallbackName);
+    if (fallbackParens) return fallbackParens;
+    const fallback = String(fallbackName || "").trim();
+    if (fallback && _hasKorean(fallback) && !_hasJapanese(fallback)) return fallback;
+    return "";
+  }
+
   function _koreanSearchName(name, place) {
+    const koName = _bestKoreanName(place, name);
+    if (koName) return koName;
     if (!_hasJapanese(name)) return name;
     const koFromParens = _extractKoreanFromParens(name);
     if (koFromParens) return koFromParens;
@@ -115,9 +145,9 @@
     const searchBase = _koreanSearchName(n, place);
     const hint = locationHint(place, opts);
     const parts = [searchBase];
-    if (hint && hint !== "韓国" && !searchBase.includes(hint)) parts.push(hint);
+    if (hint && hint !== "대한민국" && !searchBase.includes(hint)) parts.push(hint);
     const joined = parts.join(" ");
-    if (!/韓国|대한민국|Korea|South Korea/i.test(joined)) parts.push("韓国");
+    if (!/韓国|대한민국|Korea|South Korea/i.test(joined)) parts.push("대한민국");
     return parts.join(" ");
   }
 
@@ -152,14 +182,13 @@
         : null;
 
     if (/map\.naver\.com/i.test(raw)) {
-      // Naver URL 검색어가 일본어인 경우: name 필드로 판정 (URL은 퍼센트인코딩이라 직접 판정 불가)
-      if (_hasJapanese(name)) {
-        // ① 괄호 안 한국어명이 있으면 그걸로 검색 (景福宮（경복궁）→ 경복궁)
-        const koFromParens = _extractKoreanFromParens(name);
-        if (koFromParens) {
-          return naverSearchUrl(disambiguatedSearchQuery(koFromParens, place, opts));
-        }
-        // ② 한국어명 추출 불가(上道門石垣村 등) → 좌표로 정확한 위치 직접 오픈
+      const rawSearchTerm = _naverSearchTerm(raw);
+      const koName = _bestKoreanName(place, name || rawSearchTerm);
+      if (koName && (_hasJapanese(name) || _hasJapanese(rawSearchTerm))) {
+        return naverSearchUrl(disambiguatedSearchQuery(koName, place, opts));
+      }
+      // Naver URL 검색어가 일본어인데 한국어명을 못 찾으면 좌표로 정확한 위치 직접 오픈
+      if (_hasJapanese(name) || _hasJapanese(rawSearchTerm)) {
         if (lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng) && isKoreanCoords(lat, lng)) {
           return `https://map.naver.com/p/search/${lat},${lng}?c=${lng},${lat},16,0,0,0,dh`;
         }

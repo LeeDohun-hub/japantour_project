@@ -900,6 +900,8 @@
       // Extract 「place name」 or 『place name』 if the line wraps the name in brackets
       const qm = label.match(/[「『]([^」』]{1,40})[」』]/);
       if (qm) return qm[1].trim();
+      // Strip "Name：description" or "Name:description" — only keep part before colon
+      label = label.replace(/[：:].+$/, "").trim();
       // Strip full-width parentheticals anywhere in label
       label = label.replace(/（[^）]{1,40}）/g, "").trim();
       // Strip half-width trailing parentheticals
@@ -1564,6 +1566,40 @@
       el.innerHTML = `<p class="plan-map-fallback-msg">この日の地図表示用スポットはまだありません。テキスト詳細計画を確認してください。</p>`;
       return;
     }
+    const _STOP_CAT_JA = {
+      tourist_attraction: "観光スポット", point_of_interest: "観光スポット",
+      park: "公園", museum: "博物館", art_gallery: "美術館",
+      aquarium: "水族館", amusement_park: "遊園地", zoo: "動物園",
+      natural_feature: "自然", stadium: "スタジアム", campground: "キャンプ場",
+      lodging: "ホテル", restaurant: "レストラン", cafe: "カフェ",
+      food: "飲食店", shopping_mall: "ショッピングモール", establishment: "施設",
+    };
+    function _stopCatLabel(stop) {
+      if (stop.isAirport) return "空港";
+      if (stop.isAccommodation) return "宿泊先";
+      const p = stop.place || {};
+      const rawKey = (p.primary_type || p.types?.[0] || "").toLowerCase().replace(/\s+/g, "_");
+      if (_STOP_CAT_JA[rawKey]) return _STOP_CAT_JA[rawKey];
+      const catRaw = String(p.category || "");
+      // Also try the category field as an English key (Naver/VK places store "tourist_attraction" etc.)
+      const catKey = catRaw.toLowerCase().replace(/\s+/g, "_").trim();
+      if (_STOP_CAT_JA[catKey]) return _STOP_CAT_JA[catKey];
+      const catKo = catRaw.toLowerCase();
+      if (/음식점|식당|맛집|분식|한식|중식|일식|양식|육류|곱창|막창|삼겹/.test(catKo)) return "飲食店";
+      if (/카페|커피|베이커리|디저트|빙수/.test(catKo)) return "カフェ";
+      // Korean Naver category with ">" hierarchy (e.g. "스포츠,오락>월드컵경기장")
+      if (catKo.includes(">")) {
+        const top = catKo.split(">")[0].replace(/[,\s]+/g, "");
+        if (/스포츠|레저|경기장/.test(top)) return "スポーツ";
+        if (/쇼핑/.test(top)) return "ショッピング";
+        if (/음식점|식당|음식/.test(top)) return "飲食店";
+        if (/카페/.test(top)) return "カフェ";
+        if (/문화|예술|전시/.test(top)) return "文化施設";
+        if (/숙박/.test(top)) return "ホテル";
+      }
+      return esc(catRaw || "観光スポット");
+    }
+
     const colors = markerColors();
     let mapNum = 0; // 지도 마커 번호 (좌표 있는 stop만 카운트)
     const stopCards = (day.stops || [])
@@ -1575,6 +1611,9 @@
         // instead of "국립아시아문화전당 광주").
         // Strip leading circle-number bullets (② ③ etc.) from plan-text labels.
         const rawLabel = (stop.label || p.name || "").replace(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*/, "").trim();
+        // LLM 활동 묘사가 stop name으로 파싱된 케이스 제거
+        // e.g. "ベーグル", "伝統工芸や雑貨ショップ" — 좌표도 없고, 매칭된 place도 없고, 한국어도 없으면 제외
+        if (!hasCoords && !p.name && !/[가-힣]/.test(rawLabel)) return null;
         const name = esc(rawLabel || stop.label || p.name);
         const lockable = !stop.isAirport && !stop.isAccommodation;
         const lockKey = stopLockKey(stop, day.day);
@@ -1582,11 +1621,7 @@
         const lockBtn = lockable
           ? `<button type="button" class="plan-day-stop__lock${isLocked ? " is-locked" : ""}" data-lock-key="${esc(lockKey)}" aria-pressed="${isLocked ? "true" : "false"}">${isLocked ? "固定中" : "固定"}</button>`
           : "";
-        const cat = stop.isAirport
-          ? "空港"
-          : stop.isAccommodation
-          ? "宿泊先"
-          : esc(p.primary_type || p.types?.[0] || "観光スポット");
+        const cat = _stopCatLabel(stop);
         const thumb = stopThumbHtml(stop);
         const mapsUri = esc(mapsOpenUrl(stop));
         // Hide tip when it's a Maps URL or duplicates the stop label.
@@ -1594,6 +1629,8 @@
         const tip = tipRaw && tipRaw !== stop.label ? esc(tipRaw) : "";
         const dragAttrs = `draggable="false" data-draggable="false"`;
         const dragHandle = `<span class="plan-day-stop__drag plan-day-stop__drag--fixed" aria-hidden="true">•</span>`;
+        // 전체 순번 (좌표 유무 관계없이 모든 stop에 번호 부여)
+        const seqNum = stopIdx + 1;
         if (hasCoords) {
           mapNum++;
           const color = colors[(mapNum - 1) % colors.length];
@@ -1611,9 +1648,9 @@
             </div>
           </article>`;
         } else {
-          // 좌표 없는 stop — 지도에 표시 안 됨을 시각적으로 구분
+          // 좌표 없는 stop — 지도 마커 없음, 순번은 유지
           return `<article class="plan-day-stop plan-day-stop--no-map plan-day-stop--fixed" ${dragAttrs} data-stop-index="${stopIdx}">
-            <span class="plan-day-stop__num" style="background:#bbb;font-size:.7rem">—</span>
+            <span class="plan-day-stop__num" style="background:#aaa">${seqNum}</span>
             ${dragHandle}
             <a class="plan-day-stop__thumb" href="${mapsUri}" target="_blank" rel="noopener">${thumb}</a>
             <div class="plan-day-stop__body">
@@ -1621,11 +1658,13 @@
                 <h4 class="plan-day-stop__name">${name}</h4>
                 ${lockBtn}
               </div>
-              <p class="plan-day-stop__meta" style="color:#2b6cb0">地図で開く</p>
+              <p class="plan-day-stop__meta">${cat}<span style="color:#888;font-size:.78em;margin-left:.4em">地図で開く</span></p>
+              ${tip ? `<p class="plan-day-stop__tip"><span class="plan-day-stop__rec">おすすめ</span> ${tip}</p>` : ""}
             </div>
           </article>`;
         }
       })
+      .filter(Boolean)
       .join("");
     el.innerHTML = `${renderAirportTransferCard(day)}${stopCards}`;
     el.querySelectorAll(".plan-day-stop__lock").forEach((btn) => {

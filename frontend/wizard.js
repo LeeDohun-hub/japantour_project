@@ -3401,8 +3401,12 @@ function _buildPlaceIndexes(apiPlaces) {
   for (const p of apiPlaces || []) {
     const uri = p.google_maps_uri || p.maps_url;
     if (uri) byUrl[_mapsUrlKey(uri)] = p;
-    const nk = _normalizePlaceName(p.name);
-    if (nk && !byName[nk]) byName[nk] = p;
+    const names = [p.name, p.name_ja].filter(Boolean);
+    if (p.name && p.name_ja) names.push(`${p.name_ja} (${p.name})`);
+    for (const name of names) {
+      const nk = _normalizePlaceName(name);
+      if (nk && !byName[nk]) byName[nk] = p;
+    }
   }
   return { byUrl, byName, unresolved: {} };
 }
@@ -3436,6 +3440,25 @@ function _isEchoCardLine(t) {
   if (/^주소\s*[:：]/i.test(s)) return true;
   if (/^住所\s*[:：]/.test(s)) return true;
   if (/^\d+[\d\-.,\s]+(ro|gu|si|do|kyeonggi|seoul)/i.test(s) && s.length < 120) return true;
+  return false;
+}
+
+const _BAD_PLAN_PLACE_QUERY_RE =
+  /^(?:곳|장소|지점|스팟|후보|카페|식당|맛집|관광|명소|주변|근처|일대|에리어|エリア|スポット|場所|カフェ|レストラン|観光|名所)$/i;
+
+function _isBadPlanPlaceQuery(value) {
+  const q = String(value || "").replace(/\s+/g, " ").trim();
+  if (!q) return true;
+  const compact = q.replace(/\s+/g, "");
+  if (compact.length < 2) return true;
+  if (_BAD_PLAN_PLACE_QUERY_RE.test(compact)) return true;
+  if (/(?:지역|에리어|エリア|근처|주변|일대|近く|周辺).{0,12}(?:음식점|식당|맛집|한국음식|요리|レストラン|食堂|食事)/i.test(q)) return true;
+  if (/(?:현지|当地|地元|한국\s*같은|韓国らしい).{0,12}(?:맛|요리|음식|グルメ|料理|食事)/i.test(q)) return true;
+  if (/(?:공원|公園|타워|タワー|관광지|観光地).{0,10}(?:근처|주변|近く|周辺).{0,12}(?:음식점|식당|맛집|食事|レストラン)/i.test(q)) return true;
+  if (/^\d+\s*곳$/.test(q)) return true;
+  if (/^(?:具体|구체|현지|人気|有名|추천|人気の)?\s*(?:곳|장소|スポット|場所)$/i.test(q)) return true;
+  if (/실제.{0,20}(?:요리점|음식점|식당|레스토랑)/i.test(q)) return true;
+  if (/을\s*사용$/.test(q)) return true;
   return false;
 }
 
@@ -3499,7 +3522,7 @@ function _nameKeysFromLine(line) {
 function _candidatePlaceNamesFromPlanLine(line) {
   let t = _normalizeQueryLabelForEnrich(line);
   t = _cleanPlanPlaceLabel(t);
-  if (!t || _isEchoCardLine(t)) return [];
+  if (!t || _isEchoCardLine(t) || _isBadPlanPlaceQuery(t)) return [];
   t = t.replace(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*/, "");
   if (
     /(?:入国|出国|チェックイン|ホテル|宿泊|空港|移動|休息|休憩|到着|出発|手荷物|審査|税関|AREX|乗換|下車|徒歩|タクシー|リムジン|コンビニ|軽食|間食|편의점|간식)/i.test(t)
@@ -3510,7 +3533,7 @@ function _candidatePlaceNamesFromPlanLine(line) {
     let name = part.replace(/^(?:昼食|午後|午前|夕食|朝食|夜|ランチ|ディナー|朝|昼|食事)[:：\s]*/, "").trim();
     name = name.replace(/^(?:観光|散策|訪問|見学|ショッピング|カフェ|食事)\s*[:：-]?\s*/, "").trim();
     name = name.replace(/\s+(?:周辺|近く|エリア).*$/u, "").trim();
-    if (name.length >= 2 && name.length <= 36 && !_ATTR_FOOD_SKIP_RE.test(name)) out.push(name);
+    if (name.length >= 2 && name.length <= 36 && !_ATTR_FOOD_SKIP_RE.test(name) && !_isBadPlanPlaceQuery(name)) out.push(name);
   }
   return [...new Set(out)].slice(0, 3);
 }
@@ -3520,6 +3543,7 @@ const _PLAN_SLOT_PREFIX_RE =
 
 function _normalizeQueryLabelForEnrich(label) {
   let t = String(label || "").replace(/\s+/g, " ").trim();
+  t = t.replace(/^예\)\s*/u, "").replace(/^例\)\s*/, "");  // "예) 장소명" placeholder strip
   t = _cleanPlanPlaceLabel(t);
   t = t.replace(_PLAN_SLOT_PREFIX_RE, "");
   t = t.replace(/^【[^】]*】\s*/, "");
@@ -3532,7 +3556,7 @@ function _normalizeQueryLabelForEnrich(label) {
   }
   t = t.replace(/[（(][^）)]*[）)]/g, "").trim();
   t = t.replace(/\s*본점.*$/g, "").replace(/\s*本店.*$/g, "").trim();
-  return t;
+  return _isBadPlanPlaceQuery(t) ? "" : t;
 }
 
 function _findPlaceByName(indexes, query) {
@@ -3588,6 +3612,45 @@ function _mapOpenUrl(p) {
   return p?.google_maps_uri || p?.maps_url || "#";
 }
 
+function _hasJapanesePlaceText(text) {
+  const s = String(text || "");
+  return /[\u3040-\u30ff]/.test(s) || (/[\u3400-\u9fff]/.test(s) && !/[가-힣]/.test(s));
+}
+
+function _extractKoreanPlaceName(text) {
+  const m = String(text || "").match(/[（(]([가-힣][가-힣\s·]{0,40})[)）]/);
+  return m ? m[1].trim() : "";
+}
+
+function _koreanPlaceName(p) {
+  const name = String(p?.name || "").trim();
+  const fromName = _extractKoreanPlaceName(name);
+  if (fromName) return fromName;
+  const fromJa = _extractKoreanPlaceName(p?.name_ja || "");
+  if (fromJa) return fromJa;
+  if (/[가-힣]/.test(name) && !_hasJapanesePlaceText(name)) return name;
+  return "";
+}
+
+function _displayPlaceName(p) {
+  const ko = _koreanPlaceName(p);
+  const ja = String(p?.name_ja || "").trim();
+  const raw = String(p?.name || p?.address || "").trim();
+  // name_ja가 실제 일본어(히라가나·카타카나·한자)를 포함할 때만 "ja (ko)" 형식 사용
+  // 한국어가 name_ja에 들어온 경우(삼지킬, 키자니아 서울 등) raw를 그대로 반환
+  if (ja && ko && _hasJapanesePlaceText(ja) && ja.replace(/\s+/g, "") !== ko.replace(/\s+/g, "")) {
+    // ja가 이미 "(ko)" 포함 시 중복 방지
+    const koEsc = ko.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`[（(]${koEsc}[)）]`).test(ja)) return ja;
+    return `${ja} (${ko})`;
+  }
+  if (raw && _hasJapanesePlaceText(raw)) {
+    const fromRaw = _extractKoreanPlaceName(raw);
+    if (fromRaw) return raw;
+  }
+  return raw || ja || ko;
+}
+
 function _naverSearchTermFromUrl(url) {
   try {
     const m = String(url).match(/\/search\/([^?#]+)/i);
@@ -3595,8 +3658,10 @@ function _naverSearchTermFromUrl(url) {
   } catch { return ""; }
 }
 
-function _renderMapsUnresolvedFallback(url, queryLabel) {
+function _renderMapsUnresolvedFallback(url, queryLabel, slotKind = "") {
   const q = _normalizeQueryLabelForEnrich(queryLabel) || _naverSearchTermFromUrl(url);
+  if (_isBadPlanPlaceQuery(q)) return "";
+  if (slotKind === "meal") return "";
   console.debug?.("Plan place link omitted: unresolved place detail", { url, query: q });
   // For Naver search URLs show a minimal clickable link so the user can still find the place
   if (q && /map\.naver\.com[^\s]*\/search\//i.test(url)) {
@@ -3633,7 +3698,7 @@ function _naverCoordsFromPlaceOrUrl(p) {
 }
 
 function _directionsUrl(p) {
-  const label = String(p?.name || p?.address || "").trim();
+  const label = _koreanPlaceName(p) || String(p?.name || p?.address || "").trim();
   const coords = _naverCoordsFromPlaceOrUrl(p);
   if (coords) {
     const q = encodeURIComponent(label || `${coords.lat},${coords.lng}`);
@@ -3675,10 +3740,37 @@ function _placeGuideLine(p) {
   return "この日の移動ルートに組み込みやすい、参照データで確認済みのスポット。";
 }
 
+const _CATEGORY_LABEL_JA = {
+  tourist_attraction: "観光スポット",
+  point_of_interest: "観光スポット",
+  park: "公園",
+  museum: "博物館",
+  art_gallery: "美術館",
+  aquarium: "水族館",
+  amusement_park: "遊園地",
+  zoo: "動物園",
+  natural_feature: "自然",
+  stadium: "スタジアム",
+  campground: "キャンプ場",
+  lodging: "ホテル",
+  restaurant: "レストラン",
+  cafe: "カフェ",
+  shopping_mall: "ショッピングモール",
+  store: "ショップ",
+  establishment: "施設",
+};
+
+function _translateCategoryJa(cat) {
+  const key = String(cat || "").trim().toLowerCase().replace(/\s+/g, "_");
+  return _CATEGORY_LABEL_JA[key] || cat;
+}
+
 function _renderInlinePlaceCard(p, proseHint) {
-  const name = _escapeHtml(p.name || "");
+  const name = _escapeHtml(_displayPlaceName(p));
   // Guide: category badge + description extracted from LLM prose
-  const rawCategory = (p.category || "").split(/[,/・|]/)[0].trim();
+  // Fallback so every card always shows at least a category label
+  const _defaultCat = _isMealPlaceForRefs(p) ? "飲食店" : _isCafePlaceForRefs(p) ? "カフェ" : "観光スポット";
+  const rawCategory = _translateCategoryJa((p.category || "").split(/[,/・|]/)[0].trim()) || _defaultCat;
   let guideDesc = "";
   if (proseHint) {
     let desc = String(proseHint)
@@ -3696,6 +3788,22 @@ function _renderInlinePlaceCard(p, proseHint) {
     }
     desc = desc.replace(/^[でをにはがのへ]\s*/, "").trim();
     desc = desc.replace(/^에서\s+/, "").trim();
+    // 이름 제거 후 남은 선두 "(장소명)" 패턴 제거 (e.g. "(키자니아 서울)でのアクティビティ" → "でのアクティビティ")
+    if (desc.startsWith("(") || desc.startsWith("（")) {
+      desc = desc.replace(/^\s*[（(][^)）]{0,40}[)）]\s*/, "").trim();
+    }
+    // Mismatch guard: "장소A：설명" prose가 다른 장소 카드에 붙은 경우 버림
+    // e.g. prose="유성불고기：ユソン..." 가 "버거킹" 카드에 할당될 때
+    const colonMatch = desc.match(/^([^：:]{2,25})[：:]/);
+    if (colonMatch) {
+      const proseLabelNorm = colonMatch[1].replace(/\s+/g, "").toLowerCase();
+      const cardNameNorm = (p.name || "").replace(/\s+/g, "").toLowerCase();
+      if (proseLabelNorm && cardNameNorm && !cardNameNorm.includes(proseLabelNorm) && !proseLabelNorm.includes(cardNameNorm)) {
+        desc = "";  // 다른 장소 설명이므로 버림
+      }
+    }
+    // strip orphaned parens that remain after bracket-removal (e.g. standalone "）")
+    desc = desc.replace(/^[（(）)]+$/, "").trim();
     guideDesc = desc;
   }
   const guideParts = [rawCategory, guideDesc].filter(Boolean);
@@ -3709,7 +3817,9 @@ function _renderInlinePlaceCard(p, proseHint) {
   const blogRefs = p.blog_review_count
     ? `<span class="plan-place-card__reviews">Blog ${Number(p.blog_review_count).toLocaleString()}</span>`
     : "";
-  const keywordHtml = Array.isArray(p.review_keywords) && p.review_keywords.length
+  const _showReviewKeywords = /식당|맛집|restaurant|레스토랑|카페|커피|cafe|coffee|베이커리|디저트|해물|대게|칼국수|막국수|순두부|짬뽕/i
+    .test(`${p.name || ""} ${p.category || ""}`);
+  const keywordHtml = _showReviewKeywords && Array.isArray(p.review_keywords) && p.review_keywords.length
     ? `<span class="plan-place-card__price">${_escapeHtml(p.review_keywords.slice(0, 2).join(" / "))}</span>`
     : "";
   let openBadge = "";
@@ -3722,9 +3832,12 @@ function _renderInlinePlaceCard(p, proseHint) {
   const naverCoord = p.latitude != null && p.longitude != null
     ? `&lat=${encodeURIComponent(p.latitude)}&lng=${encodeURIComponent(p.longitude)}`
     : "";
+  // naver_score 없는 카드(geocode fallback)는 image_fallback 사용 안 함
+  // → 사진 없으면 서버가 404 반환 → onerror 발동 → 📍 표시
+  const _photoFallback = p.naver_score != null ? "&image_fallback=1" : "";
   const naverPhotoUrl = p.photo_url || p.naver_photo_url
     || ((p.maps_url || p.google_maps_uri || "").includes("map.naver.com")
-      ? `/api/naver-photo/?url=${encodeURIComponent(p.maps_url || p.google_maps_uri)}&q=${encodeURIComponent(naverQuery)}${naverCoord}&image_fallback=1`
+      ? `/api/naver-photo/?url=${encodeURIComponent(p.maps_url || p.google_maps_uri)}&q=${encodeURIComponent(naverQuery)}${naverCoord}${_photoFallback}`
       : "")
     || (naverQuery ? `/api/naver-photo/?q=${encodeURIComponent(naverQuery)}${naverCoord}&image_fallback=1` : "");
   const fallbackThumb = '<span class="plan-place-card__img plan-place-card__img--fallback" aria-hidden="true">📍</span>';
@@ -3747,7 +3860,7 @@ function _renderInlinePlaceCard(p, proseHint) {
 
 const _PLAN_CLOCK_RE = /\[[\d０-９]{1,2}\s*[:：]\s*[\d０-９]{2}[^\]]*\]/g;
 const _PLAN_DAY_HEAD_RE = /^(【\s*)?(\d+)\s*日目|^(【\s*)?最終日|帰国日|最終\s*日|^#{1,3}\s*\d+\s*日目/i;
-const _PLAN_SLOT_RE = /^\[(午前|午後|昼食|夕食|夜|朝食|朝|ランチ|ディナー)\]/;
+const _PLAN_SLOT_RE = /^(?:\[(午前|午後|昼食|夕食|夜|朝食|朝|ランチ|ディナー|오전|오후|점심|저녁|밤|아침)\]|(午前|午後|昼食|夕食|夜|朝食|朝|ランチ|ディナー|오전|오후|점심|저녁|밤|아침)(?=$|\s|[:：]))/;
 const _PLAN_STEP_RE = /^[①②③④⑤⑥⑦⑧⑨⑩]\s*/;
 
 function _stripPlanClocks(line) {
@@ -3766,11 +3879,18 @@ function _isPlanSlotLabel(line) {
   return _PLAN_SLOT_RE.test((line || "").trim());
 }
 
+function _planSlotKind(line) {
+  const match = String(line || "").trim().match(_PLAN_SLOT_RE);
+  const label = match?.slice(1).find(Boolean) || "";
+  if (/^(?:昼食|ランチ|점심|夕食|ディナー|저녁)$/.test(label)) return "meal";
+  return label ? "activity" : "";
+}
+
 function _formatPlanTextLine(line) {
   return _escapeHtml(_stripPlanClocks(line)).replace(/【(.*?)】/g, "<strong>【$1】</strong>");
 }
 
-function _tryRenderPlaceCard(indexes, rendered, url, renderedScope) {
+function _tryRenderPlaceCard(indexes, rendered, url, renderedScope, slotKind = "", globalScope = null) {
   const key = _mapsUrlKey(url);
   if (rendered.has(key)) return false;
   if (renderedScope?.has(key)) return false;
@@ -3787,19 +3907,43 @@ function _tryRenderPlaceCard(indexes, rendered, url, renderedScope) {
     rendered.add(key);
     return false;
   }
+  if (_isBadPlanPlaceQuery(place.name || "")) {
+    rendered.add(key);
+    return false;
+  }
   // Personal care businesses (hair salons, nail salons, etc.) are not tourist spots
   const _catLow = (place.category || "").toLowerCase();
   if (/미용실|헤어샵|헤어살롱|헤어숍|네일샵|네일아트|왁싱|속눈썹|반영구화장|세탁소|hair\s*salon|beauty\s*salon|nail\s*salon|barber\s*shop/i.test(_catLow)) {
     rendered.add(key);
     return false;
   }
+  // 식사 슬롯에 관광 명소(비음식) 카드 차단
+  if (slotKind === "meal" && !_isMealPlaceForRefs(place) && !_isCafePlaceForRefs(place)) {
+    rendered.add(key);
+    return false;
+  }
+  // 주소 없는 식당·카페는 카드로 표시하지 않음 (주소 없음 = 검색 미매칭·오정보)
+  const _isFoodCard = _isMealPlaceForRefs(place) || _isCafePlaceForRefs(place);
+  if (_isFoodCard && !place.address) {
+    rendered.add(key);
+    return false;
+  }
+  // 주소도 Naver 점수도 없는 장소 = 엔리치 완전 실패 (LLM 할루시네이션) → 탈락
+  if (!place.address && place.naver_score == null) {
+    rendered.add(key);
+    return false;
+  }
   const pk = _placeRenderKey(place);
   if (pk && rendered.has(pk)) { rendered.add(key); return false; }
   if (pk && renderedScope?.has(pk)) { rendered.add(key); return false; }
+  // 카페·식당은 날짜 구분 없이 동일 장소 중복 표시 금지 (셀렉티드닉스가 2일, 3일 모두 나오는 문제 방지)
+  if (_isFoodCard && pk && globalScope?.has(pk)) { rendered.add(key); return false; }
+  if (_isFoodCard && globalScope?.has(key)) { rendered.add(key); return false; }
   rendered.add(key);
   if (pk) rendered.add(pk);
   renderedScope?.add(key);
   if (pk) renderedScope?.add(pk);
+  if (_isFoodCard && globalScope) { globalScope.add(key); if (pk) globalScope.add(pk); }
   return true;
 }
 
@@ -3842,7 +3986,9 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
 
   const ticketIdx = ticketEventIndex || {};
   const LP = window.LinkPreview;
+  const renderedAllPlaces = new Set(); // 카페·식당 날짜 간 중복 방지 (플랜 전체 생애)
   let renderedDayPlaces = new Set();
+  let currentSlotKind = "";
 
   const _ticketCardsForUrls = (urls) => {
     if (!LP) {
@@ -3923,12 +4069,14 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
       const cardParts = [];
       for (const url of urls) {
         const place = _lookupPlace(placeIndexes, url);
-        if (place && _tryRenderPlaceCard(placeIndexes, rendered, url, renderedDayPlaces)) {
+        if (place && _tryRenderPlaceCard(placeIndexes, rendered, url, renderedDayPlaces, currentSlotKind, renderedAllPlaces)) {
           cardParts.push(emitCard(place));
+        } else if (place) {
+          rendered.add(_mapsUrlKey(url));
         } else if (!rendered.has(_mapsUrlKey(url))) {
           rendered.add(_mapsUrlKey(url));
           cardParts.push(
-            _renderMapsUnresolvedFallback(url, placeIndexes.unresolved?.[_mapsUrlKey(url)])
+            _renderMapsUnresolvedFallback(url, placeIndexes.unresolved?.[_mapsUrlKey(url)], currentSlotKind)
           );
         }
         prose = prose.replace(url, "");
@@ -3949,17 +4097,19 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
       const url = trimmed.split(/\s/)[0];
       if (isUnresolvedMapsUrl(url)) {
         rendered.add(_mapsUrlKey(url));
-        const fallback = _renderMapsUnresolvedFallback(url, placeIndexes.unresolved?.[_mapsUrlKey(url)]);
+        const fallback = _renderMapsUnresolvedFallback(url, placeIndexes.unresolved?.[_mapsUrlKey(url)], currentSlotKind);
         if (fallback) pushStep(fallback);
         return;
       }
       const place = _lookupPlace(placeIndexes, url);
-      if (place && _tryRenderPlaceCard(placeIndexes, rendered, url, renderedDayPlaces)) {
+      if (place && _tryRenderPlaceCard(placeIndexes, rendered, url, renderedDayPlaces, currentSlotKind, renderedAllPlaces)) {
         pushStep(emitCard(place));
+      } else if (place) {
+        rendered.add(_mapsUrlKey(url));
       } else if (!rendered.has(_mapsUrlKey(url))) {
         rendered.add(_mapsUrlKey(url));
         pushStep(
-          _renderMapsUnresolvedFallback(url, placeIndexes.unresolved?.[_mapsUrlKey(url)])
+          _renderMapsUnresolvedFallback(url, placeIndexes.unresolved?.[_mapsUrlKey(url)], currentSlotKind)
         );
       }
       return;
@@ -3969,14 +4119,16 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
       const place = placeIndexes.byName[nk];
       if (!place) continue;
       const uri = place.google_maps_uri || place.maps_url;
-      if (uri && _tryRenderPlaceCard(placeIndexes, rendered, uri, renderedDayPlaces)) {
+      if (uri && _tryRenderPlaceCard(placeIndexes, rendered, uri, renderedDayPlaces, currentSlotKind, renderedAllPlaces)) {
         pushStep(emitCard(place));
         return;
       }
     }
 
     if (_isPlanSlotLabel(trimmed)) {
-      const slot = trimmed.match(_PLAN_SLOT_RE)?.[1] || trimmed;
+      const match = trimmed.match(_PLAN_SLOT_RE);
+      const slot = match?.slice(1).find(Boolean) || trimmed;
+      currentSlotKind = _planSlotKind(trimmed);
       pushSlot(`<span class="plan-slot-label">${_escapeHtml(slot)}</span>`);
       const rest = trimmed.replace(_PLAN_SLOT_RE, "").trim();
       if (rest) pushStep(`<p class="plan-line">${_formatPlanTextLine(rest)}</p>`);
@@ -4013,6 +4165,7 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
     if (_isPlanDayHeader(trimmed)) {
       _pendingProse = null;
       renderedDayPlaces = new Set();
+      currentSlotKind = "";
       openTimeline(`<h3 class="plan-day-heading">${_formatPlanTextLine(trimmed)}</h3>`);
       continue;
     }
@@ -4472,15 +4625,12 @@ async function _displayPlanOutput(data) {
     const rawQ = _queryLabelForUrl(lines, url, idx >= 0 ? idx : undefined);
     const query = _normalizeQueryLabelForEnrich(rawQ);
     placeIndexes.unresolved[_mapsUrlKey(url)] = query || rawQ;
+    if (_isBadPlanPlaceQuery(query || rawQ)) continue;
     // "광주광역시의 실재점" etc. — LLM-generated generic placeholder that can't be enriched
     if (/의\s*실재[점店]?$|の実在[店점]?$|실재점$|実在店$/i.test(query || "")) continue;
     const matched = _findPlaceByName(placeIndexes, query);
     if (matched) {
-      placeIndexes.byUrl[_mapsUrlKey(url)] = {
-        ...matched,
-        google_maps_uri: url,
-        maps_url: url,
-      };
+      placeIndexes.byUrl[_mapsUrlKey(url)] = matched;
       continue;
     }
     missing.push({ url, query });
@@ -4505,8 +4655,10 @@ async function _displayPlanOutput(data) {
         for (const [url, p] of Object.entries(body.places)) {
           if (_isJpAddress(p)) continue;
           placeIndexes.byUrl[_mapsUrlKey(url)] = p;
-          const nk = _normalizePlaceName(p.name);
-          if (nk) placeIndexes.byName[nk] = p;
+          for (const name of [p.name, p.name_ja].filter(Boolean)) {
+            const nk = _normalizePlaceName(name);
+            if (nk) placeIndexes.byName[nk] = p;
+          }
         }
       }
     } catch (_) { /* プラン本文のみ */ }
