@@ -2382,7 +2382,9 @@ def serve_app_js(request):
     path = _FRONTEND / "app.js"
     if not path.is_file():
         return JsonResponse({"detail": "not found"}, status=404)
-    return FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")
+    resp = FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")
+    resp["Cache-Control"] = "no-cache"
+    return resp
 
 
 @require_GET
@@ -2390,7 +2392,9 @@ def serve_auth_js(request):
     path = _FRONTEND / "auth.js"
     if not path.is_file():
         return JsonResponse({"detail": "not found"}, status=404)
-    return FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")
+    resp = FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")
+    resp["Cache-Control"] = "no-cache"
+    return resp
 
 
 @require_GET
@@ -2398,7 +2402,9 @@ def serve_wizard_js(request):
     path = _FRONTEND / "wizard.js"
     if not path.is_file():
         return JsonResponse({"detail": "not found"}, status=404)
-    return FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")
+    resp = FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")
+    resp["Cache-Control"] = "no-cache"
+    return resp
 
 
 @require_GET
@@ -2406,7 +2412,9 @@ def serve_plan_map_js(request):
     path = _FRONTEND / "plan-map.js"
     if not path.is_file():
         return JsonResponse({"detail": "not found"}, status=404)
-    return FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")
+    resp = FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")
+    resp["Cache-Control"] = "no-cache"
+    return resp
 
 
 @require_GET
@@ -2414,7 +2422,9 @@ def serve_link_preview_js(request):
     path = _FRONTEND / "link-preview.js"
     if not path.is_file():
         return JsonResponse({"detail": "not found"}, status=404)
-    return FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")
+    resp = FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")
+    resp["Cache-Control"] = "no-cache"
+    return resp
 
 
 @require_GET
@@ -2422,7 +2432,9 @@ def serve_region_areas_js(request):
     path = _FRONTEND / "region-areas.js"
     if not path.is_file():
         return JsonResponse({"detail": "not found"}, status=404)
-    return FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")
+    resp = FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")
+    resp["Cache-Control"] = "no-cache"
+    return resp
 
 
 @require_GET
@@ -2430,4 +2442,6 @@ def serve_maps_open_url_js(request):
     path = _FRONTEND / "maps-open-url.js"
     if not path.is_file():
         return JsonResponse({"detail": "not found"}, status=404)
-    return FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")
+    resp = FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")
+    resp["Cache-Control"] = "no-cache"
+    return resp

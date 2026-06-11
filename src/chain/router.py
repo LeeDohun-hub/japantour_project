@@ -6137,7 +6137,7 @@ def _score_wizard_plan_quality(
     # 규칙 9: 관광 슬롯에 식사 후보 URL 삽입 (카드 불일치)
     food_url_in_attr_days: set[int] = set()
     # 규칙 10: 관광목적지(후보군 중심점)에서 너무 먼 장소
-    _FAR_THRESHOLD_M = 40_000  # 40km 초과 시 실격
+    _FAR_THRESHOLD_M = 25_000   # 25km 초과 시 감점 (예: 서울→제주 460km)
     far_place_days: set[int] = set()
 
     def _flush() -> None:
@@ -6289,14 +6289,14 @@ def _score_wizard_plan_quality(
     # 가중치: 식사(60%) + URL(25%) + Day수일치(10%) + 중복페널티(-5%)
     # 규칙 8 위반: 헤더 형식 위반 day당 2점 차감
     # 규칙 9 위반: 카드 불일치 day당 3점 차감
-    # 규칙 10 위반: 목적지 40km 초과 장소 day당 3점 차감
+    # 규칙 10 위반: 목적지 25km 초과 장소 day당 10점 차감 (최대 35점) — 실질 실격
     meal_score  = (meal_ok / meal_expected * 60)  if meal_expected  else 60.0
     url_score   = (url_ok  / url_expected  * 25)  if url_expected   else 25.0
     day_score   = 10.0 if day_count_ok else 0.0
     dup_penalty           = min(5.0,  len(duplicate_attr_days)    * 1.0)
     header_penalty        = min(10.0, len(bad_header_days)        * 2.0)
     card_mismatch_penalty = min(15.0, len(food_url_in_attr_days)  * 3.0)
-    far_penalty           = min(15.0, len(far_place_days)         * 3.0)
+    far_penalty           = min(35.0, len(far_place_days)         * 10.0)
 
     raw = meal_score + url_score + day_score - dup_penalty - header_penalty - card_mismatch_penalty - far_penalty
     score = max(0, min(100, int(round(raw))))
