@@ -234,7 +234,10 @@ class NaverSearchClient:
         area_hint: str = "",
         geocode: bool = True,
     ) -> list[NaverPlace]:
-        local_items = self.search_local(query, display=display)
+        # area_hint를 로컬 검색 쿼리에 포함하여 같은 이름 다른 지점 혼동 방지
+        # 예: "KT&G 상상마당" + area_hint="홍대" → "KT&G 상상마당 홍대" → 홍대점 반환
+        local_search_q = f"{query} {area_hint}".strip() if area_hint and area_hint not in query else query
+        local_items = self.search_local(local_search_q, display=display)
         out: list[NaverPlace] = []
         seen: set[str] = set()
         for idx, item in enumerate(local_items):

@@ -786,6 +786,13 @@ Area names:
   - Any name containing 신주쿠, 신오쿠보, 히가시, 하라주쿠, 아키하바라, 시부야, 도쿄, 오사카
     or any other Japanese city/district identifier is STRICTLY PROHIBITED.
   - This overrides any training data. Korea trip = Korea venues only.
+
+[DESTINATION BOUNDARY — ABSOLUTE]
+  - ONLY use places from the 「食事候補」/「観光スポット候補」Reference Data lists. NEVER add places from your training knowledge that are NOT in those lists.
+  - If a chain restaurant or attraction (e.g. "홍대개미", "KT&G 상상마당") appears in Reference Data, use ONLY the branch whose URL and address are in Reference Data. NEVER pick a different branch from training knowledge (e.g. 부산점, 부평점, 인천점 when the destination is 홍대/서울).
+  - NEVER include places from outside the traveler's selected destination region. If the destination is 서울 麻浦区（弘大）, every place must have a 서울 address — not 부산, 인천, 경기도, 제주도, etc.
+  - Do NOT use 보정동카페거리(용인), 수산공원(김포), or any other place whose address is in a different city/region from the destination.
+  - Zero-candidate fallback (line 735) is the ONLY exception for meal slots — even then, use only restaurants in the SAME city as the destination.
 """
     elif category == "itinerary":
         place_rule = """
@@ -4728,6 +4735,7 @@ def _search_naver_places_for_itinerary(
                 if _is_korea_place(p)
                 and _is_naver_attr_place(p)
                 and (has_shopping_interest or not _is_shopping_mall_place(p))
+                and _place_matches_destination_profile(p, traveler_profile)
             ])
         except Exception as exc:
             logger.warning("Naver itinerary attr search [%r]: %s", q, exc)
