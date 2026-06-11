@@ -3600,7 +3600,10 @@ function _renderMapsUnresolvedFallback(url, queryLabel) {
   console.debug?.("Plan place link omitted: unresolved place detail", { url, query: q });
   // For Naver search URLs show a minimal clickable link so the user can still find the place
   if (q && /map\.naver\.com[^\s]*\/search\//i.test(url)) {
-    return `<a class="plan-place-search-link" href="${_escapeHtml(url)}" target="_blank" rel="noopener">🔍 ${_escapeHtml(q)}</a>`;
+    // 좌표("37.1234,126.5678") 쿼리는 map.naver.com 그대로, 이름 쿼리(축제·공연 등)는 search.naver.com으로
+    const isCoordQuery = /^-?[\d.]+,-?[\d.]+$/.test(q.trim());
+    const href = isCoordQuery ? url : `https://search.naver.com/search.naver?query=${encodeURIComponent(q)}`;
+    return `<a class="plan-place-search-link" href="${_escapeHtml(href)}" target="_blank" rel="noopener">🔍 ${_escapeHtml(q)}</a>`;
   }
   return "";
 }
@@ -3674,7 +3677,6 @@ function _placeGuideLine(p) {
 
 function _renderInlinePlaceCard(p) {
   const name = _escapeHtml(p.name || "");
-  const guide = _placeGuideLine(p);
   const rating = p.rating ? `★${Number(p.rating).toFixed(1)}` : "";
   const reviews = p.user_rating_count
     ? `<span class="plan-place-card__reviews">(${Number(p.user_rating_count).toLocaleString()}件)</span>`
@@ -3716,7 +3718,7 @@ function _renderInlinePlaceCard(p) {
   const meta = [rating && `<span class="plan-place-card__rating">${rating}${reviews}</span>`, naverScore && `<span class="plan-place-card__rating">${naverScore}${blogRefs}</span>`, keywordHtml, openBadge, priceLabel]
     .filter(Boolean).join("");
   const thumbLink = mapsUri || dirUri;
-  return `<div class="plan-inline-spot"><article class="plan-place-card"><a class="plan-place-card__thumb-link" href="${_escapeHtml(thumbLink)}" target="_blank" rel="noopener">${thumb}<span class="plan-place-card__photo-label">${p.photo_name || naverPhotoUrl ? "外観写真" : "Naver"}</span></a><div class="plan-place-card__body"><h4 class="plan-place-card__name">${name}</h4><p class="plan-place-card__guide">${_escapeHtml(guide)}</p>${meta ? `<div class="plan-place-card__meta">${meta}</div>` : ""}${addr}<div class="plan-place-card__actions">${mapsUri ? `<a href="${_escapeHtml(mapsUri)}" target="_blank" rel="noopener" class="plan-place-card__btn">地図</a>` : ""}<a href="${_escapeHtml(dirUri)}" target="_blank" rel="noopener" class="plan-place-card__btn plan-place-card__btn--route">経路</a></div></div></article></div>`;
+  return `<div class="plan-inline-spot"><article class="plan-place-card"><a class="plan-place-card__thumb-link" href="${_escapeHtml(thumbLink)}" target="_blank" rel="noopener">${thumb}<span class="plan-place-card__photo-label">${p.photo_name || naverPhotoUrl ? "外観写真" : "Naver"}</span></a><div class="plan-place-card__body"><h4 class="plan-place-card__name">${name}</h4>${meta ? `<div class="plan-place-card__meta">${meta}</div>` : ""}${addr}<div class="plan-place-card__actions">${mapsUri ? `<a href="${_escapeHtml(mapsUri)}" target="_blank" rel="noopener" class="plan-place-card__btn">地図</a>` : ""}<a href="${_escapeHtml(dirUri)}" target="_blank" rel="noopener" class="plan-place-card__btn plan-place-card__btn--route">経路</a></div></div></article></div>`;
 }
 
 const _PLAN_CLOCK_RE = /\[[\d０-９]{1,2}\s*[:：]\s*[\d０-９]{2}[^\]]*\]/g;
@@ -3854,6 +3856,10 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
       if (q && (current === q || current.includes(q) || q.includes(current))) {
         return true;
       }
+      // 이름이 불일치해도 URL이 실제 장소 카드로 해결되면 prose 억제.
+      // LLM이 "장소A" 라고 쓰고 URL은 "장소B"를 가리킬 때
+      // "장소A 설명 + 장소B 카드" 이중 출력을 막는다.
+      if (place) return true;
     }
     return false;
   };
@@ -3965,7 +3971,12 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim();
     if (!trimmed) continue;
-    if (lineLooksLikePlaceLabelBeforeUrl(lines[i], lines[i + 1] || "")) {
+    // 빈 줄을 건너뛰고 다음 비어있지 않은 줄을 찾아서 URL 존재 여부 확인
+    let nextNonEmpty = "";
+    for (let j = i + 1; j < lines.length; j++) {
+      if (lines[j].trim()) { nextNonEmpty = lines[j]; break; }
+    }
+    if (lineLooksLikePlaceLabelBeforeUrl(lines[i], nextNonEmpty)) {
       continue;
     }
 

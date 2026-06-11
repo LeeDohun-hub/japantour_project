@@ -271,7 +271,7 @@ class NaverSearchClient:
                 review_keywords=keywords,
                 recent_bonus=recent_bonus,
             )
-            maps_url = naver_map_search_url(f"{name} {area_hint}".strip(), lat, lng)
+            maps_url = naver_map_search_url(name, lat, lng)
             out.append(
                 NaverPlace(
                     name=name,

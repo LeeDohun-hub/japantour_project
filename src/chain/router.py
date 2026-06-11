@@ -727,6 +727,7 @@ Real-time place search data is not available. Give a helpful answer using genera
 [ITINERARY PLACE RULE]
 STRICT SECTION USAGE — NON-NEGOTIABLE:
   - [午前] slots: ONLY use entries from 「観光スポット候補（食事には使わない）」. NEVER place any restaurant, cafe, food stall, bar, dessert shop, market-food stop, or eating/drinking venue in 午前. Each slot = ONE attraction name + ONE Naver map URL. Do NOT add a second attraction URL as a "companion" in the same slot.
+  - ABSOLUTE — Naver map URL search queries MUST be written in Korean or romanized English. NEVER use Japanese characters in a Naver map URL search term. Wrong: map.naver.com/p/search/幸州山城歴史公園 — Right: map.naver.com/p/search/행주산성%20역사공원. Copy URLs verbatim from Reference Data; when generating a fallback URL, use the Korean official name only.
   - [午後] slots: use entries from 「観光スポット候補（食事には使わない）」, and when the traveler selected cafe/coffee/cafe hopping, add at most one concrete 「カフェ候補」 as an afternoon location-card stop after at least one non-food stop. Each slot = ONE attraction name + ONE Naver map URL.
   - [夜/밤] slots: ONLY sightseeing venues (night view, walk, park, cultural street, market browsing). NEVER place a 食事候補 restaurant in [夜/밤] — put it in [夕食] instead.
   - [昼食] and [夕食] slots: ONLY use entries from 「食事候補」. NEVER use 観光スポット候補 entries as meal items. NEVER leave these slots empty on a sightseeing day — if no candidate, use the ZERO-CANDIDATE EXCEPTION below.
@@ -4188,6 +4189,7 @@ def _build_itinerary_food_queries(
         add("성심당 대전 본점")
 
     queries = _sort_food_queries_by_tourism_priority(queries, traveler_profile)
+    queries = queries[:12]  # Naver API 호출 수 제한 — 타임아웃 방지
     logger.info("itinerary food queries: %s", queries)
     return queries
 
@@ -6066,6 +6068,7 @@ def _score_wizard_plan_quality(
     7. [5%]  plan Day 수가 traveler_profile.days와 일치하는가
     8. [bonus] 일자 헤더에 ★·지역명 등 추가 텍스트가 있으면 실격 패널티
     9. [bonus] 관광 슬롯에 식사 후보 URL이 삽입되면 실격 (카드 불일치)
+    10. [bonus] 플랜 URL 좌표가 후보군 중심점에서 40km 초과이면 실격 (day당 3점 차감, 최대 15점)
     """
     if not plan_text:
         return 0, ["plan_empty"]
@@ -6074,6 +6077,10 @@ def _score_wizard_plan_quality(
     food_names: set[str] = set()
     attr_names: set[str] = set()
     food_url_keys: set[str] = set()
+    # 규칙 10: 좌표 기반 목적지 중심점 계산용
+    _dest_lats: list[float] = []
+    _dest_lngs: list[float] = []
+    _url_key_to_coords: dict[str, tuple[float, float]] = {}
     for p in (places or []):
         key = _norm_plan_place_name(p.name)
         url_key = _plan_maps_url_key(p.google_maps_uri) if p.google_maps_uri else ""
@@ -6085,6 +6092,18 @@ def _score_wizard_plan_quality(
         elif not _is_meal_candidate_place(p) and not _is_cafe_candidate_place(p):
             if key:
                 attr_names.add(key)
+        lat = getattr(p, "latitude", None)
+        lng = getattr(p, "longitude", None)
+        if lat is not None and lng is not None:
+            try:
+                _dest_lats.append(float(lat))
+                _dest_lngs.append(float(lng))
+                if url_key:
+                    _url_key_to_coords[url_key] = (float(lat), float(lng))
+            except (TypeError, ValueError):
+                pass
+    _dest_lat = sum(_dest_lats) / len(_dest_lats) if _dest_lats else None
+    _dest_lng = sum(_dest_lngs) / len(_dest_lngs) if _dest_lngs else None
 
     try:
         total_days = int((traveler_profile or {}).get("days") or 0) or None
@@ -6117,6 +6136,9 @@ def _score_wizard_plan_quality(
     bad_header_days: set[int] = set()
     # 규칙 9: 관광 슬롯에 식사 후보 URL 삽입 (카드 불일치)
     food_url_in_attr_days: set[int] = set()
+    # 규칙 10: 관광목적지(후보군 중심점)에서 너무 먼 장소
+    _FAR_THRESHOLD_M = 40_000  # 40km 초과 시 실격
+    far_place_days: set[int] = set()
 
     def _flush() -> None:
         nonlocal slot_has_url, slot_name_keys
@@ -6170,6 +6192,29 @@ def _score_wizard_plan_quality(
                             duplicate_attr_days.add(current_day)
                     else:
                         seen_attr_url_keys[uk] = current_day
+            # 규칙 10: URL의 좌표(?c=lng,lat)와 목적지 중심점 거리 체크
+            if _dest_lat is not None:
+                for m in _MAPS_URL_IN_TEXT_RE.finditer(s):
+                    raw_url = m.group(0)
+                    # ?c=lng,lat 패턴에서 좌표 추출
+                    coord_m = re.search(r'\?c=(-?[\d.]+),(-?[\d.]+)', raw_url)
+                    if coord_m:
+                        try:
+                            url_lng = float(coord_m.group(1))
+                            url_lat = float(coord_m.group(2))
+                            dist = _haversine_m(_dest_lat, _dest_lng, url_lat, url_lng)
+                            if dist > _FAR_THRESHOLD_M:
+                                far_place_days.add(current_day)
+                        except (TypeError, ValueError):
+                            pass
+                    else:
+                        # URL key로 places 리스트 좌표 매핑 체크
+                        uk2 = _plan_maps_url_key(raw_url)
+                        if uk2 in _url_key_to_coords:
+                            clat, clng = _url_key_to_coords[uk2]
+                            dist = _haversine_m(_dest_lat, _dest_lng, clat, clng)
+                            if dist > _FAR_THRESHOLD_M:
+                                far_place_days.add(current_day)
         if current_slot in ("lunch", "dinner") and current_day is not None:
             if _MAPS_URL_IN_TEXT_RE.search(s):
                 slot_has_url = True
@@ -6234,20 +6279,26 @@ def _score_wizard_plan_quality(
     for mismatch_day in food_url_in_attr_days:
         failures.append(f"day{mismatch_day}_food_url_in_attr_slot")
 
+    # G: 관광목적지와 너무 멀리 떨어진 장소 (규칙 10 — 감점 페널티)
+    for far_day in far_place_days:
+        failures.append(f"day{far_day}_far_from_destination")
+
     if meal_expected == 0 and url_expected == 0:
         return 100, []
 
     # 가중치: 식사(60%) + URL(25%) + Day수일치(10%) + 중복페널티(-5%)
     # 규칙 8 위반: 헤더 형식 위반 day당 2점 차감
     # 규칙 9 위반: 카드 불일치 day당 3점 차감
+    # 규칙 10 위반: 목적지 40km 초과 장소 day당 3점 차감
     meal_score  = (meal_ok / meal_expected * 60)  if meal_expected  else 60.0
     url_score   = (url_ok  / url_expected  * 25)  if url_expected   else 25.0
     day_score   = 10.0 if day_count_ok else 0.0
-    dup_penalty        = min(5.0,  len(duplicate_attr_days)  * 1.0)
-    header_penalty     = min(10.0, len(bad_header_days)      * 2.0)
-    card_mismatch_penalty = min(15.0, len(food_url_in_attr_days) * 3.0)
+    dup_penalty           = min(5.0,  len(duplicate_attr_days)    * 1.0)
+    header_penalty        = min(10.0, len(bad_header_days)        * 2.0)
+    card_mismatch_penalty = min(15.0, len(food_url_in_attr_days)  * 3.0)
+    far_penalty           = min(15.0, len(far_place_days)         * 3.0)
 
-    raw = meal_score + url_score + day_score - dup_penalty - header_penalty - card_mismatch_penalty
+    raw = meal_score + url_score + day_score - dup_penalty - header_penalty - card_mismatch_penalty - far_penalty
     score = max(0, min(100, int(round(raw))))
     return score, failures
 
@@ -6806,8 +6857,7 @@ def _fmt_visitkorea_festivals(items: list[TourApiItem]) -> str:
     lines = []
     n = 0
     for it in items[:24]:
-        uri = it.maps_uri()
-        if not uri:
+        if not it.title:
             continue
         n += 1
         if n > 12:
@@ -6818,7 +6868,10 @@ def _fmt_visitkorea_festivals(items: list[TourApiItem]) -> str:
             line += f" | {period}"
         if it.addr1:
             line += f" | {it.addr1}"
-        line += f"\n    地図: {uri}"
+        # 축제/행사는 좌표 기반 Naver Map 대신 이름 검색 URL 사용.
+        # 좌표 URL은 근처 식당이 잘못 매칭되는 문제 발생.
+        name_uri = f"https://map.naver.com/p/search/{urllib.parse.quote(it.title)}"
+        line += f"\n    地図: {name_uri}"
         lines.append(line)
     if not lines:
         return "(Visit Korea イベントデータなし)"
@@ -8307,13 +8360,17 @@ def route_and_answer(
         _f_kto_dl   = _pool.submit(_do_kto_datalab)
 
         def _do_itinerary_with_vk_priority() -> list:
-            # VK 완료 대기 후 관광지 목록을 priority 쿼리로 주입 — 하드코딩 앵커 대체
-            _vk_s, _vk_f, _vk_a, _ = _f_vk.result()
-            # 서울 구 단위 선택 시 해당 구 주소에 한정 (명동성당·광나루 등 타 구 차단)
-            _vk_a_filtered = _filter_vk_attractions_by_subarea(_vk_a, traveler_profile)
-            vk_pq = _vk_attraction_to_naver_queries(_vk_a_filtered, limit=20) if _vk_a_filtered else None
-            # VK 좌표 → NaverPlace 변환 (추가 API 호출 없음, Naver 중복 제거는 _search_naver 내부)
-            vk_extra = _vk_attractions_to_naver_places(_vk_a_filtered) if _vk_a_filtered else None
+            # VK 완료를 최대 10초만 대기. 느릴 경우 VK 없이 바로 Naver 검색 시작해
+            # 나머지 타임아웃을 최대한 음식/관광지 검색에 사용한다.
+            try:
+                _vk_s, _vk_f, _vk_a, _ = _f_vk.result(timeout=10)
+                _vk_a_filtered = _filter_vk_attractions_by_subarea(_vk_a, traveler_profile)
+                vk_pq = _vk_attraction_to_naver_queries(_vk_a_filtered, limit=20) if _vk_a_filtered else None
+                vk_extra = _vk_attractions_to_naver_places(_vk_a_filtered) if _vk_a_filtered else None
+            except concurrent.futures.TimeoutError:
+                logger.warning("VK result timeout in itinerary_places worker — proceeding without VK priority")
+                vk_pq = None
+                vk_extra = None
             return _do_itinerary_places(priority_attr_queries=vk_pq, extra_attr_places=vk_extra)
 
         _f_itinerary_places = _pool.submit(_do_itinerary_with_vk_priority)
@@ -8345,7 +8402,7 @@ def route_and_answer(
         kto_datalab_context, kto_priority_queries = _timed(
             _f_kto_dl,  8,  ("", []),                                            "kto_datalab"
         )
-        itinerary_places     = _timed(_f_itinerary_places, 25, [],              "itinerary_places")
+        itinerary_places     = _timed(_f_itinerary_places, 35, [],              "itinerary_places")
         if kto_priority_queries:
             kto_itinerary_places = _do_itinerary_places(kto_priority_queries)
             itinerary_places = _merge_itinerary_places(

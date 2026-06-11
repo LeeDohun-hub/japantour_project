@@ -893,11 +893,22 @@
       if (!t || MAPS_URL_RE.test(t) || t.startsWith("http")) continue;
       if (_isPlanNoiseLine(t) || _isRecommendationLine(t)) continue;
       if (DAY_HEADER_RE.test(t)) return "";
-      return t
+      let label = t
         .replace(/^\[[\d:〜~\-]+\]\s*/, "")
         .replace(/^[-・*①②③④⑤⑥⑦⑧⑨⑩]\s*/, "")
-        .replace(/（[^）]*）$/g, "")
         .trim();
+      // Extract 「place name」 or 『place name』 if the line wraps the name in brackets
+      const qm = label.match(/[「『]([^」』]{1,40})[」』]/);
+      if (qm) return qm[1].trim();
+      // Strip full-width parentheticals anywhere in label
+      label = label.replace(/（[^）]{1,40}）/g, "").trim();
+      // Strip half-width trailing parentheticals
+      label = label.replace(/\s*\([^)]{1,40}\)\s*$/, "").trim();
+      // Strip Japanese activity descriptions after particles (で, を, に, は, が + verb)
+      label = label.replace(/\s*[でをにはが].+$/, "").trim();
+      // Strip Korean activity descriptions after 에서 + space (location-action pattern)
+      label = label.replace(/\s*에서\s+.+$/, "").trim();
+      return label;
     }
     return "";
   }
