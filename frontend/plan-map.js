@@ -54,8 +54,10 @@
   let _mapMeta = {};
   let _originalReply = "";
   let _routeRenderSeq = 0;
+  let _routeDisplayMode = "car"; // "car" | "transit" | "walk"
   const _lockedStops = new Map();
   const _drivingRouteCache = new Map();
+  const _transitRouteCache = new Map();
 
   function esc(s) {
     return String(s || "").replace(/[&<>"']/g, (c) =>
@@ -237,13 +239,15 @@
   }
 
   function _selectedTransportHasCarRoute() {
-    const transport = Array.isArray(_mapMeta?.transport) ? _mapMeta.transport : [];
-    return transport.some((t) => ["taxi", "rental"].includes(String(t || "").toLowerCase()));
+    return _routeDisplayMode === "car";
   }
 
   function _selectedTransportHasTransitRoute() {
-    const transport = Array.isArray(_mapMeta?.transport) ? _mapMeta.transport : [];
-    return transport.some((t) => ["rail", "arex", "subway", "bus"].includes(String(t || "").toLowerCase()));
+    return _routeDisplayMode === "transit";
+  }
+
+  function _selectedTransportIsWalk() {
+    return _routeDisplayMode === "walk";
   }
 
 
@@ -312,6 +316,30 @@
     } catch (err) {
       console.warn("airport driving route failed", err);
       _drivingRouteCache.set(key, null);
+      return null;
+    }
+  }
+
+  async function _fetchTransitRoute(from, to) {
+    if (!_hasRouteCoords(from) || !_hasRouteCoords(to)) return null;
+    const key = [
+      Number(from.lng).toFixed(4), Number(from.lat).toFixed(4),
+      Number(to.lng).toFixed(4), Number(to.lat).toFixed(4),
+    ].join(",");
+    if (_transitRouteCache.has(key)) return _transitRouteCache.get(key);
+    const qs = new URLSearchParams({
+      start_lat: String(from.lat), start_lng: String(from.lng),
+      goal_lat: String(to.lat),   goal_lng: String(to.lng),
+    });
+    try {
+      const res = await fetch(`/api/maps/transit-route/?${qs}`);
+      const data = await res.json();
+      const route = res.ok && data?.ok && Array.isArray(data.route?.path) ? data.route : null;
+      _transitRouteCache.set(key, route);
+      return route;
+    } catch (err) {
+      console.warn("transit route failed", err);
+      _transitRouteCache.set(key, null);
       return null;
     }
   }
@@ -1286,8 +1314,29 @@
 
     if (segment && _hasRouteCoords(segment.from) && _hasRouteCoords(segment.to)) {
       if (_selectedTransportHasTransitRoute()) {
-        // 대중교통은 직선 표시 + 하단 Naver 버튼으로 경로 안내 (폴리라인 미지원)
-        showMapStatus("");
+        showMapStatus("公共交通ルートを読み込み中…");
+        const route = await _fetchTransitRoute(segment.from, segment.to);
+        if (renderSeq !== _routeRenderSeq) return;
+        if (route?.path?.length >= 2) {
+          const transitPath = route.path
+            .map((p) => {
+              const lat = Number(p.lat);
+              const lng = Number(p.lng);
+              if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+              const pos = new nmap.LatLng(lat, lng);
+              bounds.extend(pos);
+              return pos;
+            })
+            .filter(Boolean);
+          if (transitPath.length >= 2) {
+            routePath = transitPath;
+            routeStroke = "#7C3AED";
+            renderDayStops(day);
+            showMapStatus("");
+          }
+        } else {
+          showMapStatus("公共交通ルートを取得できないため、目安線を表示しています。", true);
+        }
       } else if (_selectedTransportHasCarRoute()) {
         showMapStatus("車ルートを読み込み中…");
         const route = await _fetchAirportDrivingRoute(segment);
@@ -1314,40 +1363,56 @@
           day._airportDrivingRoute = null;
           showMapStatus("車ルートを取得できないため、地点間の目安線を表示しています。", true);
         }
+      } else {
+        // 도보 — straight dashed line
+        showMapStatus("");
+        routeStroke = "#6B7280";
       }
     } else if (stops.length >= 2) {
-      // 관광 스팟 간 경로: Naver Direction 5 로 실제 도로 경로 표시 (직선 대체)
-      showMapStatus("ルートを読み込み中…");
-      const routePoints = await _fetchDayStopsRoute(stops);
-      if (renderSeq !== _routeRenderSeq) return;
-      if (routePoints && routePoints.length >= 2) {
-        const drivingPath = routePoints
-          .map((p) => {
-            const lat = Number(p.lat);
-            const lng = Number(p.lng);
-            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-            const pos = new nmap.LatLng(lat, lng);
-            bounds.extend(pos);
-            return pos;
-          })
-          .filter(Boolean);
-        if (drivingPath.length >= 2) {
-          routePath = drivingPath;
-          routeStroke = "#2B6CB0";
+      if (_selectedTransportIsWalk()) {
+        // 도보: 직선 표시
+        routeStroke = "#6B7280";
+        showMapStatus("");
+      } else if (_selectedTransportHasTransitRoute()) {
+        // 대중교통: 관광 스팟 간은 직선 점선 표시 (ODsay는 공항↔숙소 구간 전용)
+        routeStroke = "#7C3AED";
+        showMapStatus("");
+      } else {
+        // 자동차: Naver Directions 5 실제 도로 경로
+        showMapStatus("ルートを読み込み中…");
+        const routePoints = await _fetchDayStopsRoute(stops);
+        if (renderSeq !== _routeRenderSeq) return;
+        if (routePoints && routePoints.length >= 2) {
+          const drivingPath = routePoints
+            .map((p) => {
+              const lat = Number(p.lat);
+              const lng = Number(p.lng);
+              if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+              const pos = new nmap.LatLng(lat, lng);
+              bounds.extend(pos);
+              return pos;
+            })
+            .filter(Boolean);
+          if (drivingPath.length >= 2) {
+            routePath = drivingPath;
+            routeStroke = "#2B6CB0";
+          }
         }
+        showMapStatus("");
       }
-      showMapStatus("");
     }
 
     if (routePath.length >= 2) {
-      const isRouteData = routePath.length > path.length; // actual road path has more points
+      const isRouteData = routePath.length > path.length;
+      const isWalk = _selectedTransportIsWalk();
+      const isTransit = _selectedTransportHasTransitRoute();
       _polyline = new nmap.Polyline({
         map: _mapInstance,
         path: routePath,
         strokeColor: routeStroke,
         strokeOpacity: isRouteData ? 0.92 : 0.70,
         strokeWeight: isRouteData ? 5 : 3,
-        strokeStyle: isRouteData ? "solid" : "shortdash",
+        strokeStyle: (isWalk || (isTransit && routePath.length === path.length)) ? "shortdash" : isRouteData ? "solid" : "shortdash",
       });
     }
 
@@ -1871,6 +1936,26 @@
     const subEl = document.getElementById("planMapSubtitle");
     if (titleEl && meta?.title) titleEl.textContent = meta.title;
     if (subEl) subEl.textContent = meta?.subtitle || "マップの番号順にスポットを巡るルートです。";
+
+    // Route mode toggle
+    _routeDisplayMode = "car";
+    const toggleEl = document.getElementById("routeModeToggle");
+    if (toggleEl) {
+      toggleEl.style.display = "flex";
+      toggleEl.querySelectorAll(".route-mode-btn").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.mode === _routeDisplayMode);
+        btn.onclick = () => {
+          _routeDisplayMode = btn.dataset.mode;
+          toggleEl.querySelectorAll(".route-mode-btn").forEach((b) =>
+            b.classList.toggle("active", b.dataset.mode === _routeDisplayMode)
+          );
+          _drivingRouteCache.clear();
+          _transitRouteCache.clear();
+          const activeDay = _planDays.find((d) => d.day === _activeDay) || _planDays[0];
+          if (activeDay) renderMapForDay(activeDay);
+        };
+      });
+    }
 
     // Start on the first day that has actual tourist stops (not just airport/accommodation).
     // Arrival days (Day 1) are often empty or have only anchor stops, so skip them.

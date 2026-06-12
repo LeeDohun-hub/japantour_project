@@ -1716,6 +1716,26 @@ a.btn {
   text-align: center;
 }
 .plan-map-fallback a { color: var(--accent); font-weight: 600; }
+.route-mode-toggle {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  margin: 0.75rem 0 0.5rem;
+  flex-wrap: wrap;
+}
+.route-mode-btn {
+  padding: 0.38rem 1rem;
+  border-radius: 999px;
+  border: 1.5px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.route-mode-btn:hover { border-color: #6366f1; color: #6366f1; }
+.route-mode-btn.active { background: #6366f1; border-color: #6366f1; color: #fff; }
 .plan-day-tabs {
   display: flex;
   flex-wrap: wrap;

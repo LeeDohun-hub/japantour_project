@@ -1,4 +1,4 @@
-/* Korea Travel Wizard — single-page 9-step flow */
+/* Korea Travel Wizard — single-page 7-step flow */
 
 function getCsrfToken() {
   return document.cookie.split(';')
@@ -7,7 +7,7 @@ function getCsrfToken() {
     ?.split('=')[1] ?? '';
 }
 
-const TOTAL_STEPS = 8;
+const TOTAL_STEPS = 7;
 let currentStep = 1;
 let currentUser = null;
 let wizardData = {};
@@ -21,7 +21,7 @@ const wizNavBar  = $("wizNavBar");
 const wizBtnBack = $("wizBtnBack");
 const wizBtnNext = $("wizBtnNext");
 
-const STEP_LABELS = ["ログイン","フライト","宿泊","交通","観光","予算","詳細","プラン"];
+const STEP_LABELS = ["ログイン","フライト","宿泊","観光","予算","詳細","プラン"];
 
 // ── INIT ──────────────────────────────────────────────────────────────────
 async function init() {
@@ -29,7 +29,6 @@ async function init() {
   setupStep1();
   setupStep2();
   setupStep3();
-  setupChipGroup("transportChips",       false);
   setupChipGroup("regionChips",          true);
   setupRegionCityPicker();
   setupChipGroup("activityChips",        false);
@@ -60,7 +59,6 @@ async function init() {
   setupVacationDetailToggle();
   setupStep6();
   setupNavigation();
-  setupTransportInfo();
   setupAddrDropdown();
   setupUndecidedAddrDropdown();
   setupHotelManualSearch();
@@ -134,8 +132,7 @@ function goToStep(step, options = {}) {
     wizBtnNext.textContent = step === TOTAL_STEPS - 1 ? "プランを生成 ✨" : "次へ";
   }
 
-  if (step === 4) syncTransportChipsForAirport();
-  if (step === 5) {
+  if (step === 4) {
     restoreRegionCityStep();
     syncSportsChipsForRegion();
   }
@@ -255,21 +252,11 @@ function validate(step) {
     }
     if (err) err.style.display = "none";
   }
-  if (step === 4) {
-    const selected = chips("transportChips");
-    const err = $("transportError");
-    if (!selected.length) {
-      if (err) err.hidden = false;
-      $("transportChips")?.scrollIntoView({ behavior: "smooth", block: "center" });
-      return false;
-    }
-    if (err) err.hidden = true;
-  }
-  if (step === 6) {
+  if (step === 5) {
     const errEl = $("budgetTotalError");
     if (errEl) errEl.textContent = "";
   }
-  if (step === 5) {
+  if (step === 4) {
     const regions = chips("regionChips");
     const areaErr = $("regionAreaError");
     if (!regions.length) {
@@ -341,10 +328,7 @@ function collect(step) {
       };
       break;
     }
-    case 4:
-      wizardData.transport = chips("transportChips");
-      break;
-    case 5: {
+    case 4: {
       const selectedAreaKeys = chips("regionChips").slice(0, 1);
       wizardData.regionAreaKeys = selectedAreaKeys;
       wizardData.regions = _regionBucketKeys(selectedAreaKeys);
@@ -367,7 +351,7 @@ function collect(step) {
       }
       break;
     }
-    case 6:
+    case 5:
       wizardData.budget = {
         currency: $("budgetCurrency").value,
         total:    $("budgetTotal").value,
@@ -376,7 +360,7 @@ function collect(step) {
         style:    chips("budgetStyleChips")[0] || "",
       };
       break;
-    case 7:
+    case 6:
       wizardData.additional = {
         companion:        chips("companionChips")[0]  || "",
         mobility:         chips("mobilityChips")[0]   || "",
@@ -834,7 +818,7 @@ function setupStep2() {
     }
     _clearFlightSelections();
     _scheduleFlightRefetch();
-    if (currentStep === 4) syncTransportChipsForAirport();
+    // transport step removed
   };
   $("flightTo")?.addEventListener("change", onAirportChange);
   $("flightFrom")?.addEventListener("change", onAirportChange);
@@ -1847,6 +1831,11 @@ function _buildPlanAutoDefaults(d) {
 }
 
 async function generatePlan(isReroll = false) {
+  // transport step removed — set reasonable default so LLM can plan accordingly
+  if (!wizardData.transport?.length) {
+    wizardData.transport = ["rail", "taxi", "bus"];
+  }
+
   const barEl    = $("planBar");
   const pctEl    = $("planPct");
   const statusEl = $("planStatus");
