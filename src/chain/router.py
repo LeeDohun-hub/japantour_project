@@ -2371,47 +2371,140 @@ def _fmt_penultimate_day_return_rule(
 
 
 _REGION_CHIP_TO_AREAS: dict[str, list[str]] = {
-    "seoul": ["명동", "홍대", "동대문", "강남", "성수동", "여의도", "잠실"],
-    "gyeonggi": ["가평", "고양", "수원", "경기광주", "파주", "용인", "안산", "양평", "화성", "과천"],
-    "incheon": ["인천", "송도"],
-    "busan": ["부산", "해운대", "광안리", "영도", "서면"],
-    "jeju": ["제주", "서귀포", "애월", "우도"],
-    "gangwon": ["속초", "강릉", "양양", "춘천", "평창", "정선", "동해", "삼척"],
+    # 서울특별시 25개 구 — 각 구의 대표 관광 지역명
+    "seoul": [
+        # 중구 (명동·을지로·남대문)
+        "명동", "을지로", "남대문",
+        # 종로구 (경복궁·인사동·북촌)
+        "종로", "북촌", "인사동",
+        # 용산구 (이태원·한남동)
+        "이태원", "한남동",
+        # 성동구 (성수동)
+        "성수동",
+        # 광진구 (건대)
+        "건대",
+        # 동대문구
+        "동대문",
+        # 성북구 (삼청동·성북동)
+        "삼청동", "성북동",
+        # 은평구 (은평한옥마을)
+        "은평한옥마을",
+        # 서대문구 (신촌)
+        "신촌",
+        # 마포구 (홍대·연남동·합정)
+        "홍대", "연남동", "합정",
+        # 영등포구 (여의도·영등포)
+        "여의도", "영등포",
+        # 강남구 (강남·압구정·청담·가로수길)
+        "강남", "압구정", "청담", "가로수길",
+        # 서초구 (서초·반포)
+        "서초", "반포",
+        # 송파구 (잠실·롯데월드)
+        "잠실",
+        # 강동구
+        "강동",
+        # 나머지 구 (관광 밀도 낮음 — 구 단위 검색)
+        "강북", "도봉", "노원", "중랑", "은평",
+        "양천", "강서", "구로", "금천", "동작", "관악",
+    ],
+    # 경기도 — 전 시·군
+    "gyeonggi": [
+        "가평", "고양", "수원", "경기광주", "파주", "용인", "안산", "양평", "화성", "과천",
+        "성남", "남양주", "안양", "부천", "의정부", "김포", "평택", "이천", "하남",
+        "시흥", "군포", "오산", "안성", "구리", "의왕", "광명", "양주", "동두천", "연천", "여주",
+    ],
+    # 인천광역시 — 전 구·군
+    "incheon": [
+        "인천", "송도", "강화", "부평", "인천 중구", "인천 남동구",
+        "인천 서구", "인천 동구", "인천 미추홀구", "인천 계양구", "검단", "옹진",
+    ],
+    # 부산광역시 — 전 구·군
+    "busan": [
+        "해운대", "광안리", "영도", "서면", "남포동", "자갈치",
+        "동래", "기장", "수영", "사하", "부산진", "연제",
+        "부산 남구", "부산 북구", "부산 동구", "부산 서구", "부산 강서", "금정",
+    ],
+    # 제주특별자치도 — 전 지역
+    "jeju": ["제주", "서귀포", "애월", "우도", "성산", "협재", "한림", "중문"],
+    # 강원특별자치도 — 전 시·군
+    "gangwon": [
+        "속초", "강릉", "양양", "춘천", "평창", "정선", "동해", "삼척",
+        "원주", "홍천", "영월", "화천", "인제", "철원", "양구", "고성", "횡성", "태백",
+    ],
     "chungcheong": _REGION_DEFAULT_AREAS["chungcheong"],
-    "chungbuk": ["단양", "제천", "충주", "청주", "보은", "괴산", "영동"],
-    "chungnam": ["태안", "공주", "부여", "서산", "보령", "아산", "당진"],
+    # 충청북도 — 전 시·군
+    "chungbuk": [
+        "단양", "제천", "충주", "청주", "보은", "괴산", "영동", "옥천", "음성", "진천", "증평",
+    ],
+    # 충청남도 — 전 시·군
+    "chungnam": [
+        "태안", "공주", "부여", "서산", "보령", "아산", "당진", "천안",
+        "논산", "홍성", "예산", "청양", "금산", "서천", "계룡",
+    ],
     "jeolla": _REGION_DEFAULT_AREAS["jeolla"],
-    "jeonbuk": ["전주", "남원", "무주", "부안", "군산", "고창", "완주"],
-    "jeonnam": ["여수", "순천", "담양", "해남", "구례", "강진", "완도"],
+    # 전북특별자치도 — 전 시·군
+    "jeonbuk": [
+        "전주", "남원", "무주", "부안", "군산", "고창", "완주",
+        "익산", "정읍", "순창", "진안", "장수", "임실", "김제",
+    ],
+    # 전라남도 — 전 시·군
+    "jeonnam": [
+        "여수", "순천", "담양", "해남", "구례", "강진", "완도", "진도",
+        "목포", "보성", "고흥", "장흥", "광양", "나주", "신안", "영암",
+        "화순", "무안", "영광", "함평", "장성", "곡성",
+    ],
     "gyeongsang": _REGION_DEFAULT_AREAS["gyeongsang"],
-    "gyeongbuk": ["경주", "안동", "포항", "영주", "영덕", "문경", "울진"],
-    "gyeongnam": ["통영", "거제", "남해", "하동", "합천", "진주", "김해"],
-    # 독립 광역시 — REGION_AREA_KEY_TO_AREAS와 동기화
-    "daegu": ["대구", "동성로", "수성못", "대구 중구", "대구 수성구"],
-    "gwangju": ["광주", "동명동", "양림동", "무등산", "광주 동구", "광주 남구"],
-    "daejeon": ["대전", "유성", "둔산", "성심당", "대전 중구", "대전 서구"],
-    "ulsan": ["울산", "태화강", "장생포", "간절곶", "울산 중구", "울산 남구"],
+    # 경상북도 — 전 시·군
+    "gyeongbuk": [
+        "경주", "안동", "포항", "영주", "영덕", "문경", "울진", "청송",
+        "봉화", "구미", "영천", "상주", "김천", "경산", "울릉",
+        "의성", "영양", "청도", "고령", "성주", "칠곡", "예천", "군위",
+    ],
+    # 경상남도 — 전 시·군
+    "gyeongnam": [
+        "통영", "거제", "남해", "하동", "합천", "진주", "김해", "창원",
+        "밀양", "사천", "산청", "함양", "거창", "양산", "의령", "함안", "창녕", "경남고성",
+    ],
+    # 독립 광역시 — 전 구·군 포함
+    "daegu": [
+        "대구", "동성로", "수성못", "서문시장", "팔공산",
+        "대구 중구", "대구 동구", "대구 서구", "대구 남구",
+        "대구 북구", "대구 수성구", "대구 달서구", "달성",
+    ],
+    "gwangju": [
+        "광주", "동명동", "양림동", "무등산", "충장로", "상무지구",
+        "광주 동구", "광주 서구", "광주 남구", "광주 북구", "광주 광산구",
+    ],
+    "daejeon": [
+        "대전", "유성", "둔산", "대전 중구", "대전 서구",
+        "대전 동구", "대전 유성구", "대덕",
+    ],
+    "ulsan": [
+        "울산", "태화강", "장생포", "간절곶",
+        "울산 중구", "울산 남구", "울산 동구", "울산 북구", "울주",
+    ],
     "sejong": ["세종"],
 }
 
 _REGION_AREA_KEY_TO_AREAS: dict[str, list[str]] = {
-    "seoul": _REGION_CHIP_TO_AREAS["seoul"],
-    "busan": ["부산", "해운대", "광안리", "영도", "서면"],
-    "daegu": ["대구", "동성로", "수성못"],
-    "incheon": _REGION_CHIP_TO_AREAS["incheon"],
-    "gwangju": ["광주", "동명동", "양림동", "무등산"],
-    "daejeon": ["대전", "유성", "둔산", "성심당"],
-    "ulsan": ["울산", "태화강", "장생포", "간절곶"],
-    "sejong": ["세종"],
+    # 독립 광역시는 _REGION_CHIP_TO_AREAS 참조 — 한 곳만 수정하면 동기화
+    "seoul":    _REGION_CHIP_TO_AREAS["seoul"],
+    "busan":    _REGION_CHIP_TO_AREAS["busan"],
+    "daegu":    _REGION_CHIP_TO_AREAS["daegu"],
+    "incheon":  _REGION_CHIP_TO_AREAS["incheon"],
+    "gwangju":  _REGION_CHIP_TO_AREAS["gwangju"],
+    "daejeon":  _REGION_CHIP_TO_AREAS["daejeon"],
+    "ulsan":    _REGION_CHIP_TO_AREAS["ulsan"],
+    "sejong":   _REGION_CHIP_TO_AREAS["sejong"],
     "gyeonggi": _REGION_CHIP_TO_AREAS["gyeonggi"],
-    "gangwon": _REGION_CHIP_TO_AREAS["gangwon"],
-    "chungbuk": ["단양", "제천", "충주", "청주", "보은", "괴산", "영동", "옥천", "음성", "진천", "증평"],
-    "chungnam": ["태안", "공주", "부여", "서산", "보령", "아산", "당진", "천안", "논산", "홍성", "예산", "청양", "금산", "서천", "계룡"],
-    "jeonbuk": ["전주", "남원", "무주", "부안", "군산", "고창", "완주", "익산", "정읍", "순창", "진안", "장수", "임실", "김제"],
-    "jeonnam": ["여수", "순천", "담양", "해남", "구례", "강진", "완도", "진도", "목포", "보성", "고흥", "장흥", "광양", "나주", "신안", "영암", "화순", "무안", "영광", "함평", "장성", "곡성"],
-    "gyeongbuk": ["경주", "안동", "포항", "영주", "영덕", "문경", "울진", "청송", "봉화", "구미", "영천", "상주", "김천", "경산", "울릉", "의성", "영양", "청도", "고령", "성주", "칠곡", "예천", "군위"],
-    "gyeongnam": ["통영", "거제", "남해", "하동", "합천", "진주", "김해", "창원", "밀양", "사천", "산청", "함양", "거창", "양산", "의령", "함안", "창녕", "경남고성"],
-    "jeju": _REGION_CHIP_TO_AREAS["jeju"],
+    "gangwon":  _REGION_CHIP_TO_AREAS["gangwon"],
+    "chungbuk": _REGION_CHIP_TO_AREAS["chungbuk"],
+    "chungnam": _REGION_CHIP_TO_AREAS["chungnam"],
+    "jeonbuk":  _REGION_CHIP_TO_AREAS["jeonbuk"],
+    "jeonnam":  _REGION_CHIP_TO_AREAS["jeonnam"],
+    "gyeongbuk": _REGION_CHIP_TO_AREAS["gyeongbuk"],
+    "gyeongnam": _REGION_CHIP_TO_AREAS["gyeongnam"],
+    "jeju":     _REGION_CHIP_TO_AREAS["jeju"],
 }
 
 _REGION_CHIP_LABELS_JA: dict[str, str] = {
@@ -6184,9 +6277,10 @@ def _score_wizard_plan_quality(
     early_depart   = _early_departure_blocks_meals(traveler_profile)
 
     def _meals_blocked(day_num: int | None) -> bool:
-        if day_num == 1 and late_arrival:
+        # Day 1 (arrival) and last day (departure) are anchor days — always empty by design
+        if day_num == 1:
             return True
-        if total_days and day_num == total_days and early_depart:
+        if total_days and day_num == total_days:
             return True
         return False
 
@@ -6354,23 +6448,26 @@ def _score_wizard_plan_quality(
                 else:
                     meal_ok += 1
 
-        # B: 관광 URL 존재
-        url_expected += 1
-        if day_has_any_url.get(day_num, False):
-            url_ok += 1
-        else:
-            failures.append(f"day{day_num}_no_map_url")
+        # B: 관광 URL 존재 (anchor day 제외)
+        if not _meals_blocked(day_num):
+            url_expected += 1
+            if day_has_any_url.get(day_num, False):
+                url_ok += 1
+            else:
+                failures.append(f"day{day_num}_no_map_url")
 
     # C: 중복 관광지 (감점 페널티 — 중복 day당 1점씩 차감)
     for dup_day in duplicate_attr_days:
         failures.append(f"day{dup_day}_duplicate_attr")
 
-    # D: Day 수 일치 (item 7)
+    # D: Day 수 일치 (item 7) — anchor day(마지막날) 제외
     plan_max_day = max(day_slots.keys(), default=0) if day_slots else 0
     day_count_ok = True
     if total_days and plan_max_day < total_days:
         day_count_ok = False
         for missing_day in range(plan_max_day + 1, total_days + 1):
+            if _meals_blocked(missing_day):
+                continue  # 입출국 anchor day는 entirely_missing 페널티 제외
             failures.append(f"day{missing_day}_entirely_missing")
 
     # E: 일자 헤더 형식 위반 (규칙 8 — 감점 페널티)

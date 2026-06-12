@@ -512,6 +512,9 @@ def _fetch_kopis_detail(mt20id: str, *, api_key: str, timeout: int) -> ET.Elemen
         return None
 
 
+_KOPIS_PAGE_SIZE = 100  # KOPIS API 페이지당 최대 rows
+
+
 def _fetch_kopis_genre(
     genre_code: str,
     genre_slug: str,
@@ -523,35 +526,45 @@ def _fetch_kopis_genre(
     rows: int,
     timeout: int,
 ) -> list[TicketPlatformEvent]:
-    try:
-        resp = _kopis_get(
-            "/pblprfr",
-            params={
-                "service": api_key,
-                "stdate": start_d.strftime("%Y%m%d"),
-                "eddate": end_d.strftime("%Y%m%d"),
-                "cpage": 1,
-                "rows": rows,
-                "shcate": genre_code,
-            },
-            timeout=timeout,
-        )
-        root = _parse_xml(resp.content)
-    except Exception as exc:
-        logger.warning("KOPIS list fetch failed [%s]: %s", genre_code, exc)
-        return []
-
     out: list[TicketPlatformEvent] = []
-    for db in root.findall(".//db"):
-        ev = _kopis_event_from_db(
-            db,
-            genre_page=genre_slug,
-            genre_label=genre_label,
-            detail=None,
-        )
-        if ev:
-            out.append(ev)
-    logger.info("KOPIS genre [%s] → %d performances", genre_code, len(out))
+    page = 1
+    while len(out) < rows:
+        fetch_size = min(_KOPIS_PAGE_SIZE, rows - len(out))
+        try:
+            resp = _kopis_get(
+                "/pblprfr",
+                params={
+                    "service": api_key,
+                    "stdate": start_d.strftime("%Y%m%d"),
+                    "eddate": end_d.strftime("%Y%m%d"),
+                    "cpage": page,
+                    "rows": fetch_size,
+                    "shcate": genre_code,
+                },
+                timeout=timeout,
+            )
+            root = _parse_xml(resp.content)
+        except Exception as exc:
+            logger.warning("KOPIS list fetch failed [%s] page=%d: %s", genre_code, page, exc)
+            break
+
+        dbs = root.findall(".//db")
+        if not dbs:
+            break
+        for db in dbs:
+            ev = _kopis_event_from_db(
+                db,
+                genre_page=genre_slug,
+                genre_label=genre_label,
+                detail=None,
+            )
+            if ev:
+                out.append(ev)
+        if len(dbs) < fetch_size:
+            break  # 마지막 페이지
+        page += 1
+
+    logger.info("KOPIS genre [%s] → %d performances (%d pages)", genre_code, len(out), page)
     return out
 
 
@@ -634,7 +647,7 @@ def fetch_ticket_platform_events(
 
     merged: list[TicketPlatformEvent] = []
     genres = _kopis_genres_for_profile(traveler_profile, genre_slugs)
-    rows_per_genre = max(8, min(30, max_total))
+    rows_per_genre = 600
     for genre_code, genre_slug, genre_label in genres:
         merged.extend(
             _fetch_kopis_genre(

@@ -2286,7 +2286,7 @@ function buildPrompt(isReroll = false) {
   const aMap = { food:"グルメ", shopping:"ショッピング", nightview:"夜景", tradition:"伝統文化",
                  festival:"祭り", hallyu:"韓流・K-pop", drama:"公演", kpop:"K-pop", cafe:"カフェ巡り",
                  nature:"自然", photo:"フォトスポット", sports:"スポーツ観戦", vacation:"バカンス" };
-  const vacMap = { hotel_poolvilla:"ホテルプールヴィラ", pension_poolvilla:"ペンションプールヴィラ", poolvilla:"プールヴィラ", camping:"キャンピング", beach:"ビーチ・海水浴場" };
+  const vacMap = { poolvilla:"プールヴィラ", camping:"キャンピング", beach:"ビーチ・海水浴場" };
   const tsMap = {
     experience:"体験・アクティビティ", sns_hot:"SNS人気スポット", nature:"自然と一緒に",
     must_see:"有名観光地は必須", healing:"ゆったり癒し", culture:"文化・芸術・歴史",
@@ -4062,6 +4062,19 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
           cardParts.push(emitCard(place));
         } else if (place) {
           rendered.add(_mapsUrlKey(url));
+          const _pid = place.place_id || "";
+          if (_pid.startsWith("anchor:") || _pid.startsWith("cafe-anchor:")) {
+            // anchorプレースはカードデータなし → Naver検索リンクで表示
+            const _anchorName = _pendingProse || place.name || "";
+            if (_anchorName) {
+              const _anchorHref = _escapeHtml(`https://map.naver.com/p/search/${encodeURIComponent(_anchorName)}`);
+              cardParts.push(`<a class="plan-place-search-link" href="${_anchorHref}" target="_blank" rel="noopener">🔍 ${_escapeHtml(_anchorName)}</a>`);
+            }
+          } else if (_pendingProse !== null) {
+            // その他のブロック（品質フィルタ等）: 場所名をテキストで表示（最終フォールバック）
+            cardParts.push(`<p class="plan-line">${_formatPlanTextLine(_pendingProse)}</p>`);
+          }
+          _pendingProse = null;
         } else if (!rendered.has(_mapsUrlKey(url))) {
           rendered.add(_mapsUrlKey(url));
           cardParts.push(
@@ -4071,6 +4084,11 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
         prose = prose.replace(url, "");
       }
       if (!cardParts.join("").trim() && urls.every(isUnresolvedMapsUrl)) {
+        // 未解決URLかつカード出力なしでも、pendingProse（場所名）があれば表示する
+        if (_pendingProse !== null) {
+          pushStep(`<p class="plan-line">${_formatPlanTextLine(_pendingProse)}</p>`);
+          _pendingProse = null;
+        }
         return;
       }
       prose = prose.replace(/^\s*[^:：\n]{1,40}[:：]\s*$/u, "").trim();
@@ -4087,7 +4105,13 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
       if (isUnresolvedMapsUrl(url)) {
         rendered.add(_mapsUrlKey(url));
         const fallback = _renderMapsUnresolvedFallback(url, placeIndexes.unresolved?.[_mapsUrlKey(url)], currentSlotKind);
-        if (fallback) pushStep(fallback);
+        if (fallback) {
+          pushStep(fallback);
+        } else if (_pendingProse !== null) {
+          // フォールバックなし（食事スロット等）でもpendingProseがあれば場所名を表示する
+          pushStep(`<p class="plan-line">${_formatPlanTextLine(_pendingProse)}</p>`);
+          _pendingProse = null;
+        }
         return;
       }
       const place = _lookupPlace(placeIndexes, url);
@@ -4095,6 +4119,18 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
         pushStep(emitCard(place));
       } else if (place) {
         rendered.add(_mapsUrlKey(url));
+        const _pid2 = place.place_id || "";
+        if (_pid2.startsWith("anchor:") || _pid2.startsWith("cafe-anchor:")) {
+          // anchorプレースはカードデータなし → Naver検索リンクで表示
+          const _anchorName2 = _pendingProse || place.name || "";
+          if (_anchorName2) {
+            const _anchorHref2 = _escapeHtml(`https://map.naver.com/p/search/${encodeURIComponent(_anchorName2)}`);
+            pushStep(`<a class="plan-place-search-link" href="${_anchorHref2}" target="_blank" rel="noopener">🔍 ${_escapeHtml(_anchorName2)}</a>`);
+          }
+        } else if (_pendingProse !== null) {
+          pushStep(`<p class="plan-line">${_formatPlanTextLine(_pendingProse)}</p>`);
+        }
+        _pendingProse = null;
       } else if (!rendered.has(_mapsUrlKey(url))) {
         rendered.add(_mapsUrlKey(url));
         pushStep(
@@ -4147,6 +4183,10 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
       if (lines[j].trim()) { nextNonEmpty = lines[j]; break; }
     }
     if (lineLooksLikePlaceLabelBeforeUrl(lines[i], nextNonEmpty)) {
+      // 前のpendingProseが消費されていない場合（カードブロック等）、先にテキスト出力する
+      if (_pendingProse !== null) {
+        pushStep(`<p class="plan-line">${_formatPlanTextLine(_pendingProse)}</p>`);
+      }
       _pendingProse = trimmed;
       continue;
     }
@@ -4244,7 +4284,7 @@ function _isMealPlaceForRefs(place) {
   if (_isFortunePlaceForRefs(place)) return false;
   if (_isCafePlaceForRefs(place)) return false;
   const blob = `${place?.name || ""} ${place?.address || ""} ${place?.category || ""} ${place?.primary_type || ""}`.toLowerCase();
-  return /식당|맛집|restaurant|한식|국밥|보쌈|족발|치킨|갈비|냉면|국수|분식|고기|해물|회\b/.test(blob);
+  return /식당|맛집|restaurant|음식점|한식|국밥|보쌈|족발|치킨|갈비|냉면|국수|분식|고기|해물|해산물|낙지|오징어|문어|조개|쭈꾸미|게장|굴밥|삼겹|소금구이|구이|찌개|전골|회\b/.test(blob);
 }
 
 function _isActivityPlaceForRefs(place) {
@@ -4595,7 +4635,66 @@ async function _enrichTicketVenuePlaces(events, placeIndexes) {
   }));
 }
 
+function _buildPlanConditionTagsHtml() {
+  const add = wizardData.additional || {};
+  const COMPANION = {
+    solo: "🧍 一人旅", couple: "💑 カップル", friends: "👫 友人",
+    family: "👨‍👩‍👧 ファミリー", parents: "👴 親との旅行",
+  };
+  const MOBILITY = {
+    any: "🚶 徒歩多め", stairs: "⚠ 階段少なめ", wheelchair: "♿ ベビーカー・車椅子",
+  };
+  const FOOD_PREF = {
+    grilled_meat: "🥩 焼肉・BBQ", bossam: "🐷 ポッサム・チョッパル", soup: "🍲 スープ・チゲ",
+    noodles: "🍜 麺料理", seafood: "🦐 海鮮・刺身", chicken: "🍗 韓国チキン",
+    snack: "🌭 粉食・軽食", cafe: "☕ カフェ・スイーツ",
+  };
+  const FOOD_AVOID = {
+    no_spicy: "🌶 辛みNG", allergy: "⚕ アレルギー", vegan: "🥗 ベジタリアン", no_pork: "🐷 豚肉なし",
+  };
+  const PACE = { packed: "⚡ びっしり詰め込む", relaxed: "☁ のんびり余裕" };
+  const STYLE = {
+    experience: "🎯 体験", sns_hot: "📱 SNS人気", nature: "🌲 自然",
+    must_see: "📍 有名観光地", healing: "🧘 癒し", culture: "🎨 文化・歴史",
+    local_vibe: "✨ 雰囲気", shop_hard: "🛒 ショッピング", food_first: "🍽 グルメ優先",
+  };
+  const LANG = { jp_first: "🇯🇵 日本語", kr_ok: "🇰🇷 韓国語も" };
+
+  function tag(cls, text) {
+    return `<span class="plan-cond-tag plan-cond-tag--${cls}">${text}</span>`;
+  }
+
+  const tags = [];
+  if (add.companion && COMPANION[add.companion]) tags.push(tag("companion", COMPANION[add.companion]));
+  if (add.mobility && MOBILITY[add.mobility]) tags.push(tag("mobility", MOBILITY[add.mobility]));
+  for (const v of (add.foodPreferences || [])) {
+    if (FOOD_PREF[v]) tags.push(tag("food", FOOD_PREF[v]));
+  }
+  for (const v of (add.foodAvoid || [])) {
+    if (FOOD_AVOID[v]) tags.push(tag("avoid", FOOD_AVOID[v]));
+  }
+  if (add.pace && PACE[add.pace]) tags.push(tag("pace", PACE[add.pace]));
+  for (const v of (add.travelStyles || [])) {
+    if (STYLE[v]) tags.push(tag("style", STYLE[v]));
+  }
+  if (add.language && LANG[add.language]) tags.push(tag("lang", LANG[add.language]));
+  if (!add.auto && add.note && add.note.trim()) {
+    const short = _escapeHtml(add.note.trim().slice(0, 28)) + (add.note.trim().length > 28 ? "…" : "");
+    tags.push(tag("note", `📝 ${short}`));
+  }
+
+  if (!tags.length) return "";
+  return `<span class="plan-cond-label">生成条件</span>` + tags.join("");
+}
+
 async function _displayPlanOutput(data) {
+  const condEl = $("planConditionTags");
+  if (condEl) {
+    const html = _buildPlanConditionTagsHtml();
+    condEl.innerHTML = html;
+    condEl.style.display = html ? "flex" : "none";
+  }
+
   let reply = data.reply || "";
   const placeIndexes = _buildPlaceIndexes(data.places || []);
   const lines = reply.split(/\r?\n/);

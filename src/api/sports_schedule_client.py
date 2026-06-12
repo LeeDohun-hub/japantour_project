@@ -163,6 +163,18 @@ _REGION_CHIP_CENTROIDS: dict[str, tuple[float, float]] = {
     "gyeongsang": (35.1796, 129.0756),
     "busan": (35.1796, 129.0756),
     "jeju": (33.4996, 126.5312),
+    # 독립 광역시 — REGION_BUCKET_BY_AREA 에서 자체 키 사용
+    "gwangju": (35.1595, 126.8526),   # 광주광역시 (KIA챔피언스필드)
+    "daejeon": (36.3174, 127.4294),   # 대전광역시 (한화생명이글스파크)
+    "daegu": (35.8419, 128.6814),     # 대구광역시 (삼성라이온즈파크)
+    "ulsan": (35.5384, 129.3114),     # 울산광역시 (문수경기장)
+    "sejong": (36.4801, 127.2891),    # 세종특별자치시 (경기장 없음, 도심 중앙)
+    "jeonbuk": (35.8683, 127.1286),   # 전북특별자치도 (전주월드컵)
+    "jeonnam": (34.8161, 126.4630),   # 전라남도 (목포 일대 중심)
+    "chungbuk": (36.6356, 127.4914),  # 충청북도 (청주)
+    "chungnam": (36.6588, 126.6728),  # 충청남도 (천안·아산)
+    "gyeongbuk": (36.5760, 128.5056), # 경상북도 (안동 일대)
+    "gyeongnam": (35.4606, 128.2132), # 경상남도 (창원)
 }
 
 _AREA_KEY_TO_SPORTS_REGION: dict[str, str] = {
@@ -173,12 +185,19 @@ _AREA_KEY_TO_SPORTS_REGION: dict[str, str] = {
     "incheon": "incheon",
     "gangwon": "gangwon",
     "chungcheong": "chungcheong",
+    "chungbuk": "chungbuk",
+    "chungnam": "chungnam",
     "jeolla": "jeolla",
+    "jeonbuk": "jeonbuk",
+    "jeonnam": "jeonnam",
     "gyeongsang": "gyeongsang",
-    "gyeongbuk": "gyeongsang",
-    "gyeongnam": "gyeongsang",
-    "daegu": "gyeongsang",
-    "ulsan": "gyeongsang",
+    "gyeongbuk": "gyeongbuk",
+    "gyeongnam": "gyeongnam",
+    "daegu": "daegu",
+    "ulsan": "ulsan",
+    "gwangju": "gwangju",
+    "daejeon": "daejeon",
+    "sejong": "sejong",
 }
 
 _REGION_CHIP_EXTRA_CENTERS: dict[str, list[tuple[float, float]]] = {
