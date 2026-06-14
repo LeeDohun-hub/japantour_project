@@ -1,6 +1,6 @@
 """한국관광공사 관광정보 API (TourAPI 4.0 — JpnService2).
 
-공공데이터포털 인증키: INCHEONTRANSPORT_API_KEY (.env, data.go.kr 계정 공통)
+공공데이터포털 인증키: PUBLIC_API_KEY (.env, data.go.kr 계정 공통)
 Base: https://apis.data.go.kr/B551011/JpnService2/
 
 주요 엔드포인트:
@@ -109,7 +109,7 @@ class KtoDataLabItem:
 
 def _service_key_from_env() -> str | None:
     return (
-        os.getenv("INCHEONTRANSPORT_API_KEY")
+        os.getenv("PUBLIC_API_KEY")
         or os.getenv("INCHEONAIRPORT_API_KEY")
     )
 
@@ -474,7 +474,7 @@ class VisitKoreaClient:
 
     def _base_params(self) -> dict[str, str]:
         if not self.service_key:
-            raise ValueError("INCHEONTRANSPORT_API_KEY가 설정되지 않았습니다.")
+            raise ValueError("PUBLIC_API_KEY가 설정되지 않았습니다.")
         return {
             "serviceKey": self.service_key,
             "MobileOS": MOBILE_OS,
@@ -638,7 +638,7 @@ class VisitKoreaClient:
         if not area_code:
             return [], "", "", 0
         if not self.service_key:
-            raise ValueError("INCHEONTRANSPORT_API_KEY가 설정되지 않았습니다.")
+            raise ValueError("PUBLIC_API_KEY가 설정되지 않았습니다.")
         params: dict[str, str] = {
             "serviceKey": self.service_key,
             "MobileOS": MOBILE_OS,
@@ -677,7 +677,7 @@ class VisitKoreaClient:
         out: dict[str, Any] = {"configured": self.is_configured}
 
         if not self.is_configured:
-            out["error"] = "INCHEONTRANSPORT_API_KEY missing"
+            out["error"] = "PUBLIC_API_KEY missing"
             return out
 
         try:

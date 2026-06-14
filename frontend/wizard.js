@@ -7,7 +7,7 @@ function getCsrfToken() {
     ?.split('=')[1] ?? '';
 }
 
-const TOTAL_STEPS = 8;
+const TOTAL_STEPS = 7;
 let currentStep = 1;
 let currentUser = null;
 let wizardData = {};
@@ -21,7 +21,7 @@ const wizNavBar  = $("wizNavBar");
 const wizBtnBack = $("wizBtnBack");
 const wizBtnNext = $("wizBtnNext");
 
-const STEP_LABELS = ["ログイン","フライト","宿泊","交通","観光","予算","詳細","プラン"];
+const STEP_LABELS = ["ログイン","フライト","宿泊","観光","予算","詳細","プラン"];
 
 // ── INIT ──────────────────────────────────────────────────────────────────
 async function init() {
@@ -29,7 +29,6 @@ async function init() {
   setupStep1();
   setupStep2();
   setupStep3();
-  setupChipGroup("transportChips",       false);
   setupChipGroup("regionChips",          true);
   setupRegionCityPicker();
   setupChipGroup("activityChips",        false);
@@ -60,7 +59,6 @@ async function init() {
   setupVacationDetailToggle();
   setupStep6();
   setupNavigation();
-  setupTransportInfo();
   setupAddrDropdown();
   setupUndecidedAddrDropdown();
   setupHotelManualSearch();
@@ -134,8 +132,7 @@ function goToStep(step, options = {}) {
     wizBtnNext.textContent = step === TOTAL_STEPS - 1 ? "プランを生成 ✨" : "次へ";
   }
 
-  if (step === 4) syncTransportChipsForAirport();
-  if (step === 5) {
+  if (step === 4) {
     restoreRegionCityStep();
     syncSportsChipsForRegion();
   }
@@ -255,21 +252,11 @@ function validate(step) {
     }
     if (err) err.style.display = "none";
   }
-  if (step === 4) {
-    const selected = chips("transportChips");
-    const err = $("transportError");
-    if (!selected.length) {
-      if (err) err.hidden = false;
-      $("transportChips")?.scrollIntoView({ behavior: "smooth", block: "center" });
-      return false;
-    }
-    if (err) err.hidden = true;
-  }
-  if (step === 6) {
+  if (step === 5) {
     const errEl = $("budgetTotalError");
     if (errEl) errEl.textContent = "";
   }
-  if (step === 5) {
+  if (step === 4) {
     const regions = chips("regionChips");
     const areaErr = $("regionAreaError");
     if (!regions.length) {
@@ -341,10 +328,7 @@ function collect(step) {
       };
       break;
     }
-    case 4:
-      wizardData.transport = chips("transportChips");
-      break;
-    case 5: {
+    case 4: {
       const selectedAreaKeys = chips("regionChips").slice(0, 1);
       wizardData.regionAreaKeys = selectedAreaKeys;
       wizardData.regions = _regionBucketKeys(selectedAreaKeys);
@@ -367,7 +351,7 @@ function collect(step) {
       }
       break;
     }
-    case 6:
+    case 5:
       wizardData.budget = {
         currency: $("budgetCurrency").value,
         total:    $("budgetTotal").value,
@@ -376,7 +360,7 @@ function collect(step) {
         style:    chips("budgetStyleChips")[0] || "",
       };
       break;
-    case 7:
+    case 6:
       wizardData.additional = {
         companion:        chips("companionChips")[0]  || "",
         mobility:         chips("mobilityChips")[0]   || "",
@@ -834,7 +818,6 @@ function setupStep2() {
     }
     _clearFlightSelections();
     _scheduleFlightRefetch();
-    if (currentStep === 4) syncTransportChipsForAirport();
   };
   $("flightTo")?.addEventListener("change", onAirportChange);
   $("flightFrom")?.addEventListener("change", onAirportChange);
@@ -2369,7 +2352,8 @@ function buildPrompt(isReroll = false) {
     }
     lines.push(`【宿泊】${accomStr}`);
   }
-  if (d.transport?.length) {
+  const _transport = d.transport?.length ? d.transport : _autoTransportForAirport();
+  if (_transport.length) {
     const tTimeMap = {
       rail:   "鉄道・地下鉄（AREX直通:約43分/AREX一般:約51分 ソウル駅着 / 乗換先により広域鉄道・地下鉄を利用）",
       bus:    "リムジンバス:約60〜90分",
@@ -2380,7 +2364,7 @@ function buildPrompt(isReroll = false) {
       subway: "鉄道・地下鉄（広域鉄道・地下鉄経由）",
     };
     const accomDest = d.accommodation?.address || d.accommodation?.region || "";
-    const tInfo = d.transport.map((t) => tTimeMap[t] || tMap[t] || t).join(" または ");
+    const tInfo = _transport.map((t) => tTimeMap[t] || t).join(" または ");
     lines.push(`【空港→宿泊先の移動】${tInfo}${accomDest ? ` → ${accomDest}` : ""}`);
     if (d.flight?.selectedReturn) {
       const airportCode = d.flight?.to || "ICN";
@@ -2414,6 +2398,7 @@ function buildPrompt(isReroll = false) {
     const v = h === "hallyu" ? "kpop" : h;
     if (v && !actMerged.includes(v)) actMerged.push(v);
   }
+  const hasCafePlan = actMerged.includes("cafe");
   const actFiltered = actMerged.filter((a) => a !== "sports");
   const activityParts = actFiltered.map((a) => aMap[a] || a);
   const sportParts = (d.sports || []).map((s) => spMap[s] || s);
@@ -2435,7 +2420,7 @@ function buildPrompt(isReroll = false) {
     ].filter(Boolean);
     const mealDetailLevel = actSet.has("food") ? "high" : "normal";
     lines.push(
-      `【内部方針 meal_policy】lunch_required=true / dinner_required=true / gourmet_selected=${actSet.has("food")} / meal_detail_level=${mealDetailLevel} / cafe_as_afternoon_stop=${actSet.has("cafe")}`,
+      `【内部方針 meal_policy】lunch_required=true / dinner_required=true / gourmet_selected=${actSet.has("food")} / meal_detail_level=${mealDetailLevel} / cafe_as_afternoon_stop=${hasCafePlan}`,
       `【内部方針 activity_intents】${activityIntents.length ? activityIntents.join(", ") : "none"}`,
       `【内部方針 timed_event_intents】${timedEventIntents.length ? timedEventIntents.join(", ") : "none"}`
     );
@@ -2550,7 +2535,9 @@ function buildPrompt(isReroll = false) {
   lines.push(
     "【食事込みの1日構成 — 絶対】観光可能な旅行日は必ずこの順番で作る: 午前=観光/体験1件（飲食店不可） → 昼食=実在店名+地図URL → 午後=観光/体験1〜2件 → 夕食=昼食と別の実在店名+地図URL → 夜=宿泊先へ戻る、または夜景/軽い散策1件。入国が遅い日・出国が早い日はこの食事構成を使わず、移動・休息だけにする。",
     "【昼食直後の飲食店禁止 — 最重要】昼食を入れたら、その次の予定（午後ブロック、②③などの番号付き次項目、昼食直後の行）に食堂・レストラン・カフェ・デザート・軽食店・市場グルメを絶対に置かない。昼食の次は必ず観光スポット候補の施設、体験、自然、買い物、移動、または休憩にする。その後ならカフェ巡り希望時に限り、カフェ候補の具体店名＋地図URLを1件入れてよい。",
-    "【カフェ巡り — 位置情報UI必須】「午後: カフェ休憩」「カフェタイム」「周辺カフェで休憩」だけのテキストは禁止。必ずReference Dataの「カフェ候補」から店名を1つ選び、直後の行に地図URL（map.naver.com）を書く。これによりカフェも場所カード/UIとして表示される。",
+    hasCafePlan
+      ? "【カフェ巡り — 位置情報UI必須】「午後: カフェ休憩」「カフェタイム」「周辺カフェで休憩」だけのテキストは禁止。必ずReference Dataの「カフェ候補」から店名を1つ選び、直後の行に地図URL（map.naver.com）を書く。これによりカフェも場所カード/UIとして表示される。"
+      : "【カフェ巡り未選択】カフェ・喫茶店・커피・coffee・dessert・bakery・カフェ候補の店名/URLを、午前・午後・夜・昼食・夕食のどこにも出さない。",
     "【飲食店連続禁止】昼食と夕食の間には必ず非飲食の観光/体験/自然/買い物/移動/休憩を1件以上挟む。飲食店・カフェ・デザート・屋台・市場グルメを2件以上連続させない。カフェ候補は昼食/夕食とは別の午後スポット扱いで、午前・夜には置かない。",
     "【夕方・夜の具体スポット】夕食後または夜ブロックは、候補に夜景・川沿い散策・市場・公園・文化通りなど夜に向く具体スポットがあり、利用可能と判断できる場合だけ、場所名＋地図URLで推薦する。「ロッテワールドタワー周辺を散策」のような周辺散策文だけで終わらせず、必ず具体地点を出す。",
     "【夜の抽象文禁止】候補があるのに『宿泊先で休息』『静かな夜を満喫』『宿泊先周辺のレストランやカフェで軽食・休息』『宿泊施設または民泊で宿泊・休息』だけで済ませない。使える候補がない場合だけ、理由を説明せず宿泊先で休息にする。",
@@ -2620,6 +2607,20 @@ const _KORAIL_REGION_SIDOS = ["부산광역시", "울산광역시", "경상남�
 function _accomIsKorailRegion() {
   const addr = (wizardData.accommodation?.address || "") + " " + (wizardData.accommodation?.region || "");
   return _KORAIL_REGION_SIDOS.some((sido) => addr.includes(sido));
+}
+
+// 교통 단계 제거 후 도착 공항 기반 자동 교통수단 추론
+// wizardData.transport가 미설정일 때 프롬프트 생성·지도 렌더에서 사용
+function _autoTransportForAirport() {
+  const iata = getArrivalAirportIata();
+  const isKorail = _accomIsKorailRegion();
+  const defaults = {
+    ICN: isKorail ? ["rail", "bus"] : ["arex", "bus"],
+    GMP: ["subway", "bus"],
+    PUS: ["bus"],
+    CJU: ["bus"],
+  };
+  return defaults[iata] || ["bus"];
 }
 
 function syncTransportChipsForAirport() {
@@ -3332,11 +3333,14 @@ function _escapeHtml(s) {
 }
 
 function _mapsUrlKey(url) {
-  if (/map\.naver\.com/i.test(String(url || ""))) {
-    return String(url).split("?")[0].replace(/\/$/, "");
+  const s = String(url || "");
+  const naverPlaceM = /map\.naver\.com/i.test(s) && s.match(/\/place\/(\d{6,})/i);
+  if (naverPlaceM) return `naver-place:${naverPlaceM[1]}`;
+  if (/map\.naver\.com/i.test(s)) {
+    return s.split("?")[0].replace(/\/$/, "");
   }
-  const m = String(url).match(/[?&]cid=(\d+)/);
-  return m ? `cid:${m[1]}` : String(url).split("&g_mp=")[0].split("&")[0];
+  const m = s.match(/[?&]cid=(\d+)/);
+  return m ? `cid:${m[1]}` : s.split("&g_mp=")[0].split("&")[0];
 }
 
 function _normalizePlaceName(s) {
@@ -3922,14 +3926,15 @@ function _tryRenderPlaceCard(indexes, rendered, url, renderedScope, slotKind = "
     rendered.add(key);
     return false;
   }
-  // 주소 없는 식당·카페는 카드로 표시하지 않음 (주소 없음 = 검색 미매칭·오정보)
   const _isFoodCard = _isMealPlaceForRefs(place) || _isCafePlaceForRefs(place);
-  if (_isFoodCard && !place.address) {
+  // 주소 없는 식당·카페: Naver 점수나 이름이라도 있으면 최소 카드 허용.
+  // 완전 미매칭(이름·주소·점수 모두 없음)만 차단한다.
+  if (_isFoodCard && !place.address && place.naver_score == null && !place.name) {
     rendered.add(key);
     return false;
   }
-  // 주소도 Naver 점수도 없는 장소 = 엔리치 완전 실패 (LLM 할루시네이션) → 탈락
-  if (!place.address && place.naver_score == null) {
+  // 주소도 Naver 점수도 없는 비음식 장소 = 엔리치 완전 실패 → 탈락
+  if (!_isFoodCard && !place.address && place.naver_score == null) {
     rendered.add(key);
     return false;
   }
@@ -4014,6 +4019,9 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
   };
 
   const lineLooksLikePlaceLabelBeforeUrl = (rawLine, nextRawLine) => {
+    // 슬롯 레이블(午前/昼食/오전/점심 등)은 절대 prose로 취급하지 않음.
+    // URL 앞 줄이어도 슬롯 헤더로 처리해야 currentSlotKind가 올바르게 설정된다.
+    if (_isPlanSlotLabel(String(rawLine || "").trim())) return false;
     const current = _normalizePlaceName(
       _normalizeQueryLabelForEnrich(
         String(rawLine || "")
@@ -4239,23 +4247,53 @@ function _isFortunePlaceForRefs(place) {
   return false;
 }
 
-const _CAFE_EXCLUDE_NAME_RE = /국밥|설렁탕|순댓국|삼겹살|갈비(?!천)|삼계탕|칼국수|냉면|해장국|곱창|막창|횟집|생선구이|어탕|추어탕|감자탕|부대찌개|닭갈비|족발|보쌈|고깃집|정육|치킨|돼지(?:국밥|고기|갈비)|닭(?:강정|발|볶음)|짬뽕|짜장|탕수육|해물|낙지|오징어|게장/i;
+// 식당 키워드가 이름에 있으면 카페 분류 금지 (카페거리 주소 포함 식당 방지)
+const _CAFE_EXCLUDE_NAME_RE = /국밥|설렁탕|순댓국|삼겹살|갈비(?!천)|삼계탕|칼국수|냉면|해장국|곱창|막창|횟집|생선구이|어탕|추어탕|감자탕|부대찌개|닭갈비|족발|보쌈|고깃집|정육|치킨|돼지(?:국밥|고기|갈비)|닭(?:강정|발|볶음)|짬뽕|짜장|탕수육|해물|낙지|오징어|게장|요리주점|이자카야|선술집|호프집|한정식|한상차림/i;
 
 function _isCafePlaceForRefs(place) {
   if (_isFortunePlaceForRefs(place)) return false;
   const name = (place?.name || "").toLowerCase();
-  // 식당 키워드가 이름에 있으면 카페로 분류 금지 (카페거리 주소 포함 식당 방지)
   if (_CAFE_EXCLUDE_NAME_RE.test(name)) return false;
   // 카페 여부는 이름 + 카테고리만 기준 (주소/search_area 제외)
   const nameCat = `${name} ${(place?.category || "")} ${(place?.primary_type || "")}`.toLowerCase();
-  return /카페|커피|coffee|cafe|베이커리|디저트|빙수|スイーツ|ベーカリー/.test(nameCat);
+  // カフェ・スイーツ + 伝統茶・韓菓 (제공된 음식 카테고리 기준)
+  return /카페|커피|coffee|cafe|베이커리|디저트|빙수|스이츠|スイーツ|ベーカリー|전통차|한과|다방|찻집/.test(nameCat);
 }
 
 function _isMealPlaceForRefs(place) {
   if (_isFortunePlaceForRefs(place)) return false;
   if (_isCafePlaceForRefs(place)) return false;
   const blob = `${place?.name || ""} ${place?.address || ""} ${place?.category || ""} ${place?.primary_type || ""}`.toLowerCase();
-  return /식당|맛집|restaurant|한식|국밥|보쌈|족발|치킨|갈비|냉면|국수|분식|고기|해물|회\b/.test(blob);
+  return (
+    // 일반 식당 키워드
+    /식당|맛집|레스토랑|restaurant|한식|일식|중식|양식/.test(blob) ||
+    // 焼肉・구이류
+    /구이|불고기|숯불|야키니쿠|바베큐|바비큐/.test(blob) ||
+    // 牛・소고기류
+    /한우|소고기|갈비|갈빗살|등심|안심|우삼겹|육회|스테이크/.test(blob) ||
+    // 豚・돼지류
+    /삼겹살|항정살|돼지갈비|돼지고기|보쌈|족발|감자탕|뼈다귀/.test(blob) ||
+    // 鶏・닭류
+    /치킨|닭갈비|닭한마리|닭볶음|삼계탕|백숙|닭강정|닭발/.test(blob) ||
+    // 海鮮・해산물류
+    /해물|해산물|횟집|회\b|조개구이|굴|낙지|쭈꾸미|문어|대게|새우|게장|전복|꽃게|오징어/.test(blob) ||
+    // 鍋・スープ・탕찌개류
+    /탕\b|찌개|국밥|설렁탕|해장국|순댓국|도가니|추어탕|뼈해장국|전골|부대찌개|순두부|김치찌개|된장찌개|곰탕|사골/.test(blob) ||
+    // ご飯・お粥・밥죽류
+    /백반|비빔밥|돌솥|쌈밥|덮밥|밥집|뷔페|죽\b|죽집|솥밥/.test(blob) ||
+    // 韓定食
+    /한정식|한상차림/.test(blob) ||
+    // 麺・면류
+    /냉면|칼국수|짜장|짬뽕|탕수육|수제비|라면|라멘|우동|파스타|쌀국수/.test(blob) ||
+    // 屋台・軽食・분식류
+    /분식|떡볶이|순대|만두|튀김|포장마차|라볶이/.test(blob) ||
+    // バー・居酒屋・요리주점 (제공된 카테고리에 포함)
+    /요리주점|이자카야|선술집|호프집|주점/.test(blob) ||
+    // 日本料理
+    /스시|사시미|야키토리|돈카츠|오마카세|텐동|카이센동/.test(blob) ||
+    // 기타 식사 키워드
+    /찜\b|곱창|막창|두부요리|도시락|정식\b|고깃집|콩나물/.test(blob)
+  );
 }
 
 function _isActivityPlaceForRefs(place) {
@@ -4720,7 +4758,7 @@ async function _displayPlanOutput(data) {
       arrivalAirport: arrivalIata,
       departureAirport: departureIata,
       accommodation: wizardData.accommodation || null,
-      transport: wizardData.transport || [],
+      transport: wizardData.transport?.length ? wizardData.transport : _autoTransportForAirport(),
       regions: wizardData.regions || [],
       regionCities: wizardData.regionCities || wizardData.regionCitiesOther || "",
       regionCityIds: wizardData.regionCityIds || [],
@@ -4797,7 +4835,42 @@ async function _displayPlanOutput(data) {
 
   wizardData.avoid_place_names = _collectPlanPlaceNames(reply, places);
   wizardData.used_plan_places = _collectUsedPlanPlaces(reply, places);
+
+  // 후보 데이터 부족 배너
+  const sparseNotice = $("planDataSparseNotice");
+  if (sparseNotice) {
+    if (data.data_sparse) {
+      const alts = (data.alternative_regions || []).map((r) => _escapeHtml(r));
+      const altHtml = alts.length
+        ? `<div class="plan-sparse-alts">${alts.map((r) =>
+            `<button class="plan-sparse-alt-btn" onclick="_addRegionAndRegenerate('${r}')">${r}</button>`
+          ).join("")}</div>`
+        : "";
+      sparseNotice.innerHTML = `
+        <div class="plan-sparse-banner">
+          <span class="plan-sparse-icon">⚠️</span>
+          <span class="plan-sparse-msg">このエリアの観光スポット・飲食店データが少なめです。近隣エリアも候補に含めると、より充実したプランになります。</span>
+          ${altHtml}
+          <button class="plan-sparse-dismiss" onclick="this.closest('#planDataSparseNotice').style.display='none'">✕</button>
+        </div>`;
+      sparseNotice.style.display = "block";
+    } else {
+      sparseNotice.style.display = "none";
+    }
+  }
+
   await hydratePromise;
+}
+
+function _addRegionAndRegenerate(region) {
+  // 근접 지역을 여행 지역에 추가하고 플랜 재생성
+  if (!wizardData.regionCities) {
+    wizardData.regionCities = region;
+  } else if (!wizardData.regionCities.includes(region)) {
+    wizardData.regionCities = wizardData.regionCities + "," + region;
+  }
+  const btn = $("generatePlanBtn") || $("reGeneratePlanBtn");
+  if (btn) btn.click();
 }
 
 const _LEAGUE_LABELS = {

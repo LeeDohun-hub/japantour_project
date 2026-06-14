@@ -698,6 +698,8 @@ def api_places_enrich(request):
             scored = sclient.search_places(query, display=1, area_hint=_enrich_area_hint) if sclient.is_configured else []
             if scored:
                 p = scored[0]
+                if p.address and not _addr_matches_dest(p.address):
+                    continue
                 name_ja = query if _has_japanese_place_text(query) and query != p.name else ""
                 enriched[url] = {
                     "name": p.name,
@@ -736,6 +738,8 @@ def api_places_enrich(request):
             found = nclient.geocode(query, limit=1)
             if found:
                 p = found[0]
+                if p.address and not _addr_matches_dest(p.address):
+                    continue
                 name_ja = query if _has_japanese_place_text(query) else ""
                 enriched[url] = {
                     "name": query,
@@ -1873,6 +1877,10 @@ def api_chat(request):
         payload["places_count"] = rr.places_count
         if rr.places_error:
             payload["places_error"] = rr.places_error
+        if getattr(rr, "data_sparse", False):
+            payload["data_sparse"] = True
+        if getattr(rr, "alternative_regions", None):
+            payload["alternative_regions"] = rr.alternative_regions
         logger.debug("category=%r keyword=%r places=%s error=%r",
                      rr.category, rr.keyword, rr.places_count, rr.places_error)
     if chat_result.places:

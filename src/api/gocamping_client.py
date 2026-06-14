@@ -1,6 +1,6 @@
 """한국관광공사 고캠핑 정보 조회서비스 클라이언트.
 
-공공데이터포털 인증키: INCHEONTRANSPORT_API_KEY (.env, data.go.kr 계정 공통)
+공공데이터포털 인증키: PUBLIC_API_KEY (.env, data.go.kr 계정 공통)
 Base: https://apis.data.go.kr/B551011/GoCamping
 엔드포인트: basedList (캠핑장 기본 정보 목록)
 """
@@ -111,7 +111,7 @@ class CampingItem:
 
 
 def _service_key() -> str | None:
-    return os.getenv("INCHEONTRANSPORT_API_KEY")
+    return os.getenv("PUBLIC_API_KEY")
 
 
 def _parse_items(raw: dict[str, Any]) -> list[dict[str, Any]]:
@@ -157,7 +157,7 @@ def _camping_item_from_row(row: dict[str, Any]) -> CampingItem:
 class GoCampingClient:
     """한국관광공사 고캠핑 정보 조회서비스 클라이언트.
 
-    인증키: INCHEONTRANSPORT_API_KEY (data.go.kr 공통키)
+    인증키: PUBLIC_API_KEY (data.go.kr 공통키)
     전국 캠핑장 약 2,900개 데이터 제공.
     """
 
@@ -171,7 +171,7 @@ class GoCampingClient:
 
     def _get(self, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
         if not self.service_key:
-            raise ValueError("INCHEONTRANSPORT_API_KEY가 설정되지 않았습니다.")
+            raise ValueError("PUBLIC_API_KEY가 설정되지 않았습니다.")
         url = f"{BASE_URL}/{endpoint}"
         merged = {
             "serviceKey": self.service_key,
@@ -247,7 +247,7 @@ class GoCampingClient:
             num_of_rows: 반환 최대 건수
         """
         if not self.is_configured:
-            logger.warning("GoCamping: INCHEONTRANSPORT_API_KEY not configured")
+            logger.warning("GoCamping: PUBLIC_API_KEY not configured")
             return []
 
         MAX_PAGES = 5   # 최대 5페이지(500건) 조회 — 모든 지역 커버 가능

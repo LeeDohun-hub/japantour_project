@@ -14,8 +14,10 @@ from __future__ import annotations
 import concurrent.futures
 import json
 import logging
+import math
 import random
 import re
+import time
 import urllib.parse
 from dataclasses import replace
 from datetime import date, datetime, timedelta
@@ -2026,7 +2028,7 @@ _SEOUL_LOCATION_KEYWORDS: tuple[str, ...] = (
 )
 _SEOUL_SUB_AREA_KEYWORDS: dict[str, tuple[str, ...]] = {
     "명동": ("명동", "myeongdong", "明洞", "jung district", "중구"),
-    "홍대": ("홍대", "hongdae", "弘大", "mapo", "마포", "상수", "합정"),
+    "홍대": ("홍대", "hongdae", "弘大", "mapo", "마포", "상수", "합정", "연남", "망원"),
     "강남": ("강남", "gangnam", "江南", "역삼", "신논현", "삼성동"),
     "동대문": ("동대문", "dongdaemun", "東大門", "ddp", "을지로"),
     "인사동": ("인사동", "insadong", "仁寺洞", "종로", "jongno"),
@@ -2045,6 +2047,11 @@ def _place_location_blob(place: NearbyPlace) -> str:
 def _place_geo_blob(place: NearbyPlace) -> str:
     """실제 장소 자체의 이름·주소만 사용. 검색어 라벨(search_area)은 지역 판정에서 제외."""
     return f"{place.name or ''} {place.address or ''}".lower()
+
+
+def _place_address_blob(place: NearbyPlace) -> str:
+    """체인명에 들어간 지명(예: 홍대개미 용산점)을 지역 판정 신호로 쓰지 않기 위한 주소 전용 blob."""
+    return f"{place.address or ''}".lower()
 
 
 def _blob_has_any(blob: str, keywords: tuple[str, ...]) -> bool:
@@ -2073,7 +2080,7 @@ def _place_in_seoul_zone(place: NearbyPlace) -> bool:
 
 
 def _place_in_seoul_sub_area(place: NearbyPlace, area: str) -> bool:
-    blob = _place_location_blob(place)
+    blob = _place_address_blob(place)
     keywords = _SEOUL_SUB_AREA_KEYWORDS.get(area)
     if not keywords:
         return _place_in_seoul_zone(place)
@@ -2114,10 +2121,10 @@ def _needs_accommodation_buffer_candidates(
 
 
 # ─── 에리어별 장소 매칭 키워드 및 광역 교통 구분 ─────────────────────────────
-# 서울 하위 에리어는 _place_in_seoul_zone으로 통합 처리
+# 서울 하위 에리어는 주소 기준으로 엄격 매칭한다.
 _SEOUL_SUB_AREAS: frozenset[str] = frozenset({
-    "명동", "홍대", "강남", "동대문", "인사동", "이태원",
-    "성수동", "압구정", "한강", "광장시장",
+    *_SEOUL_SUB_AREA_KEYWORDS.keys(),
+    "한강", "광장시장",
 })
 _AREA_LOCATION_KEYWORDS: dict[str, tuple[str, ...]] = {
     "고양": ("고양", "goyang", "일산", "ilsan", "화정", "덕양", "능곡", "행신", "킨텍스", "kintex"),
@@ -2258,7 +2265,7 @@ _NON_SUDOGWON_AREAS: frozenset[str] = frozenset({
 def _place_in_area(place: NearbyPlace, area: str) -> bool:
     """장소가 특정 에리어에 속하는지 확인 — 목적 관광지 필터 핵심."""
     if area in _SEOUL_SUB_AREAS:
-        return _place_in_seoul_zone(place)
+        return _place_in_seoul_sub_area(place, area)
     if area in ("고양", "일산", "화정"):
         return _place_in_goyang_zone(place)
     if area == "인천":
@@ -3487,20 +3494,31 @@ def _has_cafe_hopping_interest(traveler_profile: dict | None, text: str = "") ->
     tokens.extend(str(a).lower() for a in profile.get("activities") or [])
     tokens.extend(str(a).lower() for a in add.get("foodPreferences") or [])
     tokens.extend(str(a).lower() for a in profile.get("foodPreferences") or [])
-    blob = " ".join(tokens + [text.lower()])
-    return any(
-        key in blob
-        for key in (
-            "cafe",
-            "coffee",
-            "카페",
-            "카페순회",
-            "카페 순회",
-            "カフェ",
-            "カフェ巡り",
-            "커피",
-        )
+    positive_keys = (
+        "cafe",
+        "coffee",
+        "카페",
+        "카페순회",
+        "카페 순회",
+        "カフェ",
+        "カフェ巡り",
+        "커피",
     )
+    token_blob = " ".join(tokens)
+    if any(
+        key in blob
+        for blob in (token_blob,)
+        for key in positive_keys
+    ):
+        return True
+    # Wizard prompts include rule text such as "カフェ巡り希望時に限り" or
+    # "カフェ巡り未選択"; do not treat those instructions as user intent.
+    if profile.get("activities") or add.get("foodPreferences") or profile.get("foodPreferences"):
+        return False
+    text_blob = text.lower()
+    if re.search(r"カフェ巡り未選択|cafe_as_afternoon_stop\s*=\s*false|카페.{0,8}(?:미선택|선택\s*안|금지)", text, re.I):
+        return False
+    return any(key in text_blob for key in positive_keys)
 
 
 def _has_gourmet_interest(traveler_profile: dict | None, text: str = "") -> bool:
@@ -5832,6 +5850,7 @@ def _repair_wizard_itinerary_rules(
     day_cafe_count = 0
     slot_plain_place_seen = False
     used_food_names_global: set[str] = set()  # cross-day dedup for restaurants
+    day_attr_places: list[NearbyPlace] = []
     last_kept_place_food = False
     current_day: int | None = None
     current_day_focus: tuple[str, ...] = ()
@@ -5874,6 +5893,63 @@ def _repair_wizard_itinerary_rules(
             )
         return True
 
+    def _attr_cluster_key(place: NearbyPlace | None) -> str:
+        if not place:
+            return ""
+        key = _norm_plan_place_name(place.name)
+        if not key:
+            return ""
+        for suffix in (
+            "역사공원", "역사문화공원", "문화공원", "근린공원", "공원",
+            "전시관", "기념관", "박물관", "체험관", "전망대", "광장",
+        ):
+            if key.endswith(suffix) and len(key) > len(suffix) + 2:
+                key = key[: -len(suffix)]
+                break
+        return key
+
+    def _place_distance_m(place_a: NearbyPlace | None, place_b: NearbyPlace | None) -> float | None:
+        try:
+            lat1 = float(getattr(place_a, "latitude", None))
+            lng1 = float(getattr(place_a, "longitude", None))
+            lat2 = float(getattr(place_b, "latitude", None))
+            lng2 = float(getattr(place_b, "longitude", None))
+        except (TypeError, ValueError):
+            return None
+        # Good enough for duplicate suppression inside one city block/tourism zone.
+        mean_lat = math.radians((lat1 + lat2) / 2)
+        dlat = (lat1 - lat2) * 111_320
+        dlng = (lng1 - lng2) * 111_320 * math.cos(mean_lat)
+        return math.hypot(dlat, dlng)
+
+    def _same_attr_visit_cluster(place_a: NearbyPlace | None, place_b: NearbyPlace | None) -> bool:
+        if not place_a or not place_b:
+            return False
+        key_a = _attr_cluster_key(place_a)
+        key_b = _attr_cluster_key(place_b)
+        if not key_a or not key_b:
+            return False
+        name_related = (
+            key_a == key_b
+            or (len(key_a) >= 4 and key_a in key_b)
+            or (len(key_b) >= 4 and key_b in key_a)
+        )
+        if not name_related:
+            return False
+        dist = _place_distance_m(place_a, place_b)
+        return dist is None or dist <= 1_200
+
+    def duplicate_day_attr_place(place: NearbyPlace | None) -> bool:
+        if not place:
+            return False
+        return any(_same_attr_visit_cluster(prev, place) for prev in day_attr_places)
+
+    def cafeish_line_or_place(line: str, place: NearbyPlace | None) -> bool:
+        if place is not None and _is_cafe_candidate_place(place):
+            return True
+        blob = str(line or "").lower()
+        return bool(re.search(r"카페|커피|coffee|cafe|디저트|베이커리|dessert|bakery|スイーツ|ベーカリー", blob, re.I))
+
     def next_place_line(kind: str) -> list[str]:
         queue = food_queue if kind == "food" else cafe_queue if kind == "cafe" else attr_queue
         used = used_food if kind == "food" else used_cafe if kind == "cafe" else used_attr
@@ -5881,12 +5957,16 @@ def _repair_wizard_itinerary_rules(
             pkey = f"{p.name}|{p.google_maps_uri}"
             if pkey in used:
                 continue
+            if kind == "attr" and duplicate_day_attr_place(p):
+                continue
             if (
                 p.name
                 and p.google_maps_uri
                 and _place_matches_day_focus(p, current_day_focus)
             ):
                 used.add(pkey)
+                if kind == "attr":
+                    day_attr_places.append(p)
                 return [p.name, p.google_maps_uri]
         return []
 
@@ -5901,6 +5981,7 @@ def _repair_wizard_itinerary_rules(
             current_day_focus = _day_focus_area_tokens(stripped)
             day_food_count = 0
             day_cafe_count = 0
+            day_attr_places = []
             slot_plain_place_seen = False
             last_kept_place_food = False
             out.append(line)
@@ -5991,7 +6072,7 @@ def _repair_wizard_itinerary_rules(
             )
             name_only_remove = (
                 (name_only_is_food and (slot not in {"lunch", "dinner"} or name_only_wrong_area))
-                or (name_only_is_cafe and (slot != "afternoon" or day_cafe_count >= 1 or name_only_wrong_area))
+                or (name_only_is_cafe and (not has_cafe_interest or slot != "afternoon" or day_cafe_count >= 1 or name_only_wrong_area))
                 or (name_only_is_attr and (slot in {"lunch", "dinner"} or name_only_wrong_area))
                 or (name_only_is_attr and slot in {"morning", "afternoon", "night"} and slot_plain_place_seen)
             )
@@ -6020,10 +6101,9 @@ def _repair_wizard_itinerary_rules(
             url_key = _plan_maps_url_key(url_match.group(0))
             name_key = _norm_plan_place_name(stripped)
             # A place is a "cafe block" if its URL/name matches a known cafe candidate.
-            # Cafes in afternoon are NOT treated as food when cafe hopping interest exists.
             is_cafe_block = (
-                has_cafe_interest
-                and (url_key in cafe_by_url or name_key in cafe_by_name)
+                url_key in cafe_by_url
+                or name_key in cafe_by_name
             )
             is_food_block = (
                 not is_cafe_block
@@ -6047,7 +6127,16 @@ def _repair_wizard_itinerary_rules(
                 and place_for_block is not None
                 and not _place_matches_day_focus(place_for_block, current_day_focus)
             )
+            cafe_without_interest = (
+                not has_cafe_interest
+                and (is_cafe_block or cafeish_line_or_place(stripped, place_for_block))
+            )
             nonmeal_in_meal_slot = slot in {"lunch", "dinner"} and (is_attr_block or is_cafe_block)
+            duplicate_attr = (
+                is_attr_block
+                and slot in {"morning", "afternoon", "night"}
+                and duplicate_day_attr_place(place_for_block)
+            )
             # Cross-day restaurant dedup: remove if this exact restaurant already appeared.
             is_duplicate_food = is_food_block and name_key and name_key in used_food_names_global
             remove_food = is_duplicate_food or (
@@ -6062,17 +6151,23 @@ def _repair_wizard_itinerary_rules(
             )
             # Cafe blocks: keep only 1 per day in afternoon; always remove if not afternoon slot.
             remove_cafe = is_cafe_block and (
-                slot != "afternoon" or day_cafe_count >= 1 or wrong_day_area
+                not has_cafe_interest or slot != "afternoon" or day_cafe_count >= 1 or wrong_day_area
             )
+            remove_food = remove_food or cafe_without_interest
             remove_attr = is_attr_block and (
                 nonmeal_in_meal_slot
                 or wrong_day_area
+                or duplicate_attr
                 or (slot in {"morning", "afternoon", "night"} and slot_plain_place_seen)
             )
             if remove_food or remove_cafe or remove_attr:
                 replacement = []
                 if nonmeal_in_meal_slot and day_food_count < 2:
                     replacement = next_place_line("food")
+                elif cafe_without_interest and slot in {"lunch", "dinner"} and day_food_count < 2:
+                    replacement = next_place_line("food")
+                elif remove_attr and slot in {"morning", "afternoon", "night"}:
+                    replacement = next_place_line("attr")
                 idx += 2
                 if idx < len(lines):
                     tail = lines[idx].strip()
@@ -6102,6 +6197,8 @@ def _repair_wizard_itinerary_rules(
                 last_kept_place_food = False
                 if slot in {"morning", "afternoon", "night"}:
                     slot_plain_place_seen = True
+                    if is_attr_block and place_for_block is not None:
+                        day_attr_places.append(place_for_block)
             idx += 2
             continue
 
@@ -6139,6 +6236,12 @@ def _score_wizard_plan_quality(
     8. [bonus] 일자 헤더에 ★·지역명 등 추가 텍스트가 있으면 실격 패널티
     9. [bonus] 관광 슬롯에 식사 후보 URL이 삽입되면 실격 (카드 불일치)
     10. [bonus] 플랜 URL 좌표가 후보군 중심점에서 40km 초과이면 실격 (day당 3점 차감, 최대 15점)
+    11. 5단계 관광에서 やりたいこと에서 다음을 선택하면 출력을 필수화 할것
+      쇼핑->대형 쇼핑몰백화점 출력, 
+      야경->야경명소 출력(야경을 프로젝트 상에서 구분하지 못하면 기능 삭제), 
+      전통문화, 축제, 공연, K-pop, 스포츠관전, 풀빌라, 캠핑, 해수욕장, 자연, 포토스팟
+      // 미식가 선택은 음식점 출력 필수화로 이미 반영됨(미식가 선택하면 진짜 엄선한거, 네이버 평점 좋은거)
+      // 카페 순회 선택은 카페 출력 필수화로 이미 반영됨(카페 순회 선택하면 진짜 엄선한거, 네이버 평점 좋은거)
     """
     if not plan_text:
         return 0, ["plan_empty"]
@@ -6806,7 +6909,7 @@ def _gocamping_vacation_stays(
         return []
     client = GoCampingClient()
     if not client.is_configured:
-        logger.warning("GoCamping: INCHEONTRANSPORT_API_KEY not configured")
+        logger.warning("GoCamping: PUBLIC_API_KEY not configured")
         return []
     region_keys = _region_area_keys(traveler_profile)
     try:
@@ -6977,9 +7080,20 @@ def _fmt_visitkorea_stays(items: list[TourApiItem]) -> str:
     return "\n".join(lines)
 
 
+def _extract_ko_name_from_jp_title(title: str) -> str | None:
+    """JpnService2 일본어 제목 '海雲台光祭り（해운대 빛 축제）' → 한국어명 추출."""
+    import re
+    m = re.search(r"[（(]([가-힣][가-힣\s·]{0,40})[)）]", str(title or ""))
+    return m.group(1).strip() if m else None
+
+
 def _fmt_visitkorea_festivals(items: list[TourApiItem]) -> str:
     if not items:
         return "(Visit Korea イベントデータなし)"
+    try:
+        from src.api.naver_maps_client import naver_map_search_url as _nmsurl
+    except ImportError:
+        _nmsurl = None
     lines = []
     n = 0
     for it in items[:24]:
@@ -6994,10 +7108,18 @@ def _fmt_visitkorea_festivals(items: list[TourApiItem]) -> str:
             line += f" | {period}"
         if it.addr1:
             line += f" | {it.addr1}"
-        # 축제/행사는 좌표 기반 Naver Map 대신 이름 검색 URL 사용.
-        # 좌표 URL은 근처 식당이 잘못 매칭되는 문제 발생.
-        name_uri = f"https://map.naver.com/p/search/{urllib.parse.quote(it.title)}"
-        line += f"\n    地図: {name_uri}"
+        # 좌표가 있으면 name+coord URL → placeIndex byUrl 키와 일치
+        if it.mapx and it.mapy and _nmsurl:
+            try:
+                lat, lng = float(it.mapy), float(it.mapx)
+                ko_name = _extract_ko_name_from_jp_title(it.title)
+                search_name = ko_name or it.title
+                map_uri = _nmsurl(search_name, lat, lng)
+            except ValueError:
+                map_uri = f"https://map.naver.com/p/search/{urllib.parse.quote(it.title)}"
+        else:
+            map_uri = f"https://map.naver.com/p/search/{urllib.parse.quote(it.title)}"
+        line += f"\n    地図: {map_uri}"
         lines.append(line)
     if not lines:
         return "(Visit Korea イベントデータなし)"
@@ -7436,6 +7558,59 @@ def _vk_attractions_to_naver_places(items: "list[TourApiItem]") -> list:
             )
         )
     logger.info("_vk_attractions_to_naver_places: converted %d VK items", len(out))
+    return out
+
+
+def _festival_items_to_places(items: "list[TourApiItem]") -> list:
+    """축제 TourApiItem (mapx/mapy 있는 것만) → NaverPlace 변환.
+
+    place_id = 'festival:{content_id}' 로 anchor/cafe-anchor 필터를 통과하며
+    api_places에 포함되어 프론트엔드 placeIndex.byUrl/byName에 등록된다.
+    """
+    import re
+    try:
+        from src.api.naver_search_client import NaverPlace
+        from src.api.naver_maps_client import naver_map_search_url
+    except ImportError:
+        return []
+
+    out: list = []
+    for item in items:
+        if not item.mapx or not item.mapy:
+            continue
+        try:
+            lat = float(item.mapy)
+            lng = float(item.mapx)
+        except ValueError:
+            continue
+        raw_title = str(item.title or "").strip()
+        if not raw_title:
+            continue
+        ko_name = _extract_ko_name_from_jp_title(raw_title)
+        name = ko_name or raw_title
+        maps_url = naver_map_search_url(name, lat, lng)
+        period = item.event_period_display()
+        category_label = f"축제・행사{' | ' + period if period else ''}"
+        out.append(
+            NaverPlace(
+                name=name,
+                category=category_label,
+                address=str(item.addr1 or item.addr2 or ""),
+                latitude=lat,
+                longitude=lng,
+                rating=None,
+                user_rating_count=None,
+                google_maps_uri=maps_url,
+                is_open_now=None,
+                distance_meters=None,
+                place_id=f"festival:{item.content_id}",
+                search_area=str(item.addr1 or "")[:20],
+                source="visitkorea",
+                naver_score=None,
+                name_ja=raw_title if ko_name else None,
+            )
+        )
+    logger.info("_festival_items_to_places: converted %d festival items with coords", len(out))
     return out
 
 
@@ -7896,8 +8071,8 @@ def route_and_answer(
         try:
             aclient = AviationClient()
             if not aclient.is_configured:
-                logger.warning("INCHEONTRANSPORT_API_KEY not configured")
-                return [], None, "", "INCHEONTRANSPORT_API_KEY not configured"
+                logger.warning("PUBLIC_API_KEY not configured")
+                return [], None, "", "PUBLIC_API_KEY not configured"
             if kw.startswith("route:"):
                 parts = kw[6:].split(":")
                 dep = _resolve_iata_flexible(parts[0]) if parts else None
@@ -8055,13 +8230,17 @@ def route_and_answer(
                                 num_of_rows=30,
                             )
                             enriched_undated: list = []
+                            _web_enrich_count = 0
                             for _fst in _undated:
                                 if _fst.content_id in seen_fest_ids:
                                     continue  # searchFestival2에서 이미 가져옴
-                                if not _fst.event_start_date and _wsc_fest.is_available:
+                                if (not _fst.event_start_date
+                                        and _wsc_fest.is_available
+                                        and _web_enrich_count < 5):
                                     _fst = _enrich_festival_dates_from_web(
                                         _fst, _wsc_fest, start_d.year
                                     )
+                                    _web_enrich_count += 1
                                 if _festival_in_date_range(_fst, start_d, end_d):
                                     enriched_undated.append(_fst)
                             if enriched_undated:
@@ -8463,18 +8642,40 @@ def route_and_answer(
             for a in ("drama", "performance", "performances", "theater", "musical")
         )
         wants_festival = "festival" in activities
-        if not (wants_kpop or wants_performance or wants_festival or _env_flag("ENABLE_EVENT_ENRICHMENT", "0")):
+        wants_tradition = "tradition" in activities
+        if not (wants_kpop or wants_performance or wants_festival or wants_tradition
+                or _env_flag("ENABLE_EVENT_ENRICHMENT", "0")):
             return []
+        # 선택지별 KOPIS 장르 매핑:
+        #   🎵 K-pop       → concert
+        #   🎭 공연        → play, musical, classic, mixed
+        #   🎉 축제        → concert, popular_dance, mixed  (festival-only 시 max 20)
+        #   🏛 전통문화    → korean_music, dance, play
         genre_slugs: list[str] = []
         if wants_kpop:
-            genre_slugs.append("concert")
+            _add = ["concert"]
+            for s in _add:
+                if s not in genre_slugs:
+                    genre_slugs.append(s)
         if wants_performance:
-            genre_slugs.extend(["play", "musical"])
-        # festival 선택 시 KOPIS 전 장르 조회 (KOPIS에 축제 전용 코드 없음)
+            for s in ["play", "musical", "classic", "mixed"]:
+                if s not in genre_slugs:
+                    genre_slugs.append(s)
+        if wants_tradition:
+            for s in ["korean_music", "dance", "play"]:
+                if s not in genre_slugs:
+                    genre_slugs.append(s)
+        if wants_festival:
+            for s in ["concert", "popular_dance", "mixed"]:
+                if s not in genre_slugs:
+                    genre_slugs.append(s)
+        # festival-only(kpop/performance/tradition 없음)일 때 max를 20으로 제한해 토큰 절약
+        _festival_only = wants_festival and not wants_kpop and not wants_performance and not wants_tradition
+        _max_kopis = 20 if _festival_only else 36
         try:
             return fetch_ticket_platform_events(
                 traveler_profile,
-                max_total=36,
+                max_total=_max_kopis,
                 genre_slugs=genre_slugs or None,
             )
         except Exception as exc:
@@ -8494,7 +8695,7 @@ def route_and_answer(
             if _transport_prefers(traveler_profile, "bus"):
                 buses = client.search_airport_buses(
                     _airport_bus_area_codes(traveler_profile),
-                    limit=30,
+                    limit=12,
                 )
                 buses = _filter_airport_buses_for_profile(buses, traveler_profile)
             if _transport_prefers(traveler_profile, "taxi"):
@@ -8518,7 +8719,7 @@ def route_and_answer(
             # VK 완료를 최대 10초만 대기. 느릴 경우 VK 없이 바로 Naver 검색 시작해
             # 나머지 타임아웃을 최대한 음식/관광지 검색에 사용한다.
             try:
-                _vk_s, _vk_f, _vk_a, _ = _f_vk.result(timeout=10)
+                _vk_s, _vk_f, _vk_a, _ = _f_vk.result(timeout=5)
                 _vk_a_filtered = _filter_vk_attractions_by_subarea(_vk_a, traveler_profile)
                 vk_pq = _vk_attraction_to_naver_queries(_vk_a_filtered, limit=20) if _vk_a_filtered else None
                 vk_extra = _vk_attractions_to_naver_places(_vk_a_filtered) if _vk_a_filtered else None
@@ -8535,13 +8736,16 @@ def route_and_answer(
         _f_icn_ground = _pool.submit(_do_icn_ground_transport)
 
         def _timed(future, timeout: float, default, label: str):
+            started_at = time.monotonic()
             try:
-                return future.result(timeout=timeout)
+                result = future.result(timeout=timeout)
+                logger.info("API timing [%s] %.2fs", label, time.monotonic() - started_at)
+                return result
             except concurrent.futures.TimeoutError:
                 logger.warning("API timeout [%s] after %.0fs — skipping", label, timeout)
                 return default
             except Exception as _exc:
-                logger.warning("API error [%s]: %s", label, _exc)
+                logger.warning("API error [%s] after %.2fs: %s", label, time.monotonic() - started_at, _exc)
                 return default
 
         _empty_rag = RagSearchBundle(results=[], backend="timeout", area_filter="")
@@ -8557,9 +8761,16 @@ def route_and_answer(
         kto_datalab_context, kto_priority_queries = _timed(
             _f_kto_dl,  8,  ("", []),                                            "kto_datalab"
         )
+        _f_kto_itinerary_places = (
+            _pool.submit(_do_itinerary_places, kto_priority_queries)
+            if kto_priority_queries
+            else None
+        )
         itinerary_places     = _timed(_f_itinerary_places, 35, [],              "itinerary_places")
-        if kto_priority_queries:
-            kto_itinerary_places = _do_itinerary_places(kto_priority_queries)
+        if _f_kto_itinerary_places is not None:
+            kto_itinerary_places = _timed(
+                _f_kto_itinerary_places, 20, [], "kto_itinerary_places"
+            )
             itinerary_places = _merge_itinerary_places(
                 [itinerary_places, kto_itinerary_places],
                 max_total=_itinerary_place_limits(traveler_profile)["max_total"],
@@ -8835,6 +9046,11 @@ def route_and_answer(
                 "「周辺を散策」「近くを歩く」など位置情報カード化できない抽象観光は書かない。観光枠を作らず移動・休憩に切り替える。\n"
             )
         if is_wizard_plan:
+            cafe_plan_rule = (
+                "- カフェ巡り希望あり: カフェ候補がある場合のみ、観光可能日の午後に1件まで具体店名＋地図URL（map.naver.com）を入れてよい。昼食・夕食には使わない。\n"
+                if _has_cafe_hopping_interest(traveler_profile, user_message)
+                else "- カフェ巡り希望なし: カフェ・喫茶店・커피・coffee・dessert・bakery・カフェ候補の店名/URLを、午前・午後・夜・昼食・夕食のどこにも出さない。\n"
+            )
             ctx_parts.append(
                 "=== ウィザードプラン出力形式（厳守）===\n"
                 "- 本文は日本語のみ（韓国語の説明文禁止。店名の韓国語表記は可）。\n"
@@ -8849,13 +9065,13 @@ def route_and_answer(
                 "슬롯과 URL 출처 후보군이 반드시 일치해야 한다.\n"
                 "- 各ブロックは ①②③ または 午前・昼食・午後・夕食。\n"
                 "- 午前は観光地・公園・展望台・体験施設なら可。朝食・朝ごはん・朝カフェ・ブランチ・食堂・レストラン・カフェは書かない。\n"
-                "- カフェ好き/カフェ巡り希望があり「カフェ候補」がある場合、観光可能日の午後に1件まで具体店名＋地図URL（map.naver.com）を入れる。チェーンよりローカル・有名カフェを優先。「午後: カフェ休憩」だけのテキストは禁止。\n"
-                "- 食事候補に載った店のみ店名可。載っていなければ店名禁止。\n"
+                + cafe_plan_rule
+                + "- 食事候補に載った店のみ店名可。載っていなければ店名禁止。\n"
                 "- 観光可能な旅行日は昼食・夕食とも具体店名＋地図URL（map.naver.com）を使う。食事はこの2回だけ。入国が遅い日・出国が早い日は食事ブロックを書かない。「近郊で食事」「店名は記載しない」「コンビニ」「軽食」「間食」「候補が足りない」「候補が全部終わった」は禁止。\n"
                 "- 昼食・夕食は必ず独立した見出し「昼食」「夕食」を立てる。観光・夜景・夜のブロック内に食事店を埋め込まない。例: 夜ブロックに観光+食事を混在させない。\n"
                 "- 食事候補リストに店が残っている限り、観光可能な全日（入出国日除く）の昼食・夕食に必ず配置する。観光エリアと食事候補のエリアが異なっていても候補リストの店を使う。「観光エリアと食事エリアが合わない」「候補が尽きた」「この日は候補がない」という理由で食事欄を空白にしてはならない。\n"
                 "- 食事候補の数が足りない場合は、同じ店を別の日に再使用してよい（例：昼食は태산만두を2日目・4日目に使う）。候補が少なくても観光地・公園・通り名・거리・공원を食事スロットに絶対に入れない。食事候補に載った飲食店のみ使うこと。\n"
-                "- 昼食の直後は食堂・レストラン・カフェ・デザート・軽食店・市場グルメ禁止。午後ラベルだけでなく、②③④など番号付きの次項目も禁止。必ず観光/体験/自然/買い物/移動/休憩を1つ挟む。その後ならカフェ候補を1件だけ入れてよい。\n"
+                "- 昼食の直後は食堂・レストラン・カフェ・デザート・軽食店・市場グルメ禁止。午後ラベルだけでなく、②③④など番号付きの次項目も禁止。必ず観光/体験/自然/買い物/移動/休憩を1つ挟む。カフェ巡り希望時に限り、その後ならカフェ候補を1件だけ入れてよい。\n"
                 "- 飲食店カードを連続させない。午前・夜に食事候補やカフェ候補を出さない。\n"
                 "- 午後・夜の「周辺散策」「近くを歩く」「ショッピングや散策」は禁止。散策でも必ず候補リスト内の具体地点名＋URLで出す。\n"
                 "- 夜は夜景・散策・市場・公園など夜向きの具体候補が利用可能な場合だけ場所名＋URLで出す。使える候補がない場合だけ理由を書かず宿泊先で休息。\n"
@@ -8954,6 +9170,33 @@ def route_and_answer(
 
     context_block = "\n\n".join(ctx_parts)
 
+    # ── 컨텍스트 캡: 한/일 혼합 기준 ~40,000자 초과 시 하위 우선순위 섹션부터 제거 ──
+    # 실측: 45,000자 ≈ 22,700 토큰, 시스템 오버헤드 ~7,600 토큰 → 총 ~30,300 (한도 30,000 초과)
+    # 40,000자 ≈ 20,000 토큰 → 총 ~27,600 (약 2,400 토큰 여유)
+    _CTX_CHAR_LIMIT = 40_000
+    if len(context_block) > _CTX_CHAR_LIMIT:
+        # 트리밍 우선순위 (앞쪽부터 먼저 제거):
+        #   웹검색 → 경기도행사 → VK 일반숙박(비바캉스) → KOPIS → VK attractions → RAG → VK 바캉스숙박
+        _trim_keywords = [
+            "ウェブ検索結果",
+            "전국공연행사정보표준데이터",
+            "Visit Korea Tourism API — 宿泊",   # 일반 숙박 (비바캉스)
+            "KOPIS 공연예술통합전산망",
+            "観光スポット (areaBasedList2)",
+            "内部知識ベース検索結果",
+            "バカンス宿泊候補リスト",             # 바캉스 숙박 (최후 수단)
+        ]
+        _trimmed_parts = list(ctx_parts)
+        for _kw in _trim_keywords:
+            if len("\n\n".join(_trimmed_parts)) <= _CTX_CHAR_LIMIT:
+                break
+            _trimmed_parts = [p for p in _trimmed_parts if _kw not in p]
+        context_block = "\n\n".join(_trimmed_parts)
+        logger.warning(
+            "context_block trimmed: %d → %d chars (limit %d)",
+            len("\n\n".join(ctx_parts)), len(context_block), _CTX_CHAR_LIMIT,
+        )
+
     # ── 6단계: 메시지 조립 + LLM 호출 ─────────────────────────────────
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
 
@@ -8994,12 +9237,35 @@ def route_and_answer(
     # anchor/fallback places (place_id starts with "anchor:" or "cafe-anchor:") are LLM-prompt
     # hints only — they use search query strings as names and must not appear as frontend cards.
     _ANCHOR_PREFIXES = ("anchor:", "cafe-anchor:")
-    api_places = (
-        [p for p in itinerary_places if not str(p.place_id or "").startswith(_ANCHOR_PREFIXES)]
-        if category == "itinerary"
-        else places_results
-    )
+    if category == "itinerary":
+        _festival_places = _festival_items_to_places(visitkorea_festivals)
+        api_places = (
+            [p for p in itinerary_places if not str(p.place_id or "").startswith(_ANCHOR_PREFIXES)]
+            + _festival_places
+        )
+    else:
+        api_places = places_results
     places_total = len(api_places)
+
+    # 카드 후보 부족 감지 — 관광지+식당 합산 3건 미만이면 sparse
+    _attr_count = sum(
+        1 for p in itinerary_places
+        if not _is_meal_candidate_place(p) and not _is_cafe_candidate_place(p)
+    )
+    _food_count = sum(
+        1 for p in itinerary_places
+        if _is_meal_candidate_place(p) and not _is_cafe_candidate_place(p)
+    )
+    _is_data_sparse = (category == "itinerary") and (_attr_count + _food_count < 3)
+    _alternative_regions: list[str] = []
+    if _is_data_sparse:
+        _selected = _tourism_search_areas(traveler_profile)
+        _expanded = _tourism_candidate_areas_for_plan(traveler_profile)
+        _alternative_regions = [a for a in _expanded if a not in _selected][:4]
+        logger.info(
+            "data_sparse: attr=%d food=%d, alternatives=%s",
+            _attr_count, _food_count, _alternative_regions,
+        )
 
     _common_result_kwargs: dict = dict(
         category=category,
@@ -9026,6 +9292,8 @@ def route_and_answer(
         gyeonggi_events=gyeonggi_events,
         web_search_results=web_search_results,
         ticket_platform_events=ticket_platform_events,
+        data_sparse=_is_data_sparse,
+        alternative_regions=_alternative_regions,
     )
 
     # LLM 출력에서 추출한 일본어 이름 맵 (mutable dict으로 closure에서 업데이트)

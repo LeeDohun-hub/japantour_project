@@ -401,29 +401,8 @@
         </div>
       </section>
 
-      <!-- ④ 交通 -->
+      <!-- ④ 観光 -->
       <section class="wiz-card" data-step="4">
-        <div class="wiz-card-inner">
-          <div class="wiz-step-header">
-            <span class="wiz-step-num">🚌 交通</span>
-            <h2>空港からの交通手段は？</h2>
-            <p class="wiz-lead">複数選択可 <span class="req-badge">必須</span></p>
-          </div>
-          <div class="chip-grid" id="transportChips">
-            <button type="button" class="chip transport-chip" data-val="rail" id="transportChipRail">🚆 鉄道・地下鉄（AREX・広域鉄道）</button>
-            <button type="button" class="chip transport-chip" data-val="taxi">🚕 タクシー / KakaoTaxi</button>
-            <button type="button" class="chip transport-chip" data-val="bus" id="transportChipBus">🚌 空港バス・リムジン</button>
-            <button type="button" class="chip transport-chip" data-val="rental">🚗 レンタカー</button>
-          </div>
-          <p id="transportError" class="field-error" role="alert" hidden>空港からの交通手段を1つ以上選んでください。</p>
-          <p id="transportAirportHint" class="accom-search-hint" style="display:none;margin-top:.5rem"></p>
-          <div id="transportInfoPanel" class="transport-info-panel" style="display:none"></div>
-          <p class="wiz-sub">リアルタイム料金・時刻は各サービスでご確認ください</p>
-        </div>
-      </section>
-
-      <!-- ⑤ 観光 -->
-      <section class="wiz-card" data-step="5">
         <div class="wiz-card-inner">
           <div class="wiz-step-header">
             <span class="wiz-step-num">🗺 観光</span>
@@ -506,7 +485,7 @@
       </section>
 
       <!-- ⑥ 予算 -->
-      <section class="wiz-card" data-step="6">
+      <section class="wiz-card" data-step="5">
         <div class="wiz-card-inner">
           <div class="wiz-step-header">
             <span class="wiz-step-num">💰 予算</span>
@@ -548,7 +527,7 @@
       </section>
 
       <!-- ⑦ 追加情報 -->
-      <section class="wiz-card" data-step="7">
+      <section class="wiz-card" data-step="6">
         <div class="wiz-card-inner">
           <div class="wiz-step-header">
             <span class="wiz-step-num">📝 追加情報</span>
@@ -635,7 +614,7 @@
       </section>
 
       <!-- ⑧ プラン出力 -->
-      <section class="wiz-card" data-step="8">
+      <section class="wiz-card" data-step="7">
         <div class="wiz-card-inner">
           <div class="wiz-step-header">
             <span class="wiz-step-num">🗓 プラン</span>
@@ -651,6 +630,8 @@
           </div>
 
           <div id="planOutputArea" style="display:none">
+            <div id="planDataSparseNotice" style="display:none"></div>
+
             <div class="plan-source-badge plan-source-badge--primary">
               📚 K-Culture・韓国旅行向け日本語データを参考にした全体旅行プラン
             </div>

@@ -6,6 +6,7 @@ KOPIS OpenAPI(``KOPIS_API_KEY``)로 여행 기간과 겹치는 공연·전시 �
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import os
 import time
@@ -635,19 +636,21 @@ def fetch_ticket_platform_events(
     merged: list[TicketPlatformEvent] = []
     genres = _kopis_genres_for_profile(traveler_profile, genre_slugs)
     rows_per_genre = max(8, min(30, max_total))
-    for genre_code, genre_slug, genre_label in genres:
-        merged.extend(
-            _fetch_kopis_genre(
-                genre_code,
-                genre_slug,
-                genre_label,
-                api_key=api_key,
-                start_d=start_d,
-                end_d=end_d,
-                rows=rows_per_genre,
-                timeout=timeout_per_genre,
-            )
+
+    def _fetch_genre_task(args: tuple) -> list[TicketPlatformEvent]:
+        gc, gs, gl = args
+        return _fetch_kopis_genre(
+            gc, gs, gl,
+            api_key=api_key,
+            start_d=start_d,
+            end_d=end_d,
+            rows=rows_per_genre,
+            timeout=timeout_per_genre,
         )
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(genres)) as _gpool:
+        for results in _gpool.map(_fetch_genre_task, genres):
+            merged.extend(results)
 
     # 기간 필터
     in_window: list[TicketPlatformEvent] = []
@@ -682,10 +685,13 @@ def fetch_ticket_platform_events(
         )
         return []
     selected = filtered[:max_total]
-    return [
-        _enrich_kopis_event(ev, api_key=api_key, timeout=timeout_per_genre)
-        for ev in selected
-    ]
+    if not selected:
+        return []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(selected))) as _epool:
+        return list(_epool.map(
+            lambda ev: _enrich_kopis_event(ev, api_key=api_key, timeout=timeout_per_genre),
+            selected,
+        ))
 
 
 def fmt_ticket_platform_events(events: list[TicketPlatformEvent], lang: str = "ja") -> str:

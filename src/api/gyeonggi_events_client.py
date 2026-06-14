@@ -1,7 +1,7 @@
 """전국공연행사정보표준데이터 API 클라이언트.
 
 공공데이터포털(data.go.kr) 기반 전국 공연·행사 정보.
-인증키: INCHEONTRANSPORT_API_KEY (.env)
+인증키: PUBLIC_API_KEY (.env)
 엔드포인트: http://api.data.go.kr/openapi/tn_pubr_public_cltur_event_api
 
 응답 필드:
@@ -71,7 +71,7 @@ class GyeonggiEventsClient:
 
     def __init__(self, timeout: int = 10):
         self.api_key = (
-            os.getenv("INCHEONTRANSPORT_API_KEY", "")
+            os.getenv("PUBLIC_API_KEY", "")
             or os.getenv("GYEONGGI_API_KEY", "")
         ).strip()
         self.timeout = timeout
@@ -96,7 +96,7 @@ class GyeonggiEventsClient:
         city:    시군구 직접 지정 (e.g. "고양")
         """
         if not self.is_configured:
-            logger.debug("INCHEONTRANSPORT_API_KEY not set — skipping nationwide events")
+            logger.debug("PUBLIC_API_KEY not set — skipping nationwide events")
             return []
         if start is None:
             start = date.today()
@@ -299,7 +299,7 @@ class KintexEventsClient:
     def __init__(self, timeout: int = 8):
         self.api_key = (
             os.getenv("GYEONGGI_API_KEY", "")
-            or os.getenv("INCHEONTRANSPORT_API_KEY", "")
+            or os.getenv("PUBLIC_API_KEY", "")
         ).strip()
         self.timeout = timeout
 
