@@ -106,12 +106,14 @@
       labelNorm.startsWith(placeNameNorm) ||
       placeNameNorm.startsWith(labelNorm);
     if (nameMatchesLabel && (p.photo_url || p.naver_photo_url)) return p.photo_url || p.naver_photo_url;
-    // Build photo URL from the stop's displayed label (plan text name).
-    // Strip leading circle/bullet markers that would confuse the image search.
-    const photoQuery = stopLabel
-      .replace(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*/, "")
-      .replace(/^[-・*]\s*/, "")
-      .trim() || p.address || String(p.name || "").trim();
+    // Build photo URL from the stop label, preferring Korean p.name when the
+    // label is a generic Japanese activity description (e.g. "カフェ巡り") with
+    // no Korean — Naver photo search fails on Japanese text.
+    const processedLabel = stopLabel.replace(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*/, "").replace(/^[-・*]\s*/, "").trim();
+    const labelHasKorean = /[가-힣]/.test(processedLabel);
+    const nameHasKorean = /[가-힣]/.test(p.name || "");
+    const photoQuery = (!labelHasKorean && nameHasKorean ? String(p.name) : processedLabel)
+      || p.address || String(p.name || "").trim();
     if (!photoQuery) return "";
     const coord = stop?.lat != null && stop?.lng != null
       ? `&lat=${encodeURIComponent(stop.lat)}&lng=${encodeURIComponent(stop.lng)}`
@@ -369,7 +371,13 @@
     try {
       const res = await fetch(`/api/maps/driving-route/?${qs}`);
       const data = await res.json();
-      const path = res.ok && data?.ok && Array.isArray(data.route?.path) ? data.route.path : null;
+      if (!res.ok || !data?.ok) {
+        const err = data?.error || `HTTP ${res.status}`;
+        console.warn("day stops route failed:", err, data);
+        _drivingRouteCache.set(cacheKey, null);
+        return null;
+      }
+      const path = Array.isArray(data.route?.path) ? data.route.path : null;
       _drivingRouteCache.set(cacheKey, path);
       return path;
     } catch (err) {
@@ -624,6 +632,13 @@
     ]);
   }
 
+  // 슬롯 레이블 판별 (wizard.js _PLAN_SLOT_RE와 동기화 유지)
+  const _SLOT_LABEL_LINE_RE = /^(?:\[(?:午前|午後|昼食|夕食|夜|朝食|朝|ランチ|ディナー|오전|오후|점심|저녁|밤|아침)\]|(?:午前|午後|昼食|夕食|夜|朝食|朝|ランチ|ディナー|モーニング|夜食|深夜|오전|오후|점심|저녁|밤|아침|야식|간식|브런치|런치|디너)(?=$|\s|[:：]))/u;
+
+  function _isSlotLabelLine(line) {
+    return _SLOT_LABEL_LINE_RE.test(String(line || "").trim());
+  }
+
   function _isTransitOrAnchorLine(line) {
     return /(?:入国|出国|チェックイン|ホテル|宿泊|空港|移動|休息|休憩|到着|出発|手荷物|審査|税関|AREX|乗換|下車|徒歩|タクシー|リムジン|コンビニ|軽食|입국|출국|체크인|호텔|숙박|공항|이동|휴식|휴게|도착|출발|수하물|심사|세관|환승|하차|도보|택시|리무진|편의점|경의중앙선|귀환|귀국|숙박지|숙박처|KTX|SRT|고속버스|KORAIL)/i.test(line || "");
   }
@@ -861,11 +876,14 @@
   }
 
   function mapsUrlKey(url) {
-    if (/map\.naver\.com/i.test(String(url || ""))) {
-      return String(url).split("?")[0].replace(/\/$/, "");
+    const s = String(url || "");
+    const naverPlaceM = /map\.naver\.com/i.test(s) && s.match(/\/place\/(\d{6,})/i);
+    if (naverPlaceM) return `naver-place:${naverPlaceM[1]}`;
+    if (/map\.naver\.com/i.test(s)) {
+      return s.split("?")[0].replace(/\/$/, "");
     }
-    const m = String(url).match(/[?&]cid=(\d+)/);
-    return m ? `cid:${m[1]}` : String(url).split("&g_mp=")[0].split("&")[0];
+    const m = s.match(/[?&]cid=(\d+)/);
+    return m ? `cid:${m[1]}` : s.split("&g_mp=")[0].split("&")[0];
   }
 
   function stopLockKey(stop, dayNum) {
@@ -921,6 +939,7 @@
       if (!t || MAPS_URL_RE.test(t) || t.startsWith("http")) continue;
       if (_isPlanNoiseLine(t) || _isRecommendationLine(t)) continue;
       if (DAY_HEADER_RE.test(t)) return "";
+      if (_isSlotLabelLine(t)) continue; // 슬롯 레이블(午前/점심 등)은 장소명 아님
       let label = t
         .replace(/^\[[\d:〜~\-]+\]\s*/, "")
         .replace(/^[-・*①②③④⑤⑥⑦⑧⑨⑩]\s*/, "")
@@ -938,6 +957,8 @@
       label = label.replace(/\s*[でをにはが].+$/, "").trim();
       // Strip Korean activity descriptions after 에서 + space (location-action pattern)
       label = label.replace(/\s*에서\s+.+$/, "").trim();
+      // 긴 설명 문장은 장소명이 아님 (문장 종결 기호 포함 + 20자 이상)
+      if (label.length > 20 && /[。！？.!?]/.test(label)) continue;
       return label;
     }
     return "";
@@ -988,9 +1009,10 @@
       const trimmed = lines[lineIdx].trim();
       const urlOnly = trimmed.split(/\s/)[0];
       const place = (placeIndex.byUrl || placeIndex || {})[mapsUrlKey(urlOnly)] || null;
-      // Anchor/search-query placeholder places have no real coordinates — skip
+      // cafe-anchor: = カフェ巡り synthetic search query — skip (no specific venue)
+      // anchor: = real venue with no Naver coords (e.g. event hall) — allow, shown as grey pin
       const pid = place?.place_id || "";
-      if (pid.startsWith("anchor:") || pid.startsWith("cafe-anchor:")) return;
+      if (pid.startsWith("cafe-anchor:")) return;
       const label = labelBeforeUrl(lines, urlOnly) || place?.name || "スポット";
       const rec = {
         url: urlOnly,
@@ -1036,6 +1058,55 @@
       const n = Math.max(1, fallbackDayCount);
       for (let d = 1; d <= n; d++) {
         days.push({ day: d, title: `${d}日目`, stops: [] });
+      }
+    }
+
+    // Second pass: add byName-matched stops for places mentioned without a Maps URL.
+    // byName is populated by wizard.js _enrichUnlinkedAttractions before render() is called.
+    // Scoped per day section to avoid cross-day bleeding.
+    if (placeIndex?.byName && Object.keys(placeIndex.byName).length) {
+      const resolvedDayNum = (day) => {
+        // 最終日 has parseDayNumber() == -1; day.day was set to fallbackDayCount
+        return day.day;
+      };
+      for (const day of days) {
+        const target = resolvedDayNum(day);
+        const dayHeaderIdx = lines.findIndex((l) => {
+          const t = l.trim();
+          if (!isDayHeaderLine(t)) return false;
+          const dn = parseDayNumber(t);
+          if (dn === target) return true;
+          // 最終日/마지막 날 (parseDayNumber == -1)
+          if (dn === -1) {
+            return (fallbackDayCount || days.length + 1 || 99) === target;
+          }
+          return false;
+        });
+        if (dayHeaderIdx < 0) continue;
+        const nextHdrIdx = lines.findIndex((l, idx) => {
+          if (idx <= dayHeaderIdx) return false;
+          return parseDayNumber(l.trim()) !== null && isDayHeaderLine(l.trim());
+        });
+        const sectionEnd = nextHdrIdx < 0 ? lines.length : nextHdrIdx;
+
+        for (let i = dayHeaderIdx + 1; i < sectionEnd; i++) {
+          const t = lines[i].trim();
+          if (!t || MAPS_URL_RE.test(t)) continue;
+          if (_isSlotLabelLine(t) || _isPlanNoiseLine(t) || _isTransitOrAnchorLine(t) || _isRecommendationLine(t)) continue;
+          const place = _explicitPlaceFromLine(t, placeIndex);
+          if (!place) continue;
+          const label = t
+            .replace(/^[-・*①②③④⑤⑥⑦⑧⑨⑩]\s*/, "")
+            .replace(/^\[[^\]]+\]\s*/, "")
+            .replace(/^【[^】]+】\s*/, "")
+            .replace(/[（(][^）)]*[）)]/g, " ")
+            .replace(/[：:].+$/, "")
+            .trim();
+          const stop = placeToStop(place, label || place.name, i);
+          if (stop && !day.stops.some((s) => _sameStop(s, stop))) {
+            day.stops.push(stop);
+          }
+        }
       }
     }
 
@@ -1311,6 +1382,8 @@
     const segment = _airportAccommodationSegment(day);
     let routePath = path;
     let routeStroke = "#2B6CB0";
+
+    console.debug("[PlanMap] day", day.day, "| geoStops:", stops.length, "| segment:", segment ? `${segment.from?.name}→${segment.to?.name}` : "null", "| transport:", _mapMeta?.transport);
 
     if (segment && _hasRouteCoords(segment.from) && _hasRouteCoords(segment.to)) {
       if (_selectedTransportHasTransitRoute()) {
@@ -1666,19 +1739,25 @@
     }
 
     const colors = markerColors();
-    let mapNum = 0; // 지도 마커 번호 (좌표 있는 stop만 카운트)
+    let mapNum = 0; // 지도 마커 번호 (좌표 있는 stop만 카운트, 맵 핀 번호용)
     const stopCards = (day.stops || [])
       .map((stop, stopIdx) => {
         const hasCoords = stop.lat != null && stop.lng != null;
         const p = stop.place || {};
-        // Prefer the plan-text label over the DB place name to avoid wrong Naver
-        // search results overwriting the stop title (e.g. "대한민국 고기왕" shown
-        // instead of "국립아시아문화전당 광주").
-        // Strip leading circle-number bullets (② ③ etc.) from plan-text labels.
-        const rawLabel = (stop.label || p.name || "").replace(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*/, "").trim();
+        // Prefer plan-text label over DB place name to avoid wrong Naver match
+        // (e.g. "대한민국 고기왕" overwriting "국립아시아문화전당 광주").
+        // Exception: when label is a generic Japanese activity description with no
+        // Korean chars (e.g. "カフェ巡り") but p.name is a real Korean place name
+        // ("마이알레") — prefer p.name so the actual place name is displayed.
+        const _labelStripped = (stop.label || "").replace(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*/, "").trim();
+        const _pName = String(p.name || "").trim();
+        const _labelHasKo = /[가-힣]/.test(_labelStripped);
+        const _pNameHasKo = /[가-힣]/.test(_pName);
+        const rawLabel = (!_labelHasKo && _pNameHasKo) ? _pName : (_labelStripped || _pName);
         // LLM 활동 묘사가 stop name으로 파싱된 케이스 제거
         // e.g. "ベーグル", "伝統工芸や雑貨ショップ" — 좌표도 없고, 매칭된 place도 없고, 한국어도 없으면 제외
-        if (!hasCoords && !p.name && !/[가-힣]/.test(rawLabel)) return null;
+        // 단, Maps URL에서 직접 생성된 stop(축제명 등)은 일본어라도 유지
+        if (!hasCoords && !p.name && !stop.sourceUrl && !/[가-힣]/.test(rawLabel)) return null;
         const name = esc(rawLabel || stop.label || p.name);
         const lockable = !stop.isAirport && !stop.isAccommodation;
         const lockKey = stopLockKey(stop, day.day);
@@ -1694,13 +1773,13 @@
         const tip = tipRaw && tipRaw !== stop.label ? esc(tipRaw) : "";
         const dragAttrs = `draggable="false" data-draggable="false"`;
         const dragHandle = `<span class="plan-day-stop__drag plan-day-stop__drag--fixed" aria-hidden="true">•</span>`;
-        // 전체 순번 (좌표 유무 관계없이 모든 stop에 번호 부여)
+        // 카드 리스트 표시 순번: 좌표 유무 관계없이 day 내 통합 순번 (1, 2, 3...)
         const seqNum = stopIdx + 1;
         if (hasCoords) {
-          mapNum++;
+          mapNum++; // 맵 핀 번호는 별도 유지
           const color = colors[(mapNum - 1) % colors.length];
           return `<article class="plan-day-stop plan-day-stop--fixed" ${dragAttrs} data-stop-index="${stopIdx}">
-            <span class="plan-day-stop__num" style="background:${color}">${mapNum}</span>
+            <span class="plan-day-stop__num" style="background:${color}">${seqNum}</span>
             ${dragHandle}
             <a class="plan-day-stop__thumb" href="${mapsUri}" target="_blank" rel="noopener">${thumb}</a>
             <div class="plan-day-stop__body">
@@ -1713,7 +1792,7 @@
             </div>
           </article>`;
         } else {
-          // 좌표 없는 stop — 지도 마커 없음, 순번은 유지
+          // 좌표 없는 stop — 지도 마커 없음, 통합 순번 유지
           return `<article class="plan-day-stop plan-day-stop--no-map plan-day-stop--fixed" ${dragAttrs} data-stop-index="${stopIdx}">
             <span class="plan-day-stop__num" style="background:#aaa">${seqNum}</span>
             ${dragHandle}

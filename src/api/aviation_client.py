@@ -13,7 +13,7 @@
 
 날짜 자동 선택: 오늘 이하 → 실시간 API / 미래 → 정기편 API
 출발지 시각: 노선별 비행시간(_ROUTE_DURATION_MIN)으로 추정 (JST=KST, 시차 없음)
-키: INCHEONTRANSPORT_API_KEY (.env)
+키: PUBLIC_API_KEY (.env)
 """
 
 from __future__ import annotations
@@ -343,7 +343,7 @@ class IncheonAirportClient:
     def __init__(self, service_key: str | None = None, timeout: int = 15):
         self.service_key = (
             service_key
-            or os.getenv("INCHEONTRANSPORT_API_KEY")
+            or os.getenv("PUBLIC_API_KEY")
             or os.getenv("INCHEONAIRPORT_API_KEY")
         )
         self.timeout = timeout
@@ -363,7 +363,7 @@ class IncheonAirportClient:
     ) -> list[FlightInfo]:
         """ICN 연관 항공편 조회. 날짜 기준으로 실시간/정기편 API 자동 선택."""
         if not self.service_key:
-            raise ValueError("INCHEONTRANSPORT_API_KEY가 설정되지 않았습니다.")
+            raise ValueError("PUBLIC_API_KEY가 설정되지 않았습니다.")
 
         target_date = _parse_date(flight_date)
         today = date.today()
@@ -390,7 +390,7 @@ class IncheonAirportClient:
     ) -> list[AirportBusInfo]:
         """인천공항 공항버스 정보. area: 1서울 2경기 3인천 4강원 5충청 6경상 7전라."""
         if not self.service_key:
-            raise ValueError("INCHEONTRANSPORT_API_KEY가 설정되지 않았습니다.")
+            raise ValueError("PUBLIC_API_KEY가 설정되지 않았습니다.")
         codes = area_codes or [1]
         out: list[AirportBusInfo] = []
         seen: set[str] = set()
@@ -421,7 +421,7 @@ class IncheonAirportClient:
     ) -> list[AirportTaxiStatus]:
         """인천공항 터미널별 택시 출차/대기 정보. P01=T1, P03=T2."""
         if not self.service_key:
-            raise ValueError("INCHEONTRANSPORT_API_KEY가 설정되지 않았습니다.")
+            raise ValueError("PUBLIC_API_KEY가 설정되지 않았습니다.")
         ternos = terminals or ["P01", "P03"]
         out: list[AirportTaxiStatus] = []
         seen: set[str] = set()
@@ -453,7 +453,7 @@ class IncheonAirportClient:
         operation_date: YYYYMMDD (API 제공 범위 D-3~D+3)
         """
         if not self.service_key:
-            raise ValueError("INCHEONTRANSPORT_API_KEY가 설정되지 않았습니다.")
+            raise ValueError("PUBLIC_API_KEY가 설정되지 않았습니다.")
 
         drv_dt = operation_date or date.today().strftime("%Y%m%d")
         out: list[AirportRailroadOperation] = []
@@ -934,7 +934,7 @@ def search_route_flights(
     if uses_korea_regional_airport(dep, arr):
         kac = KoreaAirportsFlightClient()
         if not kac.is_configured:
-            raise ValueError("INCHEONTRANSPORT_API_KEY가 설정되지 않았습니다.")
+            raise ValueError("PUBLIC_API_KEY가 설정되지 않았습니다.")
         try:
             return kac.search_flights(dep, arr, flight_date, limit=limit)
         except Exception as exc:
@@ -943,7 +943,7 @@ def search_route_flights(
 
     icn = IncheonAirportClient()
     if not icn.is_configured:
-        raise ValueError("INCHEONTRANSPORT_API_KEY가 설정되지 않았습니다.")
+        raise ValueError("PUBLIC_API_KEY가 설정되지 않았습니다.")
     flights = icn.search_flights(
         dep_iata=dep, arr_iata=arr, flight_date=flight_date, limit=limit
     )

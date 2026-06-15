@@ -227,11 +227,15 @@ const CHAT_MAPS_URL_EXTRACT =
   /https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps|goo\.gl\/maps|maps\.app\.goo\.gl|map\.naver\.com|naver\.me)\/[^\s\]<")]+/gi;
 
 function mapsUrlKey(url) {
-  if (/map\.naver\.com|naver\.me/i.test(String(url || ""))) {
-    return String(url).split("?")[0].replace(/\/$/, "");
+  const s = String(url || "");
+  // 네이버 /place/{id} URL은 place ID로 정규화 (검색경로 차이 무시)
+  const naverPlaceM = /map\.naver\.com/i.test(s) && s.match(/\/place\/(\d{6,})/i);
+  if (naverPlaceM) return `naver-place:${naverPlaceM[1]}`;
+  if (/map\.naver\.com|naver\.me/i.test(s)) {
+    return s.split("?")[0].replace(/\/$/, "");
   }
-  const m = String(url || "").match(/[?&]cid=(\d+)/);
-  return m ? `cid:${m[1]}` : String(url || "").split("&g_mp=")[0].split("&")[0];
+  const m = s.match(/[?&]cid=(\d+)/);
+  return m ? `cid:${m[1]}` : s.split("&g_mp=")[0].split("&")[0];
 }
 
 function normalizePlaceName(s) {

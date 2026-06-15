@@ -4,7 +4,7 @@
  */
 (function (global) {
   const TICKET_URL_RE =
-    /https?:\/\/(?:www\.kopis\.or\.kr|tickets?\.interpark\.com|ticket\.interpark\.com|www\.ticket\.interpark\.com|www\.ticketlink\.co\.kr|ticketlink\.co\.kr|ticket\.yes24\.com|ticket\.melon\.com|www\.ticketmelon\.co\.kr|ticket\.ssg\.com|www\.ssglanders\.com|www\.giantsclub\.com|ticket\.ncdinos\.com)\/[^\s\]<")\]、。.,]*/gi;
+    /https?:\/\/(?:www\.kopis\.or\.kr|tickets?\.interpark\.com|ticket\.interpark\.com|www\.ticket\.interpark\.com|www\.ticketlink\.co\.kr|ticketlink\.co\.kr|ticket\.yes24\.com|ticket\.melon\.com|www\.ticketmelon\.co\.kr|ticket\.ssg\.com|www\.ssglanders\.com|www\.giantsclub\.com|ticket\.ncdinos\.com)\/[^\s\]<")\]、。,]*/gi;
 
   function siteNameFromUrl(url) {
     if (/kopis/i.test(url)) return "公演情報";

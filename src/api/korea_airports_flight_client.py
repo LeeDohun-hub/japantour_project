@@ -5,10 +5,13 @@
   · 노선 자체가 없으면 → 0편 (ICN 경유 등으로 대체하지 않음)
 
 데이터 소스 (KAC_FLIGHT_SOURCE=auto):
-  1. openapi.airport.co.kr — 항공기 운항정보 (15000126)
-  2. api.odcloud.kr — 국제선 항공기스케줄 스냅샷 (15003087)
+  1. [중지됨 2026-05] openapi.airport.co.kr — 항공기 운항정보 (probe 실패 시 자동 건너뜀)
+  2. [현재] apis.data.go.kr/B551178/flight-status — 한국공항공사_실시간 항공기 운항정보 조회_GW
+     /depart (출발편) · /arrival (도착편) — D-3~D+6, 일 5000 트래픽
+     KAC_GW_BASE_URL 환경변수로 재정의 가능
+  3. api.odcloud.kr — 국제선 항공기스케줄 스냅샷 (15003087) [최종 fallback]
 
-인증키: INCHEONTRANSPORT_API_KEY · AIRPORT_API_KEY (.env)
+인증키: PUBLIC_API_KEY (.env)
 """
 
 from __future__ import annotations
@@ -31,6 +34,9 @@ from src.api.aviation_client import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ── KAC GW (실시간 운항정보) ────────────────────────────────────────
+_KAC_GW_BASE = "https://apis.data.go.kr/B551178/flight-status"
 
 # ── odcloud (국제선 스냅샷 CSV) ─────────────────────────────────────
 _ODCLOUD_BASE = "https://api.odcloud.kr/api"
@@ -91,10 +97,19 @@ _airport_probe_cache: bool | None = None
 
 def _service_key() -> str | None:
     return (
-        os.getenv("INCHEONTRANSPORT_API_KEY")
-        or os.getenv("AIRPORT_API_KEY")
-        or os.getenv("ODCLOUD_SERVICE_KEY")
+        os.getenv("PUBLIC_API_KEY")
+        or os.getenv("AIRPORT_API_KEY")      # 구 키명 호환
+        or os.getenv("ODCLOUD_SERVICE_KEY")  # 구 키명 호환
     )
+
+
+def _kac_gw_base_url() -> str:
+    """한국공항공사_실시간 항공기 운항정보 조회_GW 엔드포인트.
+
+    기본값: _KAC_GW_BASE (apis.data.go.kr/B551178/flight-status).
+    .env에 KAC_GW_BASE_URL= 로 재정의 가능.
+    """
+    return (os.getenv("KAC_GW_BASE_URL") or _KAC_GW_BASE).rstrip("/")
 
 
 def _flight_source_mode() -> str:
@@ -222,7 +237,7 @@ class KoreaAirportsFlightClient:
         limit: int = 500,
     ) -> tuple[list[FlightInfo], str | None, str]:
         if not self.service_key:
-            raise ValueError("INCHEONTRANSPORT_API_KEY가 설정되지 않았습니다.")
+            raise ValueError("PUBLIC_API_KEY가 설정되지 않았습니다.")
         dep = (dep_iata or "").upper()
         arr = (arr_iata or "").upper()
         if not dep or not arr:
@@ -246,8 +261,239 @@ class KoreaAirportsFlightClient:
                 if flights:
                     return flights, warn, "airport_co_kr"
 
+        # 2. KAC GW (apis.data.go.kr/B551178/flight-status) — 실시간
+        if mode in ("auto", "kac_gw"):
+            try:
+                flights, warn = self._search_kac_gw(dep, arr, flight_date, limit)
+                if flights:
+                    return flights, warn, "kac_gw"
+            except Exception as exc:
+                logger.warning("kac_gw 조회 실패 (%s→%s): %s", dep, arr, exc)
+
+        # 3. odcloud 스냅샷 (최종 fallback)
         flights, warn = self._search_odcloud(dep, arr, flight_date, limit)
         return flights, warn, "odcloud"
+
+    # ── KAC GW (apis.data.go.kr/B551178/flight-status) ─────────────
+
+    def _search_kac_gw(
+        self,
+        dep: str,
+        arr: str,
+        flight_date: str | None,
+        limit: int,
+    ) -> tuple[list[FlightInfo], str | None]:
+        """한국공항공사_실시간 항공기 운항정보 조회_GW.
+
+        /depart 로 dep 출발 전체 조회 후 arr 도착지 필터.
+        결과 없으면 /arrival 로 arr 도착 전체 조회 후 dep 출발지 필터.
+        """
+        base = _kac_gw_base_url()
+        target = _parse_date(flight_date)
+        sch_date = target.strftime("%Y%m%d") if target else date.today().strftime("%Y%m%d")
+
+        results: list[FlightInfo] = []
+
+        depart_items = self._fetch_kac_gw_pages(
+            f"{base}/depart",
+            {"schDate": sch_date, "schDeptCityCode": dep},
+            limit * 5,
+        )
+        depart_items = [
+            it for it in depart_items
+            if (
+                it.get("arrAirportId") or it.get("schArrvCityCode") or
+                it.get("arrCityCode") or ""
+            ).upper() == arr
+        ]
+        for item in depart_items:
+            fl = self._normalize_kac_gw_depart(item, dep, arr)
+            _append_flight_unique(results, fl)
+            if len(results) >= limit:
+                break
+
+        if not results:
+            arrival_items = self._fetch_kac_gw_pages(
+                f"{base}/arrival",
+                {"schDate": sch_date, "schArrvCityCode": arr},
+                limit * 5,
+            )
+            arrival_items = [
+                it for it in arrival_items
+                if (
+                    it.get("depAirportId") or it.get("schDeptCityCode") or
+                    it.get("depCityCode") or ""
+                ).upper() == dep
+            ]
+            for item in arrival_items:
+                fl = self._normalize_kac_gw_arrival(item, dep, arr)
+                _append_flight_unique(results, fl)
+                if len(results) >= limit:
+                    break
+
+        results.sort(key=lambda f: f.dep_scheduled or f.arr_scheduled or "99:99")
+        logger.info("kac_gw %s→%s date=%s → %d편", dep, arr, flight_date, len(results))
+        return results, None
+
+    def _fetch_kac_gw_pages(
+        self,
+        url: str,
+        extra: dict[str, Any],
+        limit: int,
+    ) -> list[dict]:
+        out: list[dict] = []
+        page = 1
+        while len(out) < limit:
+            params = {
+                "serviceKey": self.service_key,
+                "pageNo": str(page),
+                "numOfRows": "100",
+                "_type": "json",
+                **extra,
+            }
+            try:
+                r = requests.get(url, params=params, timeout=self.timeout)
+                r.raise_for_status()
+                payload = _payload_from_bytes(r.content, r.headers.get("content-type", ""))
+            except Exception as exc:
+                logger.warning("kac_gw %s page %d: %s", url.split("/")[-1], page, exc)
+                break
+            code = (payload.get("response", {}).get("header") or {}).get("resultCode")
+            if code and code != "00":
+                msg = (payload.get("response", {}).get("header") or {}).get("resultMsg")
+                logger.warning("kac_gw %s → code=%s %s", url.split("/")[-1], code, msg)
+                break
+            batch = _extract_items(payload)
+            if not batch:
+                break
+            out.extend(batch)
+            total = (payload.get("response", {}).get("body") or {}).get("totalCount")
+            if total is not None and len(out) >= int(total):
+                break
+            if len(batch) < 100:
+                break
+            page += 1
+        return out
+
+    @staticmethod
+    def _kac_gw_status(item: dict) -> str:
+        remark = (
+            item.get("remark") or item.get("remarksEng") or
+            item.get("remarkKor") or item.get("운항상태") or ""
+        ).strip().lower()
+        if not remark:
+            return "scheduled"
+        if "지연" in remark or "delay" in remark:
+            return "delayed"
+        if "결항" in remark or "cancel" in remark:
+            return "cancelled"
+        if "출발" in remark or "depart" in remark or "active" in remark:
+            return "active"
+        if "도착" in remark or "arrived" in remark or "landed" in remark:
+            return "landed"
+        return "scheduled"
+
+    def _normalize_kac_gw_depart(self, item: dict, dep: str, arr: str) -> FlightInfo:
+        flight_id = (
+            item.get("flightId") or item.get("편명") or item.get("항공편명") or ""
+        ).strip().upper()
+        airline_code = "".join(c for c in flight_id if c.isalpha())[:2]
+        airline_name = (
+            _AIRLINE_DISPLAY.get(airline_code)
+            or item.get("airlineKorean") or item.get("airline") or item.get("항공사") or ""
+        )
+        dep_time = self._time_hhmm(
+            item.get("depPlandTime") or item.get("scheduleDateTime") or
+            item.get("depSchdDateTime") or item.get("출발예정시간") or ""
+        )
+        arr_airport_id = (
+            item.get("arrAirportId") or item.get("schArrvCityCode") or arr
+        ).upper()
+        arr_time = self._time_hhmm(
+            item.get("arrPlandTime") or item.get("arrSchdDateTime") or
+            item.get("도착예정시간") or ""
+        )
+        if not arr_time and dep_time:
+            dur = _ROUTE_DURATION_MIN.get((dep, arr_airport_id), 90)
+            try:
+                total = int(dep_time[:2]) * 60 + int(dep_time[3:5]) + dur
+                arr_time = f"{(total // 60) % 24:02d}:{total % 60:02d}"
+            except (ValueError, IndexError):
+                arr_time = dep_time
+        dep_airport_id = (
+            item.get("depAirportId") or item.get("schDeptCityCode") or dep
+        ).upper()
+        return FlightInfo(
+            flight_iata=flight_id,
+            flight_number="".join(c for c in flight_id if c.isdigit()),
+            airline_name=airline_name,
+            airline_iata=airline_code,
+            status=self._kac_gw_status(item),
+            dep_airport=_AIRPORT_NAME.get(dep_airport_id, dep_airport_id),
+            dep_iata=dep_airport_id,
+            dep_terminal=item.get("terminal") or item.get("터미널") or None,
+            dep_gate=item.get("gate") or None,
+            dep_scheduled=dep_time,
+            dep_delay=None,
+            arr_airport=_AIRPORT_NAME.get(arr_airport_id, arr_airport_id),
+            arr_iata=arr_airport_id,
+            arr_terminal=None,
+            arr_gate=None,
+            arr_scheduled=arr_time,
+            arr_delay=None,
+            codeshared_iata=None,
+        )
+
+    def _normalize_kac_gw_arrival(self, item: dict, dep: str, arr: str) -> FlightInfo:
+        flight_id = (
+            item.get("flightId") or item.get("편명") or item.get("항공편명") or ""
+        ).strip().upper()
+        airline_code = "".join(c for c in flight_id if c.isalpha())[:2]
+        airline_name = (
+            _AIRLINE_DISPLAY.get(airline_code)
+            or item.get("airlineKorean") or item.get("airline") or item.get("항공사") or ""
+        )
+        arr_time = self._time_hhmm(
+            item.get("arrPlandTime") or item.get("scheduleDateTime") or
+            item.get("arrSchdDateTime") or item.get("도착예정시간") or ""
+        )
+        dep_airport_id = (
+            item.get("depAirportId") or item.get("schDeptCityCode") or dep
+        ).upper()
+        arr_airport_id = (
+            item.get("arrAirportId") or item.get("schArrvCityCode") or arr
+        ).upper()
+        dep_time = self._time_hhmm(
+            item.get("depPlandTime") or item.get("depSchdDateTime") or
+            item.get("출발예정시간") or ""
+        )
+        if not dep_time and arr_time:
+            dur = _ROUTE_DURATION_MIN.get((dep_airport_id, arr_airport_id), 90)
+            try:
+                total = int(arr_time[:2]) * 60 + int(arr_time[3:5]) - dur
+                dep_time = f"{(total // 60) % 24:02d}:{total % 60:02d}"
+            except (ValueError, IndexError):
+                dep_time = arr_time
+        return FlightInfo(
+            flight_iata=flight_id,
+            flight_number="".join(c for c in flight_id if c.isdigit()),
+            airline_name=airline_name,
+            airline_iata=airline_code,
+            status=self._kac_gw_status(item),
+            dep_airport=_AIRPORT_NAME.get(dep_airport_id, dep_airport_id),
+            dep_iata=dep_airport_id,
+            dep_terminal=None,
+            dep_gate=None,
+            dep_scheduled=dep_time,
+            dep_delay=None,
+            arr_airport=_AIRPORT_NAME.get(arr_airport_id, arr_airport_id),
+            arr_iata=arr_airport_id,
+            arr_terminal=item.get("terminal") or item.get("터미널") or None,
+            arr_gate=item.get("gate") or None,
+            arr_scheduled=arr_time,
+            arr_delay=None,
+            codeshared_iata=None,
+        )
 
     # ── openapi.airport.co.kr ─────────────────────────────────────
 

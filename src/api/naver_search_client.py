@@ -8,6 +8,7 @@ and preference keyword matches.
 
 from __future__ import annotations
 
+import copy
 import html
 import logging
 import math
@@ -174,6 +175,12 @@ class NaverSearchClient:
     _rate_lock = threading.Lock()
     _last_request_at: float = 0.0
     _min_interval: float = 0.15  # seconds between requests (~6-7 req/sec)
+    _cache_lock = threading.Lock()
+    _cache: dict[tuple[str, tuple[tuple[str, str], ...]], tuple[float, dict[str, Any]]] = {}
+    _cache_max_entries: int = 512
+    _local_cache_ttl: float = 6 * 60 * 60
+    _blog_cache_ttl: float = 60 * 60
+    _error_cache_ttl: float = 2 * 60
 
     def __init__(
         self,
@@ -197,9 +204,57 @@ class NaverSearchClient:
             "Accept": "application/json",
         }
 
+    @classmethod
+    def _cache_key(cls, url: str, params: dict[str, Any]) -> tuple[str, tuple[tuple[str, str], ...]]:
+        return url, tuple(sorted((str(k), str(v)) for k, v in params.items()))
+
+    @classmethod
+    def _cache_ttl(cls, url: str, payload: dict[str, Any]) -> float:
+        if not payload:
+            return cls._error_cache_ttl
+        if url == BLOG_SEARCH_URL:
+            return cls._blog_cache_ttl
+        return cls._local_cache_ttl
+
+    @staticmethod
+    def _clone_payload(payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return copy.deepcopy(payload)
+        except Exception:
+            return dict(payload)
+
+    @classmethod
+    def _cache_get(cls, key: tuple[str, tuple[tuple[str, str], ...]]) -> dict[str, Any] | None:
+        now = time.monotonic()
+        with cls._cache_lock:
+            cached = cls._cache.get(key)
+            if not cached:
+                return None
+            expires_at, payload = cached
+            if expires_at <= now:
+                cls._cache.pop(key, None)
+                return None
+            return cls._clone_payload(payload)
+
+    @classmethod
+    def _cache_set(cls, key: tuple[str, tuple[tuple[str, str], ...]], url: str, payload: dict[str, Any]) -> None:
+        expires_at = time.monotonic() + cls._cache_ttl(url, payload)
+        with cls._cache_lock:
+            if len(cls._cache) >= cls._cache_max_entries:
+                expired = [k for k, (exp, _) in cls._cache.items() if exp <= time.monotonic()]
+                for k in expired:
+                    cls._cache.pop(k, None)
+                while len(cls._cache) >= cls._cache_max_entries:
+                    cls._cache.pop(next(iter(cls._cache)))
+            cls._cache[key] = (expires_at, cls._clone_payload(payload))
+
     def _get(self, url: str, params: dict[str, Any]) -> dict[str, Any]:
         if not self.is_configured:
             return {}
+        cache_key = self._cache_key(url, params)
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
         with NaverSearchClient._rate_lock:
             wait = NaverSearchClient._min_interval - (time.monotonic() - NaverSearchClient._last_request_at)
             if wait > 0:
@@ -208,12 +263,18 @@ class NaverSearchClient:
         try:
             resp = requests.get(url, params=params, headers=self._headers(), timeout=self.timeout)
             resp.raise_for_status()
-            return resp.json()
+            payload = resp.json()
+            if isinstance(payload, dict):
+                self._cache_set(cache_key, url, payload)
+                return self._clone_payload(payload)
+            return {}
         except requests.RequestException as exc:
             logger.warning("Naver Search request failed [%s]: %s", params.get("query"), exc)
+            self._cache_set(cache_key, url, {})
             return {}
         except ValueError:
             logger.warning("Naver Search invalid JSON [%s]", params.get("query"))
+            self._cache_set(cache_key, url, {})
             return {}
 
     def search_local(self, query: str, *, display: int = 5) -> list[dict[str, Any]]:

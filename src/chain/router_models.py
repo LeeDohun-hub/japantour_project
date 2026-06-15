@@ -41,3 +41,5 @@ class RouteResult:
     web_search_results: list = field(default_factory=list)
     ticket_platform_events: list = field(default_factory=list)
     token_stream: Any | None = field(default=None, repr=False)
+    data_sparse: bool = False
+    alternative_regions: list[str] = field(default_factory=list)
