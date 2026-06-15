@@ -995,7 +995,10 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "  何を食べるか、どんな写真が撮れるかを1文で説明する（評価・住所・地図ボタン文言は書かない）。\n"
             "- **URLは必ず Reference Data に記載された map.naver.com URLをそのままコピーすること。\n"
             "  トレーニングデータ由来の短縮URLや外部地図URLを自己生成することは絶対禁止。\n"
-            "  Reference Dataに地図URLがない場合は URLを一切書かない（でたらめURL生成禁止）。**\n"
+            "  Reference Dataに地図URLがない場合でも、実在が確実な韓国の有名観光地・自然スポット\n"
+            "  （国立公園、海水욕장、문화재、마을、호수 등）は Naver 検索URLのみ使用可:\n"
+            "  `https://map.naver.com/p/search/한국어장소명` (例: 아바이마을 → https://map.naver.com/p/search/아바이마을)\n"
+            "  ただし place ID 形式（/p/place/12345 など）は一切禁止。必ず /p/search/ 形式で。**\n"
             "\n"
             "【2日目以降 — 構成ルール】\n"
             "- ①②③ または 午前・昼食・午後・夕食 の順序ラベル。各日末尾に【予算の目安】【旅行のポイント】を付記。\n"
@@ -4780,7 +4783,7 @@ def _search_naver_places_for_itinerary(
     # Reserve separate slots so food queries don't crowd out attraction queries.
     # VK 우선 쿼리는 항상 앞에 유지, 나머지 generic 쿼리만 reroll 시 shuffle
     _n_vk = len(priority_attr_queries) if priority_attr_queries else 0
-    _food_cap = 14 if reroll > 0 or avoid_keys else 10
+    _food_cap = 14  # 1회차도 14쿼리 확보 (10이면 blog_count 필터 후 food_merged 미달 발생)
     # VK priority 쿼리가 있으면 cap을 높여 전량 처리 + generic 쿼리도 일부 포함
     _attr_cap_base = 18 if reroll > 0 or avoid_keys else 14
     _attr_cap = max(_attr_cap_base, _n_vk + 6)
@@ -4810,7 +4813,7 @@ def _search_naver_places_for_itinerary(
         try:
             places = client.search_places(
                 q,
-                display=min(7 if (reroll > 0 or avoid_keys) else 5, limits["max_food_per_area"] + 2),
+                display=min(7, limits["max_food_per_area"] + 2),
                 area_hint=area_hint,
             )
             food_batches.append([
@@ -4882,6 +4885,39 @@ def _search_naver_places_for_itinerary(
         avoid_names=avoid_keys,
         min_keep=8,
     )
+    # food fallback: blog_count 필터 통과 후에도 후보가 부족하면 간이 필터로 재탐색
+    _min_food_floor = max(4, int((traveler_profile or {}).get("days") or 2) * 2)
+    if len(food_merged) < _min_food_floor:
+        _fb_batches: list[list[NearbyPlace]] = []
+        _seen_fb: set[str] = set()
+        for _fb_area in (areas or [])[:4]:
+            for _fb_suffix in ("맛집", "한식 맛집", "음식점", "식당"):
+                _fb_q = f"{_fb_area} {_fb_suffix}"
+                if _fb_q in _seen_fb:
+                    continue
+                _seen_fb.add(_fb_q)
+                try:
+                    _fb_places = client.search_places(_fb_q, display=10, area_hint=_fb_area)
+                    _fb_batches.append([
+                        replace(p, search_area=_fb_area)
+                        for p in _fb_places
+                        if _is_korea_place(p)
+                        and _place_matches_destination_profile(p, traveler_profile)
+                        and _has_explicit_naver_food_signal(p)
+                        and not _is_cafe_candidate_place(p)
+                        and p.naver_score is not None
+                    ])
+                except Exception as _fb_exc:
+                    logger.warning("food fallback search [%r]: %s", _fb_q, _fb_exc)
+        if _fb_batches:
+            food_merged = _merge_itinerary_places(
+                [food_merged] + _fb_batches,
+                max_total=_itinerary_food_candidate_limit(traveler_profile, limits["max_total"]),
+                shuffle_seed=0,
+                avoid_names=avoid_keys,
+                min_keep=_min_food_floor,
+            )
+            logger.info("food fallback triggered: merged=%d", len(food_merged))
     attr_merged = _merge_itinerary_places(
         attr_batches,
         max_total=_itinerary_attr_candidate_limit(

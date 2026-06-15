@@ -949,8 +949,18 @@
       if (qm) return qm[1].trim();
       // Strip "Name：description" or "Name:description" — only keep part before colon
       label = label.replace(/[：:].+$/, "").trim();
-      // Strip full-width parentheticals anywhere in label
-      label = label.replace(/（[^）]{1,40}）/g, "").trim();
+      // If label has no Korean but full-width parens contain Korean, use that Korean instead
+      // e.g. "外雪岳（설악산 국립공원 (외설악)）" → "설악산 국립공원"
+      if (!/[가-힣]/.test(label)) {
+        const koInParens = label.match(/（([^）]*[가-힣][^）]*)）/);
+        if (koInParens) {
+          label = koInParens[1].replace(/\s*\([^)]{1,30}\)\s*$/, "").trim();
+        } else {
+          label = label.replace(/（[^）]{1,60}）/g, "").trim();
+        }
+      } else {
+        label = label.replace(/（[^）]{1,60}）/g, "").trim();
+      }
       // Strip half-width trailing parentheticals
       label = label.replace(/\s*\([^)]{1,40}\)\s*$/, "").trim();
       // Strip Japanese activity descriptions after particles (で, を, に, は, が + verb)
@@ -1255,7 +1265,9 @@
     if (_mapsProvider === "naver") return renderNaverMapForDay(day);
     if (!_mapInstance || !global.google?.maps) return;
     clearMapOverlays();
-    const stops = (day.stops || []).filter((s) => s.lat != null && s.lng != null);
+    const stops = (day.stops || [])
+      .map((s, i) => s.lat != null && s.lng != null ? { ...s, _seqNum: i + 1 } : null)
+      .filter(Boolean);
     if (!stops.length) {
       showMapStatus("この日の地図表示可能なスポットがありません。", true);
       return;
@@ -1275,14 +1287,15 @@
     markerDisplayStops(stops).forEach(({ stop, idx, lat, lng }) => {
       const pos = { lat, lng };
       bounds.extend(pos);
+      const seqN = stop._seqNum ?? (idx + 1);
       const marker = new global.google.maps.Marker({
         position: pos,
         map: _mapInstance,
-        label: { text: String(idx + 1), color: "#fff", fontWeight: "700" },
+        label: { text: String(seqN), color: "#fff", fontWeight: "700" },
         title: stop.place?.name || stop.label,
         icon: {
           path: global.google.maps.SymbolPath.CIRCLE,
-          fillColor: colors[idx % colors.length],
+          fillColor: colors[(seqN - 1) % colors.length],
           fillOpacity: 1,
           strokeColor: "#fff",
           strokeWeight: 2,
@@ -1334,7 +1347,10 @@
     const renderSeq = ++_routeRenderSeq;
     clearMapOverlays();
     (day.stops || []).forEach(materializeNaverStopCoord);
-    const stops = (day.stops || []).filter((s) => s.lat != null && s.lng != null);
+    // Preserve original day.stops index as _seqNum so map pin numbers match anchor list
+    const stops = (day.stops || [])
+      .map((s, i) => s.lat != null && s.lng != null ? { ...s, _seqNum: i + 1 } : null)
+      .filter(Boolean);
     if (!stops.length) {
       showMapStatus("이 날짜에는 지도에 표시할 좌표가 있는 장소가 아직 없습니다.", true);
       return;
@@ -1355,7 +1371,8 @@
 
     [...markerDisplayStops(stops)].reverse().forEach(({ stop, idx, lat, lng }) => {
       const pos = new nmap.LatLng(lat, lng);
-      const color = colors[idx % colors.length];
+      const seqN = stop._seqNum ?? (idx + 1);
+      const color = colors[(seqN - 1) % colors.length];
       const marker = new nmap.Marker({
         position: pos,
         map: _mapInstance,
@@ -1363,7 +1380,7 @@
         zIndex: stops.length - idx,
         icon: {
           content:
-            `<span style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:${color};color:#fff;border:2px solid #fff;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.25)">${idx + 1}</span>`,
+            `<span style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:${color};color:#fff;border:2px solid #fff;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.25)">${seqN}</span>`,
           anchor: new nmap.Point(14, 14),
         },
       });
@@ -1776,8 +1793,8 @@
         // 카드 리스트 표시 순번: 좌표 유무 관계없이 day 내 통합 순번 (1, 2, 3...)
         const seqNum = stopIdx + 1;
         if (hasCoords) {
-          mapNum++; // 맵 핀 번호는 별도 유지
-          const color = colors[(mapNum - 1) % colors.length];
+          mapNum++;
+          const color = colors[stopIdx % colors.length]; // seqNum-1 = stopIdx → matches map pin color
           return `<article class="plan-day-stop plan-day-stop--fixed" ${dragAttrs} data-stop-index="${stopIdx}">
             <span class="plan-day-stop__num" style="background:${color}">${seqNum}</span>
             ${dragHandle}

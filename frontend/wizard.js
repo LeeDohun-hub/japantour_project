@@ -3672,12 +3672,13 @@ function _renderMapsUnresolvedFallback(url, queryLabel, slotKind = "") {
   if (_isBadPlanPlaceQuery(q)) return "";
   if (slotKind === "meal") return "";
   console.debug?.("Plan place link omitted: unresolved place detail", { url, query: q });
-  // For Naver search URLs show a minimal clickable link so the user can still find the place
+  // For Naver search URLs render a place card so tourist spots get photo/map UI
   if (q && /map\.naver\.com[^\s]*\/search\//i.test(url)) {
-    // 좌표("37.1234,126.5678") 쿼리는 map.naver.com 그대로, 이름 쿼리(축제·공연 등)는 search.naver.com으로
     const isCoordQuery = /^-?[\d.]+,-?[\d.]+$/.test(q.trim());
-    const href = isCoordQuery ? url : `https://search.naver.com/search.naver?query=${encodeURIComponent(q)}`;
-    return `<a class="plan-place-search-link" href="${_escapeHtml(href)}" target="_blank" rel="noopener">🔍 ${_escapeHtml(q)}</a>`;
+    if (isCoordQuery) {
+      return `<a class="plan-place-search-link" href="${_escapeHtml(url)}" target="_blank" rel="noopener">🔍 ${_escapeHtml(q)}</a>`;
+    }
+    return _renderAnchorPlaceCard(q);
   }
   return "";
 }
@@ -3865,6 +3866,17 @@ function _renderInlinePlaceCard(p, proseHint) {
     .filter(Boolean).join("");
   const thumbLink = mapsUri || dirUri;
   return `<div class="plan-inline-spot"><article class="plan-place-card"><a class="plan-place-card__thumb-link" href="${_escapeHtml(thumbLink)}" target="_blank" rel="noopener">${thumb}<span class="plan-place-card__photo-label">${p.photo_name || naverPhotoUrl ? "外観写真" : "Naver"}</span></a><div class="plan-place-card__body"><h4 class="plan-place-card__name">${name}</h4>${guideHtml}${meta ? `<div class="plan-place-card__meta">${meta}</div>` : ""}${addr}<div class="plan-place-card__actions">${mapsUri ? `<a href="${_escapeHtml(mapsUri)}" target="_blank" rel="noopener" class="plan-place-card__btn">地図</a>` : ""}<a href="${_escapeHtml(dirUri)}" target="_blank" rel="noopener" class="plan-place-card__btn plan-place-card__btn--route">経路</a></div></div></article></div>`;
+}
+
+function _renderAnchorPlaceCard(name) {
+  if (!name) return "";
+  const eName = _escapeHtml(name);
+  const searchHref = _escapeHtml(`https://map.naver.com/p/search/${encodeURIComponent(name)}`);
+  const photoSrc = _escapeHtml(`/api/naver-photo/?q=${encodeURIComponent(name)}&image_fallback=1`);
+  const fallbackSpan = `<span class="plan-place-card__img plan-place-card__img--fallback" aria-hidden="true">📍</span>`;
+  const fallbackAttr = fallbackSpan.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  const thumb = `<img class="plan-place-card__img" src="${photoSrc}" alt="" loading="lazy" onerror="this.outerHTML='${fallbackAttr}'" />`;
+  return `<div class="plan-inline-spot"><article class="plan-place-card"><a class="plan-place-card__thumb-link" href="${searchHref}" target="_blank" rel="noopener">${thumb}<span class="plan-place-card__photo-label">Naver</span></a><div class="plan-place-card__body"><h4 class="plan-place-card__name">${eName}</h4><p class="plan-place-card__guide">観光スポット</p><div class="plan-place-card__actions"><a href="${searchHref}" target="_blank" rel="noopener" class="plan-place-card__btn">地図</a></div></div></article></div>`;
 }
 
 const _PLAN_CLOCK_RE = /\[[\d０-９]{1,2}\s*[:：]\s*[\d０-９]{2}[^\]]*\]/g;
@@ -4088,11 +4100,14 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
           rendered.add(_mapsUrlKey(url));
           const _pid = place.place_id || "";
           if (_pid.startsWith("anchor:") || _pid.startsWith("cafe-anchor:")) {
-            // anchorプレースはカードデータなし → Naver検索リンクで表示
-            const _anchorName = _pendingProse || place.name || "";
+            // For anchor places, prefer structured place.name over prose description text
+            const _anchorName = place.name || _pendingProse || "";
             if (_anchorName) {
-              const _anchorHref = _escapeHtml(`https://map.naver.com/p/search/${encodeURIComponent(_anchorName)}`);
-              cardParts.push(`<a class="plan-place-search-link" href="${_anchorHref}" target="_blank" rel="noopener">🔍 ${_escapeHtml(_anchorName)}</a>`);
+              cardParts.push(
+                _pid.startsWith("cafe-anchor:")
+                  ? `<a class="plan-place-search-link" href="${_escapeHtml(`https://map.naver.com/p/search/${encodeURIComponent(_anchorName)}`)}" target="_blank" rel="noopener">🔍 ${_escapeHtml(_anchorName)}</a>`
+                  : _renderAnchorPlaceCard(_anchorName)
+              );
             }
           } else if (_pendingProse !== null) {
             // その他のブロック（品質フィルタ等）: 場所名をテキストで表示（最終フォールバック）
@@ -4145,11 +4160,13 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
         rendered.add(_mapsUrlKey(url));
         const _pid2 = place.place_id || "";
         if (_pid2.startsWith("anchor:") || _pid2.startsWith("cafe-anchor:")) {
-          // anchorプレースはカードデータなし → Naver検索リンクで表示
-          const _anchorName2 = _pendingProse || place.name || "";
+          const _anchorName2 = place.name || _pendingProse || "";
           if (_anchorName2) {
-            const _anchorHref2 = _escapeHtml(`https://map.naver.com/p/search/${encodeURIComponent(_anchorName2)}`);
-            pushStep(`<a class="plan-place-search-link" href="${_anchorHref2}" target="_blank" rel="noopener">🔍 ${_escapeHtml(_anchorName2)}</a>`);
+            pushStep(
+              _pid2.startsWith("cafe-anchor:")
+                ? `<a class="plan-place-search-link" href="${_escapeHtml(`https://map.naver.com/p/search/${encodeURIComponent(_anchorName2)}`)}" target="_blank" rel="noopener">🔍 ${_escapeHtml(_anchorName2)}</a>`
+                : _renderAnchorPlaceCard(_anchorName2)
+            );
           }
         } else if (_pendingProse !== null) {
           pushStep(`<p class="plan-line">${_formatPlanTextLine(_pendingProse)}</p>`);
