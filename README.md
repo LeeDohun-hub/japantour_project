@@ -21,7 +21,7 @@
 - AI 채팅: 여행 질문 분류 후 교통·맛집·숙소·관광·항공·일정 답변
 - RAG 검색: `tour_knowledge.jsonl` 기반 벡터 검색과 BM25 검색 결합
 - 항공·공항 교통 연동: 인천공항 항공편, 공항버스, 택시, 공항철도 운행정보
-- 장소 검색·지도: Naver Maps, Naver Local/Blog, Google Places 선택 연동
+- 장소 검색·지도: Naver Maps, Naver Local/Blog, 선택 연동
 - 공연·이벤트 추천: Interpark/NOL, VisitKorea, 전국공연행사정보 등
 - 인증: 이메일 로그인, Google OAuth, LINE OAuth, 게스트 진행
 
@@ -34,7 +34,7 @@
 | AI | OpenAI Chat/Embedding API |
 | RAG | FAISS 또는 pgvector, BM25, RRF |
 | DB | SQLite 개발 기본, PostgreSQL + pgvector 선택 |
-| External APIs | Naver Maps/Search, Google Places, 공공데이터포털, VisitKorea, JUSO |
+| External APIs | Naver Maps/Search, 공공데이터포털, VisitKorea, JUSO |
 | Legacy UI | Streamlit `app_japan_tour.py` |
 
 ## 4. 프로젝트 구조
@@ -78,7 +78,6 @@ Copy-Item .env.example .env
 | `NAVER_MAPS_CLIENT_ID` | 브라우저 지도 |
 | `NAVER_MAPS_CLIENT_SECRET` | 서버 지오코딩 |
 | `NAVER_SEARCH_CLIENT_ID` / `NAVER_SEARCH_CLIENT_SECRET` | Naver Local/Blog 검색 |
-| `GOOGLE_MAPS_API_KEY` | Google Places 선택 사용 |
 | `DJANGO_SECRET_KEY` | 운영 배포 시 필수 |
 
 ### 5.3 Django 실행

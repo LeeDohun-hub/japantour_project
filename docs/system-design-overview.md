@@ -17,7 +17,7 @@ flowchart TB
   ROUTER --> RAG["FAISS / pgvector\nHybrid RAG"]
   ROUTER --> EXT["External APIs\nNaver, Google, data.go.kr, VisitKorea"]
   ROUTER --> OAI["OpenAI"]
-  API --> DB[("SQLite / PostgreSQL")]
+  API --> DB[("Docker / PostgreSQL")]
 ```
 
 ## 3. 레이어 구성
