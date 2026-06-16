@@ -125,10 +125,13 @@ def _item_iata(item: dict, side: str, fallback: str = "") -> str:
     KAC GW API는 *AirportId 대신 *AirportEng(영문명)을 반환한다.
     """
     prefix = side  # "dep" or "arr"
-    # KAC GW 신규 필드명 우선 (arrvAirportCode / depAirportCode)
-    kac_gw_key = "arrvAirportCode" if prefix == "arr" else "depAirportCode"
+    # KAC GW 필드: depart 엔드포인트는 arrvAirportCode, arrival 엔드포인트는 arrAirportCode
+    if prefix == "arr":
+        kac_direct = item.get("arrvAirportCode") or item.get("arrAirportCode") or ""
+    else:
+        kac_direct = item.get("depAirportCode") or ""
     direct = (
-        item.get(kac_gw_key) or
+        kac_direct or
         item.get(f"{prefix}AirportId") or
         item.get("sch" + ("Dept" if prefix == "dep" else "Arrv") + "CityCode") or
         item.get(f"{prefix}CityCode") or ""
@@ -137,6 +140,21 @@ def _item_iata(item: dict, side: str, fallback: str = "") -> str:
         return direct
     eng = item.get(f"{prefix}AirportEng") or item.get(f"{prefix}Airport") or ""
     return _eng_to_iata(eng) or fallback.upper()
+
+
+_JAPAN_IATA = frozenset({
+    "NRT", "HND", "KIX", "ITM", "FUK", "NGO", "CTS", "OKA",
+    "HIJ", "SDJ", "KOJ", "TAK", "MYJ",
+})
+
+
+def _is_intl_item(item: dict, dep: str, arr: str) -> bool:
+    """한-일 국제선 여부. line 필드가 있으면 우선, 없으면 출발·도착 IATA로 판단."""
+    line = (item.get("line") or "").strip()
+    if line:
+        return line == "국제"
+    # line 필드 없는 경우: 한쪽이 일본 공항이면 국제선
+    return dep in _JAPAN_IATA or arr in _JAPAN_IATA
 
 
 _snapshot_cache: dict[str, list[dict]] = {}
@@ -349,7 +367,9 @@ class KoreaAirportsFlightClient:
         )
         depart_items = [
             it for it in depart_items
-            if _item_iata(it, "arr", arr) == arr
+            if _item_iata(it, "dep") == dep            # 출발 공항 일치 확인
+            and _item_iata(it, "arr") == arr           # 도착 공항 일치 확인
+            and _is_intl_item(it, dep, arr)
         ]
         for item in depart_items:
             fl = self._normalize_kac_gw_depart(item, dep, arr)
@@ -365,7 +385,9 @@ class KoreaAirportsFlightClient:
             )
             arrival_items = [
                 it for it in arrival_items
-                if _item_iata(it, "dep", dep) == dep
+                if _item_iata(it, "dep") == dep        # fallback 없음: 미인식 공항 제외
+                and _item_iata(it, "arr") == arr       # 도착 공항도 일치 확인
+                and _is_intl_item(it, dep, arr)
             ]
             for item in arrival_items:
                 fl = self._normalize_kac_gw_arrival(item, dep, arr)
