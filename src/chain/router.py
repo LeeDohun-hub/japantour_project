@@ -4867,14 +4867,34 @@ def _search_naver_places_for_itinerary(
             )
             # 관광지는 VK 쿼리 자체가 지역을 포함 → 구 단위 destination 필터 미적용
             # (_place_matches_destination_profile은 구 단위 선택 시 다른 서울 구를 모두 차단)
-            attr_batches.append([
+            filtered = [
                 replace(p, search_area=area_hint or q[:40])
                 for p in places
                 if _is_korea_place(p)
                 and _is_naver_attr_place(p)
                 and (has_shopping_interest or not _is_shopping_mall_place(p))
                 and _place_matches_destination_profile(p, traveler_profile)
-            ])
+            ]
+            # 해변 쿼리 결과가 없으면 해수욕장으로 재시도
+            if not filtered and "해변" in q:
+                q2 = q.replace("해변", "해수욕장")
+                places2 = client.search_places(
+                    q2,
+                    display=7 if (reroll > 0 or avoid_keys) else 5,
+                    area_hint=area_hint,
+                    geocode=False,
+                )
+                filtered = [
+                    replace(p, search_area=area_hint or q2[:40])
+                    for p in places2
+                    if _is_korea_place(p)
+                    and _is_naver_attr_place(p)
+                    and (has_shopping_interest or not _is_shopping_mall_place(p))
+                    and _place_matches_destination_profile(p, traveler_profile)
+                ]
+                if filtered:
+                    logger.info("해변→해수욕장 fallback succeeded: %r → %r (%d results)", q, q2, len(filtered))
+            attr_batches.append(filtered)
         except Exception as exc:
             logger.warning("Naver itinerary attr search [%r]: %s", q, exc)
 
