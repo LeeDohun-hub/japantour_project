@@ -181,27 +181,6 @@ def _mem_cache_set(key: str, value: tuple) -> None:
     _flight_mem_cache[key] = (value, time.time())
 
 
-def _preload_odcloud_snapshot() -> None:
-    """서버 시작 시 odcloud 스냅샷을 백그라운드로 미리 로드."""
-    import threading
-
-    def _do_preload():
-        key = _service_key()
-        if not key:
-            return
-        try:
-            uddi = os.getenv("ODCLOUD_KAC_UDDI", _DEFAULT_UDDI).strip()
-            if uddi in _snapshot_cache:
-                return
-            client = KoreaAirportsFlightClient(service_key=key)
-            rows = client._load_snapshot(uddi)
-            logger.info("odcloud 스냅샷 사전 로드 완료: %d행", len(rows))
-        except Exception as exc:
-            logger.warning("odcloud 사전 로드 실패: %s", exc)
-
-    threading.Thread(target=_do_preload, daemon=True).start()
-
-
 def _service_key() -> str | None:
     return (
         os.getenv("PUBLIC_API_KEY")
