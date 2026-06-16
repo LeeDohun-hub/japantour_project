@@ -1131,20 +1131,6 @@ async function fetchReturnFlightList() {
   }
 }
 
-function _renderGroupedByAirline(flights, leg) {
-  const groups = new Map();
-  flights.forEach((f, i) => {
-    const name = displayAirlineName(f.airline_name, f.airline_iata);
-    if (!groups.has(name)) groups.set(name, []);
-    groups.get(name).push({ f, i });
-  });
-  let html = "";
-  for (const [airline, entries] of groups) {
-    html += `<div class="flight-airline-group-header">${escHtml(airline)}</div>`;
-    html += entries.map(({ f, i }) => renderFlightSelectCard(f, i, leg)).join("");
-  }
-  return html;
-}
 
 function renderFlightPage(_page) {
   const cards = $("flightListCards");
@@ -1152,7 +1138,7 @@ function renderFlightPage(_page) {
   const warn = _flightListWarning
     ? `<p class="flight-list-warn">${escHtml(_flightListWarning)}</p>`
     : "";
-  cards.innerHTML = warn + _renderGroupedByAirline(_allFlights, "arrival");
+  cards.innerHTML = warn + _allFlights.map((f, i) => renderFlightSelectCard(f, i, "arrival")).join("");
   cards.querySelectorAll(".flight-sel-card").forEach((el) => {
     el.addEventListener("click", () => selectFlight(el, _allFlights[+el.dataset.idx]));
   });
@@ -1173,7 +1159,7 @@ function renderReturnFlightPage(_page) {
   const warn = _returnFlightListWarning
     ? `<p class="flight-list-warn">${escHtml(_returnFlightListWarning)}</p>`
     : "";
-  cards.innerHTML = warn + _renderGroupedByAirline(_allReturnFlights, "departure");
+  cards.innerHTML = warn + _allReturnFlights.map((f, i) => renderFlightSelectCard(f, i, "departure")).join("");
   cards.querySelectorAll(".flight-sel-card").forEach((el) => {
     el.addEventListener("click", () =>
       selectReturnFlight(el, _allReturnFlights[+el.dataset.idx])

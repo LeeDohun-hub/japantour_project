@@ -1556,13 +1556,6 @@ a.btn {
 .pager-btn:hover:not(:disabled) { background: rgba(212,175,55,.15); border-color: var(--gold); color: var(--gold); }
 .pager-btn:disabled { opacity: .35; cursor: default; }
 .pager-info { font-size: .78rem; color: var(--text-muted); min-width: 3.5rem; text-align: center; }
-.flight-airline-group-header {
-  font-size: .7rem; font-weight: 700; color: var(--text-muted);
-  letter-spacing: .04em; padding: .35rem .1rem .1rem;
-  border-bottom: 1px solid var(--border); margin-top: .5rem;
-}
-.flight-airline-group-header:first-child { margin-top: 0; }
-
 /* ── Stepper ── */
 .stepper {
   display: flex; align-items: center; gap: .55rem;
