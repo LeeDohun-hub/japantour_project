@@ -451,7 +451,7 @@ class KoreaAirportsFlightClient:
             or item.get("airlineKorean") or item.get("airline") or item.get("항공사") or ""
         )
         dep_time = self._time_hhmm(
-            item.get("estimateddatetime") or item.get("scheduledatetime") or
+            item.get("scheduledatetime") or item.get("estimateddatetime") or
             item.get("depPlandTime") or item.get("scheduleDateTime") or
             item.get("depSchdDateTime") or item.get("출발예정시간") or ""
         )
@@ -500,7 +500,7 @@ class KoreaAirportsFlightClient:
             or item.get("airlineKorean") or item.get("airline") or item.get("항공사") or ""
         )
         arr_time = self._time_hhmm(
-            item.get("estimateddatetime") or item.get("scheduledatetime") or
+            item.get("scheduledatetime") or item.get("estimateddatetime") or
             item.get("arrPlandTime") or item.get("scheduleDateTime") or
             item.get("arrSchdDateTime") or item.get("도착예정시간") or ""
         )

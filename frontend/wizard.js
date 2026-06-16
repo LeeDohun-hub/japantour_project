@@ -1131,21 +1131,31 @@ async function fetchReturnFlightList() {
   }
 }
 
-function renderFlightPage(page) {
+function _renderGroupedByAirline(flights, leg) {
+  const groups = new Map();
+  flights.forEach((f, i) => {
+    const name = displayAirlineName(f.airline_name, f.airline_iata);
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push({ f, i });
+  });
+  let html = "";
+  for (const [airline, entries] of groups) {
+    html += `<div class="flight-airline-group-header">${escHtml(airline)}</div>`;
+    html += entries.map(({ f, i }) => renderFlightSelectCard(f, i, leg)).join("");
+  }
+  return html;
+}
+
+function renderFlightPage(_page) {
   const cards = $("flightListCards");
   if (!cards) return;
-  const start = page * FLIGHTS_PER_PAGE;
-  const slice = _allFlights.slice(start, start + FLIGHTS_PER_PAGE);
   const warn = _flightListWarning
     ? `<p class="flight-list-warn">${escHtml(_flightListWarning)}</p>`
     : "";
-  cards.innerHTML =
-    warn +
-    slice.map((f, i) => renderFlightSelectCard(f, start + i, "arrival")).join("");
+  cards.innerHTML = warn + _renderGroupedByAirline(_allFlights, "arrival");
   cards.querySelectorAll(".flight-sel-card").forEach((el) => {
     el.addEventListener("click", () => selectFlight(el, _allFlights[+el.dataset.idx]));
   });
-  // 이미 선택된 편명 유지 표시
   const sel = wizardData.flight?.selected;
   if (sel) {
     cards.querySelectorAll(".flight-sel-card").forEach((el) => {
@@ -1153,25 +1163,17 @@ function renderFlightPage(page) {
         el.classList.add("selected");
     });
   }
-  // 페이저 상태 업데이트
-  const totalPages = Math.ceil(_allFlights.length / FLIGHTS_PER_PAGE);
-  const info = $("flightPageInfo");
-  if (info) info.textContent = `${page + 1} / ${totalPages}`;
-  $("flightPagePrev").disabled = page === 0;
-  $("flightPageNext").disabled = page >= totalPages - 1;
+  const pager = $("flightListPager");
+  if (pager) pager.style.display = "none";
 }
 
-function renderReturnFlightPage(page) {
+function renderReturnFlightPage(_page) {
   const cards = $("returnFlightListCards");
   if (!cards) return;
-  const start = page * FLIGHTS_PER_PAGE;
-  const slice = _allReturnFlights.slice(start, start + FLIGHTS_PER_PAGE);
   const warn = _returnFlightListWarning
     ? `<p class="flight-list-warn">${escHtml(_returnFlightListWarning)}</p>`
     : "";
-  cards.innerHTML =
-    warn +
-    slice.map((f, i) => renderFlightSelectCard(f, start + i, "departure")).join("");
+  cards.innerHTML = warn + _renderGroupedByAirline(_allReturnFlights, "departure");
   cards.querySelectorAll(".flight-sel-card").forEach((el) => {
     el.addEventListener("click", () =>
       selectReturnFlight(el, _allReturnFlights[+el.dataset.idx])
@@ -1184,48 +1186,18 @@ function renderReturnFlightPage(page) {
         el.classList.add("selected");
     });
   }
-  const totalPages = Math.ceil(_allReturnFlights.length / FLIGHTS_PER_PAGE);
-  const info = $("returnFlightPageInfo");
-  if (info) info.textContent = `${page + 1} / ${totalPages}`;
-  $("returnFlightPagePrev").disabled = page === 0;
-  $("returnFlightPageNext").disabled = page >= totalPages - 1;
+  const pager = $("returnFlightListPager");
+  if (pager) pager.style.display = "none";
 }
 
 function setupPager() {
   const pager = $("flightListPager");
-  if (!pager) return;
-  const totalPages = Math.ceil(_allFlights.length / FLIGHTS_PER_PAGE);
-  pager.style.display = totalPages > 1 ? "flex" : "none";
-
-  $("flightPagePrev").onclick = () => {
-    if (_flightPage > 0) { _flightPage--; renderFlightPage(_flightPage); }
-  };
-  $("flightPageNext").onclick = () => {
-    // Read live length so stale closure never blocks navigation after a re-fetch
-    const tp = Math.ceil(_allFlights.length / FLIGHTS_PER_PAGE);
-    if (_flightPage < tp - 1) { _flightPage++; renderFlightPage(_flightPage); }
-  };
+  if (pager) pager.style.display = "none";
 }
 
 function setupReturnPager() {
   const pager = $("returnFlightListPager");
-  if (!pager) return;
-  const totalPages = Math.ceil(_allReturnFlights.length / FLIGHTS_PER_PAGE);
-  pager.style.display = totalPages > 1 ? "flex" : "none";
-
-  $("returnFlightPagePrev").onclick = () => {
-    if (_returnFlightPage > 0) {
-      _returnFlightPage--;
-      renderReturnFlightPage(_returnFlightPage);
-    }
-  };
-  $("returnFlightPageNext").onclick = () => {
-    const tp = Math.ceil(_allReturnFlights.length / FLIGHTS_PER_PAGE);
-    if (_returnFlightPage < tp - 1) {
-      _returnFlightPage++;
-      renderReturnFlightPage(_returnFlightPage);
-    }
-  };
+  if (pager) pager.style.display = "none";
 }
 
 const AIRLINE_NAME_JA = {

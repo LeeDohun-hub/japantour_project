@@ -1556,6 +1556,12 @@ a.btn {
 .pager-btn:hover:not(:disabled) { background: rgba(212,175,55,.15); border-color: var(--gold); color: var(--gold); }
 .pager-btn:disabled { opacity: .35; cursor: default; }
 .pager-info { font-size: .78rem; color: var(--text-muted); min-width: 3.5rem; text-align: center; }
+.flight-airline-group-header {
+  font-size: .7rem; font-weight: 700; color: var(--text-muted);
+  letter-spacing: .04em; padding: .35rem .1rem .1rem;
+  border-bottom: 1px solid var(--border); margin-top: .5rem;
+}
+.flight-airline-group-header:first-child { margin-top: 0; }
 
 /* ── Stepper ── */
 .stepper {
@@ -3765,4 +3771,727 @@ img.plan-place-card__img.plan-place-card__img--fallback {
   cursor: pointer;
   color: #a16207;
   font-size: 0.9rem;
+}
+
+/* ---------- Art direction: Japan-to-Korea travel atelier ---------- */
+body.page-wizard {
+  --bg-deep: #101827;
+  --bg-mid: #172033;
+  --bg-card: rgba(255, 255, 255, 0.9);
+  --surface-nav: rgba(14, 20, 34, 0.78);
+  --surface-panel: rgba(15, 23, 38, 0.7);
+  --surface-input: rgba(255, 255, 255, 0.96);
+  --surface-muted: rgba(244, 247, 246, 0.88);
+  --border: rgba(255, 255, 255, 0.16);
+  --border-strong: rgba(39, 193, 167, 0.42);
+  --text: #172033;
+  --text-muted: #647184;
+  --muted: #647184;
+  --accent: #e94f64;
+  --accent-hover: #ff6577;
+  --accent-soft: rgba(233, 79, 100, 0.12);
+  --gold: #d7b46a;
+  --gold-soft: rgba(215, 180, 106, 0.18);
+  --k-red: #e94f64;
+  --k-blue: #2d7dd2;
+  --title-gradient: linear-gradient(105deg, #101827 0%, #235d75 48%, #e94f64 100%);
+  --shadow: 0 24px 70px rgba(7, 13, 24, 0.22);
+  background-color: #101827;
+  background-image:
+    linear-gradient(115deg, rgba(16, 24, 39, 0.98) 0%, rgba(16, 24, 39, 0.82) 39%, rgba(32, 81, 89, 0.72) 100%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    url("/assets/bg-korea-theme.svg");
+  background-size: auto, 46px 46px, 46px 46px, cover;
+  background-position: center, center, center, center;
+}
+
+body.page-wizard::before {
+  z-index: 0;
+  background:
+    linear-gradient(150deg, transparent 0 58%, rgba(233, 79, 100, 0.2) 58% 59%, transparent 59% 100%),
+    linear-gradient(28deg, transparent 0 46%, rgba(39, 193, 167, 0.18) 46% 47%, transparent 47% 100%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 9px);
+  opacity: 0.95;
+}
+
+.page-wizard .top-nav,
+.page-wizard .wizard-steps-row,
+.page-wizard .wizard-nav-bar {
+  position: relative;
+  z-index: 2;
+  color: rgba(255, 255, 255, 0.9);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: none;
+}
+
+.page-wizard .top-nav {
+  padding: 0.9rem 1.35rem;
+  background:
+    linear-gradient(90deg, rgba(16, 24, 39, 0.9), rgba(16, 24, 39, 0.64)),
+    linear-gradient(90deg, rgba(233, 79, 100, 0.18), rgba(39, 193, 167, 0.12));
+}
+
+.page-wizard .top-nav-brand {
+  color: #fff;
+  letter-spacing: 0.01em;
+}
+
+.page-wizard .btn.secondary,
+.page-wizard .nav-profile-btn {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.page-wizard .btn.secondary:hover,
+.page-wizard .nav-profile-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+.page-wizard .nav-plan-mode[aria-current="page"] {
+  border-color: rgba(39, 193, 167, 0.7);
+  color: #d9fff7;
+}
+
+.page-wizard .wizard-progress-bar {
+  position: relative;
+  z-index: 2;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.page-wizard .wizard-progress-fill {
+  background: linear-gradient(90deg, #27c1a7, #d7b46a, #e94f64);
+  box-shadow: 0 0 18px rgba(39, 193, 167, 0.55);
+}
+
+.page-wizard .wizard-steps-row {
+  background: rgba(11, 17, 29, 0.68);
+  backdrop-filter: blur(18px);
+}
+
+.page-wizard .wiz-dot {
+  opacity: 0.5;
+}
+
+.page-wizard .wiz-dot-label {
+  color: rgba(255, 255, 255, 0.66);
+}
+
+.page-wizard .wiz-dot-circle {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.76);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.page-wizard .wiz-dot.active .wiz-dot-circle {
+  background: #27c1a7;
+  border-color: #27c1a7;
+  color: #07131c;
+}
+
+.page-wizard .wiz-dot.done .wiz-dot-circle {
+  background: #d7b46a;
+  border-color: #d7b46a;
+  color: #172033;
+}
+
+.page-wizard .wizard-stage {
+  z-index: 1;
+}
+
+.page-wizard .wiz-card {
+  padding: 2.1rem clamp(1rem, 3vw, 2.8rem);
+}
+
+.page-wizard .wiz-card-inner {
+  position: relative;
+  min-width: 0;
+  max-width: min(760px, 100%);
+  padding: 1.4rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(249, 250, 247, 0.92);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.page-wizard .wiz-card-inner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(16, 24, 39, 0.035) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(16, 24, 39, 0.035) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: linear-gradient(180deg, black, transparent 70%);
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-card-inner {
+  max-width: 1120px;
+  min-height: min(650px, calc(100vh - 190px));
+  display: grid;
+  grid-template-columns: minmax(300px, 0.92fr) minmax(340px, 0.78fr);
+  gap: clamp(1.2rem, 3vw, 2.4rem);
+  align-items: center;
+  padding: clamp(1.25rem, 3vw, 2.2rem);
+  background:
+    linear-gradient(100deg, rgba(255, 255, 255, 0.05) 0 48%, rgba(249, 250, 247, 0.96) 48% 100%),
+    linear-gradient(135deg, rgba(10, 17, 31, 0.94), rgba(24, 54, 66, 0.93));
+  color: #fff;
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-card-inner::after {
+  display: none;
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-hero {
+  position: relative;
+  z-index: 1;
+  text-align: left;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  margin: 0;
+  padding: clamp(0.5rem, 2vw, 1.5rem) 0;
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-hero::before {
+  content: "";
+  width: min(100%, 440px);
+  height: 170px;
+  margin-bottom: clamp(1.3rem, 3vw, 2.2rem);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.24);
+  background:
+    linear-gradient(to top, rgba(255, 255, 255, 0.28) 0 8%, transparent 8% 100%),
+    linear-gradient(to top, rgba(39, 193, 167, 0.78) 0 42%, transparent 42% 100%),
+    linear-gradient(to top, rgba(233, 79, 100, 0.82) 0 62%, transparent 62% 100%),
+    linear-gradient(to top, rgba(215, 180, 106, 0.82) 0 50%, transparent 50% 100%),
+    linear-gradient(to top, rgba(255, 255, 255, 0.5) 0 35%, transparent 35% 100%),
+    linear-gradient(to top, rgba(45, 125, 210, 0.72) 0 72%, transparent 72% 100%);
+  background-size: 18% 100%, 10% 100%, 12% 100%, 8% 100%, 15% 100%, 11% 100%;
+  background-position: 0 0, 28% 0, 44% 0, 60% 0, 75% 0, 92% 0;
+  background-repeat: no-repeat;
+  opacity: 0.95;
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-badge {
+  width: fit-content;
+  color: #101827;
+  background: #d9fff7;
+  border-color: rgba(39, 193, 167, 0.7);
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-hero h2 {
+  max-width: 590px;
+  font-size: clamp(2.25rem, 5vw, 4.35rem);
+  line-height: 1.04;
+  margin: 0.2rem 0 1rem;
+  color: #fff;
+  background: none;
+  -webkit-text-fill-color: currentColor;
+  letter-spacing: 0;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-lead {
+  max-width: 455px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: clamp(0.94rem, 1.5vw, 1.05rem);
+  line-height: 1.9;
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-hero::after {
+  content: "TOKYO  ->  SEOUL\a FUKUOKA  ->  BUSAN\a OSAKA  ->  JEJU";
+  white-space: pre;
+  display: block;
+  width: min(100%, 390px);
+  margin-top: clamp(1rem, 2vw, 1.4rem);
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.62);
+  font-family: var(--font-display);
+  font-size: clamp(0.72rem, 1vw, 0.84rem);
+  line-height: 1.75;
+  letter-spacing: 0.12em;
+}
+
+.page-wizard #authSection,
+.page-wizard #loggedInSection {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 462px);
+  min-width: 0;
+  align-self: center;
+  padding: clamp(1rem, 2.2vw, 1.45rem);
+  border: 1px solid rgba(16, 24, 39, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 18px 45px rgba(7, 13, 24, 0.18);
+  backdrop-filter: blur(14px);
+}
+
+.page-wizard .oauth-btn,
+.page-wizard .auth-panel-tabs,
+.page-wizard .auth-field input,
+.page-wizard select,
+.page-wizard textarea,
+.page-wizard .chip,
+.page-wizard .option-card,
+.page-wizard .wiz-flight-card,
+.page-wizard .add-group,
+.page-wizard .budget-card,
+.page-wizard .logged-in-card {
+  border-radius: 8px;
+}
+
+.page-wizard .oauth-btn {
+  min-height: 48px;
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(16, 24, 39, 0.12);
+}
+
+.page-wizard .auth-panel-tabs {
+  background: rgba(16, 24, 39, 0.06);
+  border-color: rgba(16, 24, 39, 0.08);
+}
+
+.page-wizard .auth-panel-tab.active {
+  background: #101827;
+  color: #fff;
+}
+
+.page-wizard .auth-field input,
+.page-wizard select,
+.page-wizard textarea {
+  background: #fff;
+  border-color: rgba(16, 24, 39, 0.12);
+}
+
+.page-wizard .btn.primary {
+  background: linear-gradient(135deg, #e94f64 0%, #c83c50 52%, #922d50 100%);
+  box-shadow: 0 14px 30px rgba(233, 79, 100, 0.32);
+}
+
+.page-wizard .btn.primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ff6577 0%, #dc4c60 55%, #a5355a 100%);
+}
+
+.page-wizard .btn-ghost {
+  color: #d9fff7;
+}
+
+.page-wizard .wiz-card:not([data-step="1"]) .wiz-step-header,
+.page-wizard .wiz-card:not([data-step="1"]) .wiz-hero {
+  text-align: left;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid rgba(16, 24, 39, 0.08);
+}
+
+.page-wizard .wiz-step-num,
+.page-wizard .wiz-section-label {
+  color: #1a8f80;
+}
+
+.page-wizard .chip {
+  background: rgba(16, 24, 39, 0.035);
+  border-color: rgba(16, 24, 39, 0.1);
+}
+
+.page-wizard .chip.selected,
+.page-wizard .option-card.selected {
+  background: rgba(39, 193, 167, 0.13);
+  border-color: rgba(39, 193, 167, 0.58);
+  color: #0f6158;
+}
+
+.page-wizard .wizard-nav-bar {
+  background: rgba(11, 17, 29, 0.78);
+  backdrop-filter: blur(18px);
+}
+
+@media (max-width: 880px) {
+  .page-wizard {
+    height: auto;
+    min-height: 100vh;
+    overflow: auto;
+    overflow-x: hidden;
+  }
+
+  .page-wizard .wizard-container {
+    min-height: calc(100vh - 112px);
+    overflow-x: hidden;
+  }
+
+  .page-wizard .wiz-card {
+    padding: 1rem;
+  }
+
+  .page-wizard .wiz-card[data-step="1"] .wiz-card-inner {
+    min-height: auto;
+    width: 100%;
+    max-width: 100%;
+    display: block;
+    background:
+      linear-gradient(180deg, rgba(10, 17, 31, 0.96) 0 62%, rgba(249, 250, 247, 0.96) 62% 100%),
+      linear-gradient(135deg, rgba(10, 17, 31, 0.94), rgba(24, 54, 66, 0.93));
+  }
+
+  .page-wizard .wiz-card[data-step="1"] .wiz-card-inner::after {
+    display: none;
+  }
+
+  .page-wizard .wiz-card[data-step="1"] .wiz-hero {
+    padding: 0.4rem 0 1.2rem;
+    display: block;
+  }
+
+  .page-wizard .wiz-card[data-step="1"] .wiz-hero::before {
+    height: 96px;
+    margin-bottom: 1rem;
+  }
+
+  .page-wizard .wiz-card[data-step="1"] .wiz-hero h2 {
+    max-width: 100%;
+    font-size: clamp(1.65rem, 8.5vw, 2.25rem);
+    line-height: 1.12;
+  }
+
+  .page-wizard .wiz-card[data-step="1"] .wiz-lead {
+    display: none;
+  }
+
+  .page-wizard .wiz-card[data-step="1"] .wiz-hero::after {
+    display: none;
+  }
+
+  .page-wizard #authSection,
+  .page-wizard #loggedInSection {
+    width: min(300px, calc(100vw - 4rem));
+    max-width: min(300px, calc(100vw - 4rem));
+    margin-left: 0;
+    margin-right: 0;
+    margin-top: 1.25rem;
+    padding: 1rem;
+    overflow: hidden;
+  }
+
+  .page-wizard .oauth-btn,
+  .page-wizard .auth-panel,
+  .page-wizard .auth-panel-tabs,
+  .page-wizard .auth-field input {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+/* ---------- Figma reference: Korean folk art museum mood ---------- */
+body.page-wizard {
+  --bg-deep: #00a8cf;
+  --bg-mid: #0fb8d8;
+  --surface-nav: rgba(8, 40, 48, 0.78);
+  --surface-panel: rgba(247, 231, 194, 0.88);
+  --border: rgba(42, 92, 79, 0.2);
+  --border-strong: rgba(18, 128, 105, 0.48);
+  --text: #182830;
+  --text-muted: #607076;
+  --accent: #c84632;
+  --accent-hover: #dc5a3f;
+  --accent-soft: rgba(200, 70, 50, 0.13);
+  --gold: #d6a840;
+  --gold-soft: rgba(214, 168, 64, 0.22);
+  --title-gradient: linear-gradient(105deg, #17252b 0%, #116b67 46%, #c84632 100%);
+  background-color: #08afd0;
+  background-image:
+    linear-gradient(180deg, rgba(1, 168, 207, 0.96) 0%, rgba(42, 190, 212, 0.82) 47%, rgba(247, 231, 194, 0.84) 100%),
+    radial-gradient(circle at 18% 22%, rgba(255, 255, 255, 0.5), transparent 18%),
+    radial-gradient(circle at 78% 18%, rgba(255, 255, 255, 0.36), transparent 20%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.16) 0 1px, transparent 1px 48px);
+}
+
+body.page-wizard::before {
+  background:
+    linear-gradient(150deg, transparent 0 55%, rgba(42, 92, 79, 0.16) 55% 56%, transparent 56% 100%),
+    linear-gradient(28deg, transparent 0 43%, rgba(200, 70, 50, 0.14) 43% 44%, transparent 44% 100%),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.055) 0 2px, transparent 2px 14px);
+}
+
+.page-wizard .top-nav {
+  background:
+    linear-gradient(90deg, rgba(8, 40, 48, 0.86), rgba(15, 81, 86, 0.7)),
+    linear-gradient(90deg, rgba(200, 70, 50, 0.2), rgba(214, 168, 64, 0.2));
+}
+
+.page-wizard .wizard-steps-row,
+.page-wizard .wizard-nav-bar {
+  background: rgba(8, 40, 48, 0.72);
+}
+
+.page-wizard .wizard-progress-fill {
+  background: linear-gradient(90deg, #0f6b62, #d6a840, #c84632);
+  box-shadow: 0 0 18px rgba(214, 168, 64, 0.5);
+}
+
+.page-wizard .wiz-dot.active .wiz-dot-circle {
+  background: #d6a840;
+  border-color: #d6a840;
+  color: #182830;
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-card-inner {
+  background:
+    linear-gradient(100deg, rgba(0, 168, 207, 0.98) 0 49%, rgba(255, 249, 232, 0.96) 49% 100%),
+    linear-gradient(180deg, #08b6d5, #69d3de 52%, #f7e7c2 100%);
+  border-color: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 24px 70px rgba(28, 63, 63, 0.28);
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-card-inner::before {
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.16) 0 1px, transparent 1px 36px),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.1) 0 1px, transparent 1px 36px);
+  mask-image: none;
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-hero::before {
+  display: block;
+  width: min(100%, 560px);
+  height: 225px;
+  margin-bottom: clamp(1rem, 2.4vw, 1.55rem);
+  border: 0;
+  background: none;
+  filter: drop-shadow(0 18px 22px rgba(31, 71, 71, 0.26));
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-badge {
+  color: #143c3b;
+  background: rgba(255, 249, 232, 0.92);
+  border-color: rgba(214, 168, 64, 0.64);
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-hero h2 {
+  color: #fff9e8;
+  text-shadow: 0 3px 0 rgba(20, 60, 59, 0.22), 0 14px 34px rgba(9, 78, 88, 0.3);
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-lead,
+.page-wizard .wiz-card[data-step="1"] .wiz-hero::after {
+  color: rgba(255, 249, 232, 0.9);
+  border-color: rgba(255, 249, 232, 0.36);
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-hero::after {
+  display: none;
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-card-footer {
+  position: relative;
+  z-index: 2;
+  grid-column: 2;
+  margin-top: -0.8rem;
+}
+
+.page-wizard .wiz-card[data-step="1"] .btn-ghost {
+  color: #0f6b62;
+}
+
+.page-wizard #authSection,
+.page-wizard #loggedInSection {
+  background:
+    linear-gradient(180deg, rgba(255, 249, 232, 0.92), rgba(255, 255, 255, 0.88));
+  border-color: rgba(42, 92, 79, 0.18);
+  box-shadow: 0 18px 45px rgba(42, 92, 79, 0.2);
+}
+
+.page-wizard .auth-panel-tab.active {
+  background: #143c3b;
+}
+
+.page-wizard .btn.primary {
+  background: linear-gradient(135deg, #d95a3a 0%, #c84632 52%, #9d2f2d 100%);
+  box-shadow: 0 14px 30px rgba(200, 70, 50, 0.3);
+}
+
+.page-wizard .btn.primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #e56c49 0%, #d84f37 55%, #aa3631 100%);
+}
+
+.page-wizard .chip.selected,
+.page-wizard .option-card.selected {
+  background: rgba(15, 107, 98, 0.13);
+  border-color: rgba(15, 107, 98, 0.56);
+  color: #0f5b52;
+}
+
+@media (max-width: 880px) {
+  .page-wizard .wiz-card[data-step="1"] .wiz-card-inner {
+    background:
+      linear-gradient(180deg, rgba(0, 168, 207, 0.98) 0 54%, rgba(255, 249, 232, 0.97) 54% 100%),
+      linear-gradient(180deg, #08b6d5, #69d3de 52%, #f7e7c2 100%);
+  }
+
+  .page-wizard .wiz-card[data-step="1"] .wiz-hero::before {
+    width: min(100%, 310px);
+    height: 118px;
+    margin-bottom: 0.8rem;
+  }
+
+  .page-wizard .wiz-card[data-step="1"] .wiz-hero h2 {
+    max-width: 275px;
+    font-size: clamp(1.42rem, 6.8vw, 1.82rem);
+    line-height: 1.14;
+    overflow-wrap: normal;
+  }
+
+  .page-wizard .wiz-card[data-step="1"] .wiz-card-footer {
+    margin-top: 0.8rem;
+  }
+}
+
+/* ---------- Palace website direction ---------- */
+body.page-wizard {
+  --surface-nav: rgba(25, 49, 46, 0.86);
+  --surface-panel: rgba(32, 57, 53, 0.78);
+  --accent: #b83a2e;
+  --accent-hover: #d14b38;
+  --gold: #d8b35a;
+  background-color: #d4e1d9;
+  background-image:
+    linear-gradient(180deg, rgba(216, 227, 220, 0.9), rgba(232, 217, 181, 0.82)),
+    url("/assets/korean-palace-hero.svg");
+  background-size: cover, cover;
+  background-position: center, center;
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-card-inner {
+  max-width: 1180px;
+  min-height: min(680px, calc(100vh - 176px));
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.86fr);
+  gap: 0;
+  padding: 0;
+  background:
+    linear-gradient(90deg, rgba(18, 45, 43, 0.2), rgba(18, 45, 43, 0.04) 53%, rgba(250, 244, 225, 0.98) 53%),
+    url("/assets/korean-palace-hero.svg");
+  background-size: cover;
+  background-position: left center;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow: 0 30px 80px rgba(36, 55, 50, 0.3);
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-card-inner::before {
+  background:
+    linear-gradient(90deg, rgba(13, 37, 36, 0.68), rgba(13, 37, 36, 0.22) 48%, transparent 58%),
+    linear-gradient(180deg, transparent 0 58%, rgba(20, 42, 39, 0.34) 100%);
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-hero {
+  min-height: 100%;
+  padding: clamp(2rem, 5vw, 4rem);
+  justify-content: flex-end;
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-hero::before {
+  display: none;
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-badge {
+  color: #213936;
+  background: rgba(250, 244, 225, 0.9);
+  border-color: rgba(216, 179, 90, 0.72);
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-hero h2 {
+  max-width: 560px;
+  color: #fff8e5;
+  font-size: clamp(3rem, 5.6vw, 5.25rem);
+  line-height: 1.02;
+  text-shadow: 0 3px 0 rgba(28, 52, 49, 0.34), 0 18px 42px rgba(15, 34, 34, 0.36);
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-lead {
+  max-width: 500px;
+  color: rgba(255, 248, 229, 0.92);
+  text-shadow: 0 12px 28px rgba(12, 30, 30, 0.3);
+}
+
+.page-wizard #authSection,
+.page-wizard #loggedInSection {
+  width: min(100%, 430px);
+  justify-self: center;
+  margin: clamp(1.5rem, 4vw, 3rem) clamp(1.5rem, 3vw, 2.25rem);
+  background:
+    linear-gradient(180deg, rgba(255, 251, 238, 0.94), rgba(255, 255, 255, 0.88));
+  border: 1px solid rgba(70, 85, 70, 0.16);
+  box-shadow: 0 22px 50px rgba(48, 59, 51, 0.22);
+}
+
+.page-wizard .wiz-card[data-step="1"] .wiz-card-footer {
+  grid-column: 2;
+  align-self: end;
+  margin: -2rem clamp(1.5rem, 4vw, 3rem) 1.45rem;
+}
+
+.page-wizard .wiz-card[data-step="1"] .btn-ghost {
+  color: #31524a;
+}
+
+@media (max-width: 880px) {
+  .page-wizard .wiz-card[data-step="1"] .wiz-card-inner {
+    display: block;
+    min-height: auto;
+    padding: 0;
+    background:
+      linear-gradient(180deg, rgba(16, 43, 41, 0.3), rgba(16, 43, 41, 0.08) 48%, rgba(250, 244, 225, 0.98) 48%),
+      url("/assets/korean-palace-hero.svg");
+    background-size: 100% 100%, auto 270px;
+    background-position: center top, center 4px;
+    background-repeat: no-repeat;
+  }
+
+  .page-wizard .wiz-card[data-step="1"] .wiz-card-inner::before {
+    background: linear-gradient(180deg, rgba(13, 37, 36, 0.5), transparent 42%);
+  }
+
+  .page-wizard .wiz-card[data-step="1"] .wiz-hero {
+    min-height: 270px;
+    padding: 1.6rem 1.25rem 1.2rem;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .page-wizard .wiz-card[data-step="1"] .wiz-hero h2 {
+    max-width: 295px;
+    padding: 0.35rem 0.5rem 0.45rem;
+    background: rgba(26, 55, 51, 0.72);
+    border-radius: 8px;
+    font-size: clamp(1.45rem, 6.5vw, 1.85rem);
+    line-height: 1.16;
+    overflow-wrap: normal;
+    word-break: keep-all;
+  }
+
+  .page-wizard .wiz-card[data-step="1"] .wiz-badge {
+    width: fit-content;
+  }
+
+  .page-wizard .wiz-card[data-step="1"] .wiz-lead {
+    display: none;
+  }
+
+  .page-wizard #authSection,
+  .page-wizard #loggedInSection {
+    width: auto;
+    max-width: none;
+    margin: 0 1.25rem 1.15rem;
+  }
+
+  .page-wizard .wiz-card[data-step="1"] .wiz-card-footer {
+    margin: 0 1.25rem 1.1rem;
+  }
 }
