@@ -1410,15 +1410,43 @@ def _flight_dep_sort_key(f: dict) -> tuple[int, str]:
         return 9999, raw
 
 
+def _build_flight_payload(flights, warning, source, dep_iata, arr_iata) -> dict:
+    import dataclasses as _dc
+    dicts = [_dc.asdict(f) for f in flights]
+    merged = _merge_codeshares(dicts)
+    merged.sort(key=_flight_dep_sort_key)
+    payload: dict = {"flights": merged, "source": source}
+    if warning:
+        payload["warning"] = warning
+    return payload
+
+
+def _bg_warm_kac(dep_iata, arr_iata, flight_date, cache_key, sys_path):
+    """백그라운드: KAC 실시간 데이터 취득 후 Django 캐시에 저장."""
+    import sys, threading
+    for p in sys_path:
+        if p not in sys.path:
+            sys.path.insert(0, p)
+    try:
+        from api.aviation_client import search_route_flights
+        flights, warning, source = search_route_flights(dep_iata, arr_iata, flight_date, 999)
+        payload = _build_flight_payload(flights, warning, source, dep_iata, arr_iata)
+        cache.set(cache_key, payload, timeout=3600)
+        logger.info("bg_warm_kac cached %s→%s %s (%d편)", dep_iata, arr_iata, flight_date, len(payload["flights"]))
+    except Exception as exc:
+        logger.warning("bg_warm_kac failed %s→%s: %s", dep_iata, arr_iata, exc)
+
+
 @require_GET
 def api_flights(request):
     """노선·날짜별 항공편 목록 (마법사 Step 2: 到着便·帰国便 공용)."""
-    import dataclasses, sys
+    import sys, threading
     from pathlib import Path as _P
     _root = _P(settings.BASE_DIR).parent
-    if str(_root / "src") not in sys.path:
-        sys.path.insert(0, str(_root / "src"))
-    from api.aviation_client import search_route_flights
+    src_path = str(_root / "src")
+    if src_path not in sys.path:
+        sys.path.insert(0, src_path)
+    from api.aviation_client import search_route_flights, uses_korea_regional_airport
 
     dep_iata    = (request.GET.get("dep") or "").upper() or None
     arr_iata    = (request.GET.get("arr") or "ICN").upper()
@@ -1427,24 +1455,38 @@ def api_flights(request):
         return JsonResponse({"error": "dep is required"}, status=400)
 
     cache_key = f"flights:{dep_iata}:{arr_iata}:{flight_date}"
+
+    # 1. Django 캐시 히트 → 즉시 반환 (KAC 실시간 또는 ICN 데이터)
     cached = cache.get(cache_key)
     if cached:
         return JsonResponse(cached)
 
+    # 2. KAC 노선(GMP/PUS/CJU): odcloud 스냅샷으로 즉시 반환 + KAC 백그라운드 캐시 워밍
+    if uses_korea_regional_airport(dep_iata, arr_iata):
+        try:
+            from api.korea_airports_flight_client import KoreaAirportsFlightClient
+            kac = KoreaAirportsFlightClient()
+            if kac.is_configured:
+                fast_flights, fast_warn, _ = kac._search_odcloud(dep_iata, arr_iata, flight_date, 999)
+                # KAC 실시간 데이터를 백그라운드에서 캐시
+                threading.Thread(
+                    target=_bg_warm_kac,
+                    args=(dep_iata, arr_iata, flight_date, cache_key, list(sys.path)),
+                    daemon=True,
+                ).start()
+                if fast_flights:
+                    payload = _build_flight_payload(fast_flights, fast_warn, "odcloud", dep_iata, arr_iata)
+                    return JsonResponse(payload)
+        except Exception as exc:
+            logger.warning("odcloud fast path failed %s→%s: %s", dep_iata, arr_iata, exc)
+
+    # 3. ICN 노선 또는 odcloud 데이터 없음 → 직접 조회 (fast for ICN)
     try:
         flights, warning, source = search_route_flights(
             dep_iata, arr_iata, flight_date=flight_date, limit=999
         )
-        flight_dicts = [dataclasses.asdict(f) for f in flights]
-        merged = _merge_codeshares(flight_dicts)
-        merged.sort(key=_flight_dep_sort_key)
-        payload: dict = {
-            "flights": merged,
-            "source": source,
-        }
-        if warning:
-            payload["warning"] = warning
-        cache.set(cache_key, payload, timeout=300)
+        payload = _build_flight_payload(flights, warning, source, dep_iata, arr_iata)
+        cache.set(cache_key, payload, timeout=3600)
         return JsonResponse(payload)
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=400)
