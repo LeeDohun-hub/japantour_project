@@ -91,6 +91,54 @@ _DOM_WEEK_FIELDS = [
     ("domesticSun", "일"),
 ]
 
+# KAC GW API가 반환하는 영문 공항명 → IATA (arrAirportEng / depAirportEng 필드)
+_ENG_NAME_TO_IATA: dict[str, str] = {
+    "INCHEON": "ICN", "GIMPO": "GMP", "GIMHAE": "PUS", "BUSAN": "PUS",
+    "JEJU": "CJU", "DAEGU": "TAE", "CHEONGJU": "CJJ", "GWANGJU": "KWJ", "MUAN": "MWX",
+    "NARITA": "NRT", "TOKYO/NARITA": "NRT",
+    "HANEDA": "HND", "TOKYO/HANEDA": "HND",
+    "KANSAI": "KIX", "OSAKA": "KIX", "OSAKA/KANSAI": "KIX",
+    "ITAMI": "ITM", "OSAKA/ITAMI": "ITM",
+    "FUKUOKA": "FUK",
+    "NAGOYA": "NGO", "CHUBU": "NGO", "NAGOYA/CHUBU": "NGO",
+    "CHITOSE": "CTS", "SAPPORO": "CTS", "NEW CHITOSE": "CTS",
+    "NAHA": "OKA", "OKINAWA": "OKA",
+    "HIROSHIMA": "HIJ", "SENDAI": "SDJ", "KAGOSHIMA": "KOJ",
+    "TAKAMATSU": "TAK", "MATSUYAMA": "MYJ",
+}
+
+
+def _eng_to_iata(name: str) -> str:
+    """영문 공항명 → IATA. 매핑 없으면 빈 문자열."""
+    upper = (name or "").strip().upper()
+    if upper in _ENG_NAME_TO_IATA:
+        return _ENG_NAME_TO_IATA[upper]
+    for key, iata in _ENG_NAME_TO_IATA.items():
+        if key in upper:
+            return iata
+    return ""
+
+
+def _item_iata(item: dict, side: str, fallback: str = "") -> str:
+    """item에서 출발(dep) 또는 도착(arr) IATA 코드 추출.
+
+    KAC GW API는 *AirportId 대신 *AirportEng(영문명)을 반환한다.
+    """
+    prefix = side  # "dep" or "arr"
+    # KAC GW 신규 필드명 우선 (arrvAirportCode / depAirportCode)
+    kac_gw_key = "arrvAirportCode" if prefix == "arr" else "depAirportCode"
+    direct = (
+        item.get(kac_gw_key) or
+        item.get(f"{prefix}AirportId") or
+        item.get("sch" + ("Dept" if prefix == "dep" else "Arrv") + "CityCode") or
+        item.get(f"{prefix}CityCode") or ""
+    ).upper()
+    if direct and len(direct) == 3 and direct.isalpha():
+        return direct
+    eng = item.get(f"{prefix}AirportEng") or item.get(f"{prefix}Airport") or ""
+    return _eng_to_iata(eng) or fallback.upper()
+
+
 _snapshot_cache: dict[str, list[dict]] = {}
 _airport_probe_cache: bool | None = None
 
@@ -301,10 +349,7 @@ class KoreaAirportsFlightClient:
         )
         depart_items = [
             it for it in depart_items
-            if (
-                it.get("arrAirportId") or it.get("schArrvCityCode") or
-                it.get("arrCityCode") or ""
-            ).upper() == arr
+            if _item_iata(it, "arr", arr) == arr
         ]
         for item in depart_items:
             fl = self._normalize_kac_gw_depart(item, dep, arr)
@@ -320,10 +365,7 @@ class KoreaAirportsFlightClient:
             )
             arrival_items = [
                 it for it in arrival_items
-                if (
-                    it.get("depAirportId") or it.get("schDeptCityCode") or
-                    it.get("depCityCode") or ""
-                ).upper() == dep
+                if _item_iata(it, "dep", dep) == dep
             ]
             for item in arrival_items:
                 fl = self._normalize_kac_gw_arrival(item, dep, arr)
@@ -378,24 +420,30 @@ class KoreaAirportsFlightClient:
     @staticmethod
     def _kac_gw_status(item: dict) -> str:
         remark = (
-            item.get("remark") or item.get("remarksEng") or
+            item.get("rmkKor") or item.get("remark") or item.get("remarksEng") or
             item.get("remarkKor") or item.get("운항상태") or ""
-        ).strip().lower()
+        ).strip()
         if not remark:
             return "scheduled"
         if "지연" in remark or "delay" in remark:
             return "delayed"
         if "결항" in remark or "cancel" in remark:
             return "cancelled"
-        if "출발" in remark or "depart" in remark or "active" in remark:
+        lower = remark.lower()
+        if "지연" in remark or "delay" in lower:
+            return "delayed"
+        if "결항" in remark or "cancel" in lower:
+            return "cancelled"
+        if "출발" in remark or "depart" in lower or "active" in lower:
             return "active"
-        if "도착" in remark or "arrived" in remark or "landed" in remark:
+        if "도착" in remark or "arrived" in lower or "landed" in lower:
             return "landed"
         return "scheduled"
 
     def _normalize_kac_gw_depart(self, item: dict, dep: str, arr: str) -> FlightInfo:
         flight_id = (
-            item.get("flightId") or item.get("편명") or item.get("항공편명") or ""
+            item.get("flightid") or item.get("flightId") or
+            item.get("편명") or item.get("항공편명") or ""
         ).strip().upper()
         airline_code = "".join(c for c in flight_id if c.isalpha())[:2]
         airline_name = (
@@ -403,12 +451,11 @@ class KoreaAirportsFlightClient:
             or item.get("airlineKorean") or item.get("airline") or item.get("항공사") or ""
         )
         dep_time = self._time_hhmm(
+            item.get("estimateddatetime") or item.get("scheduledatetime") or
             item.get("depPlandTime") or item.get("scheduleDateTime") or
             item.get("depSchdDateTime") or item.get("출발예정시간") or ""
         )
-        arr_airport_id = (
-            item.get("arrAirportId") or item.get("schArrvCityCode") or arr
-        ).upper()
+        arr_airport_id = _item_iata(item, "arr", arr)
         arr_time = self._time_hhmm(
             item.get("arrPlandTime") or item.get("arrSchdDateTime") or
             item.get("도착예정시간") or ""
@@ -420,9 +467,7 @@ class KoreaAirportsFlightClient:
                 arr_time = f"{(total // 60) % 24:02d}:{total % 60:02d}"
             except (ValueError, IndexError):
                 arr_time = dep_time
-        dep_airport_id = (
-            item.get("depAirportId") or item.get("schDeptCityCode") or dep
-        ).upper()
+        dep_airport_id = _item_iata(item, "dep", dep)
         return FlightInfo(
             flight_iata=flight_id,
             flight_number="".join(c for c in flight_id if c.isdigit()),
@@ -446,7 +491,8 @@ class KoreaAirportsFlightClient:
 
     def _normalize_kac_gw_arrival(self, item: dict, dep: str, arr: str) -> FlightInfo:
         flight_id = (
-            item.get("flightId") or item.get("편명") or item.get("항공편명") or ""
+            item.get("flightid") or item.get("flightId") or
+            item.get("편명") or item.get("항공편명") or ""
         ).strip().upper()
         airline_code = "".join(c for c in flight_id if c.isalpha())[:2]
         airline_name = (
@@ -454,15 +500,12 @@ class KoreaAirportsFlightClient:
             or item.get("airlineKorean") or item.get("airline") or item.get("항공사") or ""
         )
         arr_time = self._time_hhmm(
+            item.get("estimateddatetime") or item.get("scheduledatetime") or
             item.get("arrPlandTime") or item.get("scheduleDateTime") or
             item.get("arrSchdDateTime") or item.get("도착예정시간") or ""
         )
-        dep_airport_id = (
-            item.get("depAirportId") or item.get("schDeptCityCode") or dep
-        ).upper()
-        arr_airport_id = (
-            item.get("arrAirportId") or item.get("schArrvCityCode") or arr
-        ).upper()
+        dep_airport_id = _item_iata(item, "dep", dep)
+        arr_airport_id = _item_iata(item, "arr", arr)
         dep_time = self._time_hhmm(
             item.get("depPlandTime") or item.get("depSchdDateTime") or
             item.get("출발예정시간") or ""
@@ -601,6 +644,8 @@ class KoreaAirportsFlightClient:
     @staticmethod
     def _time_hhmm(raw: Any) -> str:
         s = str(raw or "").strip()
+        if not s:
+            return ""
         if ":" in s:
             parts = s.split(":")
             if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
