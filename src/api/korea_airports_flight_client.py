@@ -16,8 +16,10 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import os
+import time
 import xml.etree.ElementTree as ET
 from datetime import date, datetime
 from typing import Any
@@ -158,7 +160,25 @@ def _is_intl_item(item: dict, dep: str, arr: str) -> bool:
 
 
 _snapshot_cache: dict[str, list[dict]] = {}
-_airport_probe_cache: bool | None = None
+_airport_probe_cache: bool | None = False  # openapi.airport.co.kr 중지됨 2026-05
+
+# 프로세스 레벨 인메모리 캐시 (gunicorn 워커 내 반복 조회 즉시 응답)
+_flight_mem_cache: dict[str, tuple[tuple, float]] = {}
+_FLIGHT_MEM_CACHE_TTL = 3600  # 1시간
+
+
+def _mem_cache_get(key: str) -> tuple | None:
+    entry = _flight_mem_cache.get(key)
+    if entry and time.time() - entry[1] < _FLIGHT_MEM_CACHE_TTL:
+        return entry[0]
+    _flight_mem_cache.pop(key, None)
+    return None
+
+
+def _mem_cache_set(key: str, value: tuple) -> None:
+    if len(_flight_mem_cache) > 200:
+        _flight_mem_cache.clear()
+    _flight_mem_cache[key] = (value, time.time())
 
 
 def _service_key() -> str | None:
@@ -287,7 +307,7 @@ def _is_domestic_route(dep: str, arr: str) -> bool:
 
 
 class KoreaAirportsFlightClient:
-    def __init__(self, service_key: str | None = None, timeout: int = 60):
+    def __init__(self, service_key: str | None = None, timeout: int = 20):
         self.service_key = (service_key or _service_key() or "").strip()
         self.timeout = timeout
 
@@ -308,6 +328,12 @@ class KoreaAirportsFlightClient:
         arr = (arr_iata or "").upper()
         if not dep or not arr:
             raise ValueError("출발·도착 공항 IATA가 필요합니다.")
+
+        mem_key = f"{dep}:{arr}:{flight_date}"
+        cached = _mem_cache_get(mem_key)
+        if cached is not None:
+            logger.info("mem_cache hit %s→%s %s", dep, arr, flight_date)
+            return cached
 
         mode = _flight_source_mode()
         if mode in ("airport", "airport_co_kr", "openapi"):
@@ -332,13 +358,17 @@ class KoreaAirportsFlightClient:
             try:
                 flights, warn = self._search_kac_gw(dep, arr, flight_date, limit)
                 if flights:
-                    return flights, warn, "kac_gw"
+                    result = (flights, warn, "kac_gw")
+                    _mem_cache_set(mem_key, result)
+                    return result
             except Exception as exc:
                 logger.warning("kac_gw 조회 실패 (%s→%s): %s", dep, arr, exc)
 
         # 3. odcloud 스냅샷 (최종 fallback)
         flights, warn = self._search_odcloud(dep, arr, flight_date, limit)
-        return flights, warn, "odcloud"
+        result = (flights, warn, "odcloud")
+        _mem_cache_set(mem_key, result)
+        return result
 
     # ── KAC GW (apis.data.go.kr/B551178/flight-status) ─────────────
 
@@ -351,50 +381,57 @@ class KoreaAirportsFlightClient:
     ) -> tuple[list[FlightInfo], str | None]:
         """한국공항공사_실시간 항공기 운항정보 조회_GW.
 
-        /depart 로 dep 출발 전체 조회 후 arr 도착지 필터.
-        결과 없으면 /arrival 로 arr 도착 전체 조회 후 dep 출발지 필터.
+        KAC 관리 공항이 출발지 → /depart 만 호출 (GMP→NRT 등).
+        KAC 관리 공항이 도착지 → /arrival 만 호출 (NRT→GMP 등).
+        양쪽 모두 KAC 공항 → 병렬 호출.
         """
         base = _kac_gw_base_url()
         target = _parse_date(flight_date)
         sch_date = target.strftime("%Y%m%d") if target else date.today().strftime("%Y%m%d")
 
+        dep_is_kac = dep in _KOREA_HUB_IATA
+        arr_is_kac = arr in _KOREA_HUB_IATA
+        fetch_dep = dep_is_kac or not arr_is_kac  # dep가 KAC이거나 양쪽 다 비KAC
+        fetch_arr = arr_is_kac or not dep_is_kac
+
+        futures: dict[str, concurrent.futures.Future] = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+            if fetch_dep:
+                futures["dep"] = ex.submit(
+                    self._fetch_kac_gw_pages,
+                    f"{base}/depart",
+                    {"schDate": sch_date, "schDeptCityCode": dep},
+                    limit * 5,
+                )
+            if fetch_arr:
+                futures["arr"] = ex.submit(
+                    self._fetch_kac_gw_pages,
+                    f"{base}/arrival",
+                    {"schDate": sch_date, "schArrvCityCode": arr},
+                    limit * 5,
+                )
+            depart_raw = futures["dep"].result() if "dep" in futures else []
+            arrival_raw = futures["arr"].result() if "arr" in futures else []
+
         results: list[FlightInfo] = []
 
-        depart_items = self._fetch_kac_gw_pages(
-            f"{base}/depart",
-            {"schDate": sch_date, "schDeptCityCode": dep},
-            limit * 5,
-        )
-        depart_items = [
-            it for it in depart_items
-            if _item_iata(it, "dep") == dep            # 출발 공항 일치 확인
-            and _item_iata(it, "arr") == arr           # 도착 공항 일치 확인
-            and _is_intl_item(it, dep, arr)
-        ]
-        for item in depart_items:
-            fl = self._normalize_kac_gw_depart(item, dep, arr)
-            _append_flight_unique(results, fl)
-            if len(results) >= limit:
-                break
+        for item in depart_raw:
+            if (
+                _item_iata(item, "dep") == dep
+                and _item_iata(item, "arr") == arr
+                and _is_intl_item(item, dep, arr)
+            ):
+                _append_flight_unique(results, self._normalize_kac_gw_depart(item, dep, arr))
 
-        if not results:
-            arrival_items = self._fetch_kac_gw_pages(
-                f"{base}/arrival",
-                {"schDate": sch_date, "schArrvCityCode": arr},
-                limit * 5,
-            )
-            arrival_items = [
-                it for it in arrival_items
-                if _item_iata(it, "dep") == dep        # fallback 없음: 미인식 공항 제외
-                and _item_iata(it, "arr") == arr       # 도착 공항도 일치 확인
-                and _is_intl_item(it, dep, arr)
-            ]
-            for item in arrival_items:
-                fl = self._normalize_kac_gw_arrival(item, dep, arr)
-                _append_flight_unique(results, fl)
-                if len(results) >= limit:
-                    break
+        for item in arrival_raw:
+            if (
+                _item_iata(item, "dep") == dep
+                and _item_iata(item, "arr") == arr
+                and _is_intl_item(item, dep, arr)
+            ):
+                _append_flight_unique(results, self._normalize_kac_gw_arrival(item, dep, arr))
 
+        results = results[:limit]
         results.sort(key=lambda f: f.dep_scheduled or f.arr_scheduled or "99:99")
         logger.info("kac_gw %s→%s date=%s → %d편", dep, arr, flight_date, len(results))
         return results, None
@@ -411,7 +448,7 @@ class KoreaAirportsFlightClient:
             params = {
                 "serviceKey": self.service_key,
                 "pageNo": str(page),
-                "numOfRows": "100",
+                "numOfRows": "1000",
                 "_type": "json",
                 **extra,
             }
@@ -616,7 +653,7 @@ class KoreaAirportsFlightClient:
             params = {
                 "serviceKey": self.service_key,
                 "pageNo": str(page),
-                "numOfRows": "100",
+                "numOfRows": "1000",
                 "_type": "json",
                 **extra,
             }

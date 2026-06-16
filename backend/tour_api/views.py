@@ -1425,6 +1425,12 @@ def api_flights(request):
     flight_date = request.GET.get("date") or None
     if not dep_iata:
         return JsonResponse({"error": "dep is required"}, status=400)
+
+    cache_key = f"flights:{dep_iata}:{arr_iata}:{flight_date}"
+    cached = cache.get(cache_key)
+    if cached:
+        return JsonResponse(cached)
+
     try:
         flights, warning, source = search_route_flights(
             dep_iata, arr_iata, flight_date=flight_date, limit=999
@@ -1438,6 +1444,7 @@ def api_flights(request):
         }
         if warning:
             payload["warning"] = warning
+        cache.set(cache_key, payload, timeout=300)
         return JsonResponse(payload)
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=400)

@@ -3898,6 +3898,7 @@ body.page-wizard::before {
 
 .page-wizard .wiz-card {
   padding: 2.1rem clamp(1rem, 3vw, 2.8rem);
+  align-items: flex-start;
 }
 
 .page-wizard .wiz-card-inner {

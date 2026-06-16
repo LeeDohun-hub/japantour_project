@@ -95,6 +95,16 @@ if DEBUG:
         }
     }
     SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+else:
+    # 프로덕션: 파일 기반 캐시 — gunicorn 멀티워커 간 공유 가능
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
+            "LOCATION": os.environ.get("DJANGO_CACHE_DIR", "/tmp/japantour_cache"),
+            "TIMEOUT": 300,
+            "OPTIONS": {"MAX_ENTRIES": 1000},
+        }
+    }
 
 def _build_database_config() -> dict:
     engine = os.environ.get("DB_ENGINE", "sqlite").strip().lower()
