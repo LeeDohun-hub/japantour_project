@@ -3250,7 +3250,8 @@ function _mapsUrlKey(url) {
   const naverPlaceM = /map\.naver\.com/i.test(s) && s.match(/\/place\/(\d{6,})/i);
   if (naverPlaceM) return `naver-place:${naverPlaceM[1]}`;
   if (/map\.naver\.com/i.test(s)) {
-    return s.split("?")[0].replace(/\/$/, "");
+    const base = s.split("?")[0].replace(/\/$/, "");
+    try { return decodeURIComponent(base); } catch { return base; }
   }
   const m = s.match(/[?&]cid=(\d+)/);
   return m ? `cid:${m[1]}` : s.split("&g_mp=")[0].split("&")[0];
@@ -3574,17 +3575,29 @@ function _naverSearchTermFromUrl(url) {
 }
 
 function _renderMapsUnresolvedFallback(url, queryLabel, slotKind = "") {
-  const q = _normalizeQueryLabelForEnrich(queryLabel) || _naverSearchTermFromUrl(url);
+  const proseTerm = _normalizeQueryLabelForEnrich(queryLabel);
+  const urlTerm = _naverSearchTermFromUrl(url);
+  const urlHasKorean = /[가-힣]/.test(urlTerm || "");
+  const proseIsJapanese = _hasJapanesePlaceText(proseTerm || queryLabel || "");
+  // URL path의 한국어를 prose 일본어보다 우선 (검색·카드명 모두)
+  const searchTerm = (urlHasKorean && proseIsJapanese) ? urlTerm : (proseTerm || urlTerm || "");
+  const q = searchTerm;
   if (_isBadPlanPlaceQuery(q)) return "";
   if (slotKind === "meal") return "";
   console.debug?.("Plan place link omitted: unresolved place detail", { url, query: q });
-  // For Naver search URLs render a place card so tourist spots get photo/map UI
   if (q && /map\.naver\.com[^\s]*\/search\//i.test(url)) {
     const isCoordQuery = /^-?[\d.]+,-?[\d.]+$/.test(q.trim());
     if (isCoordQuery) {
-      return `<a class="plan-place-search-link" href="${_escapeHtml(url)}" target="_blank" rel="noopener">🔍 ${_escapeHtml(q)}</a>`;
+      // 좌표 URL: prose label이 한국어면 카드, 아니면 링크
+      const displayLabel = proseTerm || urlTerm;
+      if (displayLabel && !_hasJapanesePlaceText(displayLabel) && !/^-?[\d.]+,-?[\d.]+$/.test(displayLabel.trim())) {
+        return _renderAnchorPlaceCard(displayLabel);
+      }
+      return `<a class="plan-place-search-link" href="${_escapeHtml(url)}" target="_blank" rel="noopener">🔍 ${_escapeHtml(displayLabel || q)}</a>`;
     }
-    return _renderAnchorPlaceCard(q);
+    // 일본어 prose + 한국어 URL → "JA (KO)" 표시, 한국어로 지도 검색
+    const displayJa = (urlHasKorean && proseIsJapanese) ? (proseTerm || "") : "";
+    return _renderAnchorPlaceCard(q, displayJa);
   }
   return "";
 }
@@ -3774,9 +3787,11 @@ function _renderInlinePlaceCard(p, proseHint) {
   return `<div class="plan-inline-spot"><article class="plan-place-card"><a class="plan-place-card__thumb-link" href="${_escapeHtml(thumbLink)}" target="_blank" rel="noopener">${thumb}<span class="plan-place-card__photo-label">${p.photo_name || naverPhotoUrl ? "外観写真" : "Naver"}</span></a><div class="plan-place-card__body"><h4 class="plan-place-card__name">${name}</h4>${guideHtml}${meta ? `<div class="plan-place-card__meta">${meta}</div>` : ""}${addr}<div class="plan-place-card__actions">${mapsUri ? `<a href="${_escapeHtml(mapsUri)}" target="_blank" rel="noopener" class="plan-place-card__btn">地図</a>` : ""}<a href="${_escapeHtml(dirUri)}" target="_blank" rel="noopener" class="plan-place-card__btn plan-place-card__btn--route">経路</a></div></div></article></div>`;
 }
 
-function _renderAnchorPlaceCard(name) {
+function _renderAnchorPlaceCard(name, displayJa = "") {
   if (!name) return "";
-  const eName = _escapeHtml(name);
+  // displayJa: 일본어 표시명 (e.g. "香湖海辺"), name: 한국어 검색명 (e.g. "항호해변")
+  const displayName = displayJa ? `${displayJa} (${name})` : name;
+  const eName = _escapeHtml(displayName);
   const searchHref = _escapeHtml(`https://map.naver.com/p/search/${encodeURIComponent(name)}`);
   const photoSrc = _escapeHtml(`/api/naver-photo/?q=${encodeURIComponent(name)}&image_fallback=1`);
   const fallbackSpan = `<span class="plan-place-card__img plan-place-card__img--fallback" aria-hidden="true">📍</span>`;
