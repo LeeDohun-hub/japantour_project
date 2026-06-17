@@ -855,7 +855,7 @@ def _repair_wizard_itinerary_rules(
                     replacement = next_place_line("food")
                 elif cafe_without_interest and slot in {"lunch", "dinner"} and day_food_count < 2:
                     replacement = next_place_line("food")
-                elif remove_attr and slot in {"morning", "afternoon", "night"}:
+                elif remove_attr and slot in {"morning", "afternoon", "night"} and not slot_plain_place_seen:
                     replacement = next_place_line("attr")
                 idx += 2
                 if idx < len(lines):
