@@ -44,9 +44,14 @@ def _append_vacation_section_fallback(plan_text: str, stays: list) -> str:
     lines = ["\n\n## バカンス宿泊候補"]
     cat_map: dict[str, list[str]] = {}
     for s in stays[:20]:
-        title = (s.get("title") or "").strip()
-        cat = (s.get("cat3") or s.get("cat2") or "풀빌라").strip()
-        addr = (s.get("addr1") or "").strip()
+        if hasattr(s, "get"):
+            title = (s.get("title") or "").strip()
+            cat = (s.get("cat3") or s.get("cat2") or "풀빌라").strip()
+            addr = (s.get("addr1") or "").strip()
+        else:
+            title = (getattr(s, "title", "") or "").strip()
+            cat = (getattr(s, "cat3", "") or getattr(s, "cat2", "") or "풀빌라").strip()
+            addr = (getattr(s, "addr1", "") or "").strip()
         if not title:
             continue
         cat_map.setdefault(cat, [])
