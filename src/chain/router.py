@@ -4444,13 +4444,40 @@ def _used_plan_place_avoid_keys(traveler_profile: dict | None) -> set[str]:
 # ─── Wizard plan quality scorer & auto-retry ────────────────────────────────
 
 _WIZARD_QUALITY_PASS_THRESHOLD = 70   # 이 점수 이상이면 재시도 중단
-_WIZARD_QUALITY_MAX_RETRIES    = 1    # 최대 추가 시도 횟수 (총 시도 = retries + 1)
+_WIZARD_QUALITY_MAX_RETRIES    = 2    # 최대 추가 시도 횟수 (총 시도 = retries + 1)
 
 from src.chain.itinerary_quality import (
     _append_vacation_section_fallback as _append_vacation_section_fallback,
     _score_wizard_plan_quality as _score_wizard_plan_quality,
     _haversine_m as _haversine_m,
 )
+
+
+def _build_retry_correction(failures: list[str], traveler_profile: dict | None) -> str:
+    """품질 실패 사유를 바탕으로 retry용 correction 메시지 생성."""
+    profile = traveler_profile or {}
+    dest = str(profile.get("regionCities") or profile.get("regionCitiesOther") or "").strip()
+    parts: list[str] = []
+    if any("far_from_destination" in f for f in failures):
+        area_hint = f"（{dest}）" if dest else ""
+        parts.append(
+            f"目的地{area_hint}から遠い場所が日程に含まれています。"
+            "出発地・帰国ルート沿いの場所は絶対に旅行中の観光日に使わないでください。"
+            "すべての観光スポット・食事店は旅行先エリアの場所のみ使用してください。"
+        )
+    if any(("dinner_invalid" in f or "lunch_invalid" in f) for f in failures):
+        parts.append(
+            "昼食・夕食スロットに観光スポットが使われています。"
+            "食事スロットには必ず飲食店名と地図URLを記入してください。"
+        )
+    if any("generic_activity" in f for f in failures):
+        parts.append(
+            "具体的な場所名・地図URLがないスロットがあります。"
+            "全てのスロットに具体的な場所名と地図URL（map.naver.com）を記入してください。"
+        )
+    if not parts:
+        parts.append("プランの品質を改善して作り直してください。")
+    return "直前のプランに問題がありました。以下を必ず修正してください：" + "".join(f"【{p}】" for p in parts)
 
 # ─── Visit Korea (관광공사 API) ─────────────────────────────────────────
 _LEGACY_AREA_CODE_HINTS: dict[str, str] = {
@@ -6515,13 +6542,20 @@ def route_and_answer(
                 # 품질 채점 + 자동 재시도 (스트리밍 경로)
                 _s_best: str | None = None
                 _s_best_score = -1
+                _s_failures: list[str] = []
                 for _s_attempt in range(_effective_max_retries + 1):
                     if _s_attempt == 0:
+                        _s_messages = messages
                         _gen = _raw_token_gen()
                     else:
+                        _correction = _build_retry_correction(_s_failures, traveler_profile)
+                        _s_messages: list[dict] = list(messages) + [
+                            {"role": "assistant", "content": _s_best or ""},
+                            {"role": "user", "content": _correction},
+                        ]
                         _retry_stream = openai_client.chat.completions.create(
                             model=_model,
-                            messages=messages,
+                            messages=_s_messages,  # type: ignore[arg-type]
                             **({} if _reasoning else {"temperature": min(0.9, answer_temperature + _s_attempt * 0.07)}),
                             stream=True,
                         )
@@ -6577,10 +6611,20 @@ def route_and_answer(
             _best_score = -1
             _best_failures: list[str] = []
             _reasoning = _is_reasoning_model(_model)
+            _ns_failures: list[str] = []
+            _ns_best_candidate: str = ""
             for _attempt in range(_effective_max_retries + 1):
+                if _attempt == 0:
+                    _ns_messages: list[dict] = messages
+                else:
+                    _correction_ns = _build_retry_correction(_ns_failures, traveler_profile)
+                    _ns_messages = list(messages) + [
+                        {"role": "assistant", "content": _ns_best_candidate},
+                        {"role": "user", "content": _correction_ns},
+                    ]
                 _comp = openai_client.chat.completions.create(
                     model=_model,
-                    messages=messages,
+                    messages=_ns_messages,  # type: ignore[arg-type]
                     **({} if _reasoning else {"temperature": min(0.9, answer_temperature + _attempt * 0.07)}),
                 )
                 _candidate = _finalize_answer_text(_comp.choices[0].message.content or "")
@@ -6591,6 +6635,8 @@ def route_and_answer(
                     "wizard quality attempt=%d score=%d failures=%s",
                     _attempt, _score, _failures,
                 )
+                _ns_failures = _failures
+                _ns_best_candidate = _candidate
                 if _score > _best_score:
                     _best_score = _score
                     _best_reply = _candidate
