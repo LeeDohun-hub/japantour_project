@@ -4475,9 +4475,72 @@ def _build_retry_correction(failures: list[str], traveler_profile: dict | None) 
             "具体的な場所名・地図URLがないスロットがあります。"
             "全てのスロットに具体的な場所名と地図URL（map.naver.com）を記入してください。"
         )
+    missing_activity_labels = [
+        f.split(":", 1)[1]
+        for f in failures
+        if f.startswith("selected_activity_missing:")
+    ]
+    if missing_activity_labels:
+        activity_label_map = {
+            "gourmet": "グルメ",
+            "shopping": "ショッピング",
+            "nightview": "夜景",
+            "tradition": "伝統文化",
+            "festival": "祭り",
+            "performance": "公演",
+            "kpop": "K-pop",
+            "cafe": "カフェ巡り",
+            "nature": "自然",
+            "photo": "フォトスポット",
+            "sports": "スポーツ観戦",
+            "vacation": "バカンス",
+        }
+        display_labels = [activity_label_map.get(x, x) for x in missing_activity_labels]
+        parts.append(
+            "選択済みのやりたいことが日程から抜けています。"
+            f"必ず本文に含めてください: {'・'.join(display_labels)}。"
+            "Reference Data内の候補・公式/検索結果を使って、日別本文の具体スロットへ入れてください。"
+        )
     if not parts:
         parts.append("プランの品質を改善して作り直してください。")
     return "直前のプランに問題がありました。以下を必ず修正してください：" + "".join(f"【{p}】" for p in parts)
+
+
+def _fmt_selected_activity_coverage_hint(traveler_profile: dict | None) -> str:
+    """Wizard step 5 selections that must be visible in the generated plan."""
+    profile = traveler_profile or {}
+    additional = profile.get("additional") or {}
+    tokens = [str(a).lower() for a in profile.get("activities") or []]
+    tokens.extend(str(v).lower() for v in profile.get("vacationTypes") or [])
+    tokens.extend(str(v).lower() for v in profile.get("hallyu") or [])
+    tokens.extend(str(v).lower() for v in additional.get("travelStyles") or [])
+    blob = " ".join(tokens)
+    checks: list[tuple[str, tuple[str, ...], str]] = [
+        ("グルメ", ("food", "gourmet", "グルメ", "미식", "구루메", "맛집"), "昼食・夕食の必須配置で満たす。食事回数は増やさない。"),
+        ("ショッピング", ("shopping", "shop_hard", "ショッピング", "買い物", "쇼핑"), "具体的な市場・商店街・モール候補を1回以上入れる。"),
+        ("夜景", ("nightview", "night_view", "night", "夜景", "야경"), "夜または夕方に夜景・展望・ライトアップ候補を1回以上入れる。"),
+        ("伝統文化", ("tradition", "traditional", "culture", "伝統文化", "전통문화"), "寺社・宮・韓屋・博物館・文化施設候補を1回以上入れる。"),
+        ("祭り", ("festival", "fest", "祭り", "祭", "축제", "페스티벌"), "Reference Dataの祭り・イベント候補を日別本文に1回以上入れる。"),
+        ("公演", ("performance", "performances", "drama", "theater", "musical", "公演", "공연"), "KOPIS/検索結果の公演候補を日別本文に1回以上入れる。"),
+        ("K-pop", ("kpop", "hallyu", "k-pop", "케이팝"), "音楽・アイドル・コンサート系候補を日別本文に1回以上入れる。"),
+        ("カフェ巡り", ("cafe", "coffee", "カフェ", "カフェ巡り", "카페", "커피"), "カフェ候補から午後に1件以上入れる。昼食・夕食には使わない。"),
+        ("自然", ("nature", "healing", "eco", "outdoor", "自然", "자연", "힐링"), "公園・海岸・森・自然名所候補を1回以上入れる。"),
+        ("フォトスポット", ("photo", "photos", "photo_spot", "フォト", "写真", "포토"), "写真・SNS・展望系候補を1回以上入れる。"),
+        ("スポーツ観戦", ("sports", "sport", "baseball", "soccer", "スポーツ", "스포츠"), "試合・会場候補を日別本文に1回以上入れる。"),
+        ("バカンス", ("vacation", "resort", "poolvilla", "pension", "camping", "beach", "バカンス", "휴양"), "宿泊候補セクション、または海水浴場・ビーチ・プール・キャンプ系を必ず入れる。"),
+    ]
+    lines: list[str] = []
+    for label, aliases, instruction in checks:
+        if any(alias.lower() in blob for alias in aliases):
+            lines.append(f"- {label}: {instruction}")
+    if not lines:
+        return ""
+    return (
+        "=== やりたいこと反映ルール（選択項目は必ず見える形で出力）===\n"
+        + "\n".join(lines)
+        + "\n※ 食事ルールは最優先: 食事は昼食・夕食のみ。カフェは食事回数に含めず、午後の休憩枠だけに使う。\n"
+        + "※ 祭り・公演・K-pop・スポーツも下部カードだけに逃がさず、Reference Dataの具体候補を日別本文の午前/午後/夜ブロックへ入れる。\n"
+    )
 
 # ─── Visit Korea (관광공사 API) ─────────────────────────────────────────
 _LEGACY_AREA_CODE_HINTS: dict[str, str] = {
@@ -6070,6 +6133,9 @@ def route_and_answer(
                 "=== 食事方針 ===\n"
                 "グルメ希望なし: 昼食・夕食は必須。ただし食事説明は短く、移動導線に合う実在店を選び、観光・買い物・自然・K-pop等の選択済み目的を日程の主役にする。\n"
             )
+        activity_coverage_hint = _fmt_selected_activity_coverage_hint(traveler_profile)
+        if activity_coverage_hint:
+            ctx_parts.append(activity_coverage_hint)
         budget_hint = _fmt_budget_hint(traveler_profile)
         if budget_hint:
             ctx_parts.append(budget_hint)

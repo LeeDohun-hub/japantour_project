@@ -222,6 +222,7 @@ def _build_itinerary_attraction_queries(
         _plan_diversity_seed,
         _REROLL_EXTRA_ATTR_QUERIES,
         _shuffled_copy,
+        _vacation_types_from_profile,
     )
     areas = _detect_itinerary_areas(user_message, keyword, traveler_profile)
     expanded_areas = _attr_query_areas_for_plan(traveler_profile)
@@ -276,10 +277,20 @@ def _build_itinerary_attraction_queries(
             add(f"{area} 문화공간")
             add(f"{area} 라이브 공연")
             add(f"{area} 대학로 공연")
+        if "festival" in acts:
+            add(f"{area} 축제")
+            add(f"{area} 행사")
+            add(f"{area} 페스티벌")
         if has_shopping_interest:
             add(f"{area} 쇼핑")
             add(f"{area} 쇼핑몰")
             add(f"{area} 전통시장")
+        vacation_types = _vacation_types_from_profile(traveler_profile, f"{user_message} {keyword}")
+        if "vacation" in acts or "beach" in vacation_types:
+            add(f"{area} 해수욕장")
+            add(f"{area} 해변")
+            add(f"{area} 바다 전망")
+            add(f"{area} 비치")
         if has_cafe_interest:
             add(f"{area} 유명 카페")
             add(f"{area} 로컬 카페")

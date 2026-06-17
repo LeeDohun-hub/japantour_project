@@ -31,6 +31,7 @@ try:
         _tourism_candidate_areas_for_plan,
     )
     from src.api.ticket_platform_events_client import _kopis_genres_for_profile
+    from src.chain.itinerary_quality import _score_wizard_plan_quality
     from src.api.web_search_client import WebSearchResult
 except ModuleNotFoundError as exc:
     NearbyPlace = None
@@ -51,6 +52,7 @@ except ModuleNotFoundError as exc:
     _repair_wizard_itinerary_rules = None
     _tourism_candidate_areas_for_plan = None
     _kopis_genres_for_profile = None
+    _score_wizard_plan_quality = None
     WebSearchResult = None
     _ROUTER_IMPORT_ERROR = exc
 else:
@@ -560,6 +562,90 @@ class RouterItineraryPlaceBalanceTests(unittest.TestCase):
         self.assertIn("포토스팟", joined)
         self.assertIn("전통문화", joined)
         self.assertIn("공연장", joined)
+
+    def test_vacation_beach_selection_adds_beach_attr_queries(self) -> None:
+        if _build_itinerary_attraction_queries is None:
+            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
+        profile = {
+            "regions": ["gangwon"],
+            "regionCities": "강릉",
+            "regionCityIds": ["gangwon:gangneung"],
+            "activities": ["vacation", "nature", "photo"],
+            "vacationTypes": ["beach"],
+        }
+
+        queries = _build_itinerary_attraction_queries("바캉스 해수욕장 자연 포토스팟", "", profile)
+        joined = " ".join(queries)
+
+        self.assertIn("해수욕장", joined)
+        self.assertIn("해변", joined)
+
+    def test_quality_fails_when_selected_activities_are_missing(self) -> None:
+        if _score_wizard_plan_quality is None:
+            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
+        profile = {
+            "days": 3,
+            "activities": ["food", "cafe", "nature", "photo", "tradition", "vacation"],
+            "vacationTypes": ["beach"],
+        }
+        plan = "\n".join(
+            [
+                "1日目",
+                "到着後、宿泊先へ移動",
+                "2日目",
+                "昼食",
+                "강릉 식당",
+                "https://map.naver.com/p/search/food",
+                "午後",
+                "市場を散策",
+                "https://map.naver.com/p/search/market",
+                "夕食",
+                "강릉 저녁식당",
+                "https://map.naver.com/p/search/dinner",
+                "3日目",
+                "帰国",
+            ]
+        )
+
+        _score, failures = _score_wizard_plan_quality(plan, [], profile)
+
+        self.assertIn("selected_activity_missing:cafe", failures)
+        self.assertIn("selected_activity_missing:nature", failures)
+        self.assertIn("selected_activity_missing:photo", failures)
+        self.assertIn("selected_activity_missing:tradition", failures)
+        self.assertIn("selected_activity_missing:vacation", failures)
+
+    def test_no_candidate_text_does_not_satisfy_event_selections(self) -> None:
+        if _score_wizard_plan_quality is None:
+            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
+        profile = {
+            "days": 3,
+            "activities": ["festival", "performance", "kpop", "sports"],
+        }
+        plan = "\n".join(
+            [
+                "1日目",
+                "到着後、宿泊先へ移動",
+                "2日目",
+                "昼食",
+                "식당",
+                "https://map.naver.com/p/search/food",
+                "午後",
+                "祭り・公演・K-pop・スポーツ観戦は該当候補なし",
+                "夕食",
+                "저녁식당",
+                "https://map.naver.com/p/search/dinner",
+                "3日目",
+                "帰国",
+            ]
+        )
+
+        _score, failures = _score_wizard_plan_quality(plan, [], profile)
+
+        self.assertIn("selected_activity_missing:festival", failures)
+        self.assertIn("selected_activity_missing:performance", failures)
+        self.assertIn("selected_activity_missing:K-pop", failures)
+        self.assertIn("selected_activity_missing:sports", failures)
 
     def test_cafe_hopping_prioritizes_cafe_queries(self) -> None:
         if _build_itinerary_food_queries is None:

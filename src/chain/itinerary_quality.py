@@ -23,6 +23,99 @@ from src.chain.itinerary_repair import (
     _early_departure_blocks_meals,
 )
 
+_ACTIVITY_REQUIREMENTS: dict[str, dict[str, Any]] = {
+    "gourmet": {
+        "label": "gourmet",
+        "aliases": ("food", "gourmet", "\u30b0\u30eb\u30e1", "\ubbf8\uc2dd", "\uad6c\ub8e8\uba54", "\ub9db\uc9d1"),
+        "markers": (r"\u663c\u98df", r"\u5915\u98df", r"\u30b0\u30eb\u30e1", r"\ub9db\uc9d1", r"\u98df\u4e8b"),
+    },
+    "shopping": {
+        "label": "shopping",
+        "aliases": ("shopping", "shop_hard", "\u30b7\u30e7\u30c3\u30d4\u30f3\u30b0", "\u8cb7\u3044\u7269", "\uc1fc\ud551"),
+        "markers": (r"\u30b7\u30e7\u30c3\u30d4\u30f3\u30b0", r"\u8cb7\u3044\u7269", r"\u5e02\u5834", r"\u5546\u5e97\u8857", r"\uc1fc\ud551", r"\uc2dc\uc7a5", r"\ubc31\ud654\uc810", r"\ubab0"),
+    },
+    "nightview": {
+        "label": "nightview",
+        "aliases": ("nightview", "night_view", "night", "\u591c\u666f", "\uc57c\uacbd"),
+        "markers": (r"\u591c\u666f", r"\u30e9\u30a4\u30c8\u30a2\u30c3\u30d7", r"\u5c55\u671b", r"\uc57c\uacbd", r"\uc804\ub9dd"),
+    },
+    "tradition": {
+        "label": "tradition",
+        "aliases": ("tradition", "traditional", "culture", "\u4f1d\u7d71\u6587\u5316", "\uc804\ud1b5\ubb38\ud654"),
+        "markers": (r"\u4f1d\u7d71", r"\u97d3\u5c4b", r"\u5bae", r"\u6587\u5316", r"\u535a\u7269\u9928", r"\uc804\ud1b5", r"\ud55c\uc625", r"\ubb38\ud654", r"\ubc15\ubb3c\uad00"),
+    },
+    "festival": {
+        "label": "festival",
+        "aliases": ("festival", "fest", "\u796d\u308a", "\u796d", "\ucd95\uc81c", "\ud398\uc2a4\ud2f0\ubc8c"),
+        "markers": (r"\u796d\u308a", r"\u30d5\u30a7\u30b9", r"\u30a4\u30d9\u30f3\u30c8", r"\ucd95\uc81c", r"\ud398\uc2a4\ud2f0\ubc8c", r"\ud589\uc0ac"),
+    },
+    "performance": {
+        "label": "performance",
+        "aliases": ("performance", "performances", "drama", "theater", "musical", "\u516c\u6f14", "\uacf5\uc5f0"),
+        "markers": (r"\u516c\u6f14", r"\u30df\u30e5\u30fc\u30b8\u30ab\u30eb", r"\u5287\u5834", r"\u30e9\u30a4\u30d6", r"\ucf58\uc11c\ud2b8", r"\uacf5\uc5f0", r"\ubba4\uc9c0\uceec"),
+    },
+    "kpop": {
+        "label": "K-pop",
+        "aliases": ("kpop", "hallyu", "k-pop", "K-pop", "\ucf00\uc774\ud31d"),
+        "markers": (r"K-?pop", r"\u30a2\u30a4\u30c9\u30eb", r"\u30b3\u30f3\u30b5\u30fc\u30c8", r"\ucf00\uc774\ud31d", r"\uc544\uc774\ub3cc", r"\ucf58\uc11c\ud2b8"),
+    },
+    "cafe": {
+        "label": "cafe",
+        "aliases": ("cafe", "coffee", "\u30ab\u30d5\u30a7", "\u30ab\u30d5\u30a7\u5de1\u308a", "\uce74\ud398", "\ucee4\ud53c"),
+        "markers": (r"\u30ab\u30d5\u30a7", r"\u30b3\u30fc\u30d2\u30fc", r"\uce74\ud398", r"\ucee4\ud53c"),
+    },
+    "nature": {
+        "label": "nature",
+        "aliases": ("nature", "healing", "eco", "outdoor", "\u81ea\u7136", "\uc790\uc5f0", "\ud790\ub9c1"),
+        "markers": (r"\u81ea\u7136", r"\u516c\u5712", r"\u6d77\u5cb8", r"\u68ee\u6797", r"\u30d3\u30fc\u30c1", r"\uc790\uc5f0", r"\uacf5\uc6d0", r"\ud574\ubcc0"),
+    },
+    "photo": {
+        "label": "photo",
+        "aliases": ("photo", "photos", "photo_spot", "\u30d5\u30a9\u30c8", "\u30d5\u30a9\u30c8\u30b9\u30dd\u30c3\u30c8", "\uc0ac\uc9c4", "\ud3ec\ud1a0"),
+        "markers": (r"\u30d5\u30a9\u30c8", r"\u5199\u771f", r"SNS", r"\u64ae\u5f71", r"\ud3ec\ud1a0", r"\uc0ac\uc9c4"),
+    },
+    "sports": {
+        "label": "sports",
+        "aliases": ("sports", "sport", "baseball", "soccer", "\u30b9\u30dd\u30fc\u30c4", "\u30b9\u30dd\u30fc\u30c4\u89b3\u6226", "\uc2a4\ud3ec\uce20"),
+        "markers": (r"\u30b9\u30dd\u30fc\u30c4", r"\u89b3\u6226", r"\u8a66\u5408", r"\u30b9\u30bf\u30b8\u30a2\u30e0", r"\uc57c\uad6c", r"\ucd95\uad6c", r"\uacbd\uae30"),
+    },
+    "vacation": {
+        "label": "vacation",
+        "aliases": ("vacation", "resort", "poolvilla", "pension", "camping", "beach", "\u30d0\u30ab\u30f3\u30b9", "\ud734\uc591"),
+        "markers": (r"\u30d0\u30ab\u30f3\u30b9", r"\u30d7\u30fc\u30eb", r"\u30da\u30f3\u30b7\u30e7\u30f3", r"\u30ad\u30e3\u30f3\u30d7", r"\u6d77\u6c34\u6d74", r"\u30d3\u30fc\u30c1", r"\ud574\uc218\uc695", r"\ud574\ubcc0", r"\ud480\ube4c\ub77c", r"\ud39c\uc158", r"\ucea0\ud551"),
+    },
+}
+
+
+def _selected_activity_requirements(traveler_profile: dict | None) -> list[tuple[str, str, tuple[str, ...]]]:
+    profile = traveler_profile or {}
+    additional = profile.get("additional") or {}
+    raw_tokens: list[str] = []
+    raw_tokens.extend(str(a) for a in profile.get("activities") or [])
+    raw_tokens.extend(str(v) for v in profile.get("vacationTypes") or [])
+    raw_tokens.extend(str(v) for v in profile.get("hallyu") or [])
+    raw_tokens.extend(str(v) for v in additional.get("travelStyles") or [])
+    blob = " ".join(raw_tokens).lower()
+    out: list[tuple[str, str, tuple[str, ...]]] = []
+    for key, cfg in _ACTIVITY_REQUIREMENTS.items():
+        aliases = tuple(str(a).lower() for a in cfg["aliases"])
+        if any(alias and alias.lower() in blob for alias in aliases):
+            out.append((key, str(cfg["label"]), tuple(cfg["markers"])))
+    return out
+
+
+def _missing_selected_activity_labels(plan_text: str, traveler_profile: dict | None) -> list[str]:
+    effective_text = "\n".join(
+        line
+        for line in (plan_text or "").splitlines()
+        if not re.search(r"\u5019\u88dc\u306a\u3057|\u8a72\u5f53\u306a\u3057|no\s+candidates?|no\s+events?", line, re.I)
+    )
+    missing: list[str] = []
+    for _key, label, markers in _selected_activity_requirements(traveler_profile):
+        if not any(re.search(marker, effective_text, re.I) for marker in markers):
+            missing.append(label)
+    return missing
+
 
 def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """두 WGS-84 좌표 간 거리(미터) 근사."""
@@ -359,7 +452,13 @@ def _score_wizard_plan_quality(
     for generic_meal_day in generic_meal_days:
         failures.append(f"day{generic_meal_day}_generic_meal_without_restaurant")
 
+    missing_activity_labels = _missing_selected_activity_labels(plan_text, traveler_profile)
+    for label in missing_activity_labels:
+        failures.append(f"selected_activity_missing:{label}")
+
     if meal_expected == 0 and url_expected == 0:
+        if missing_activity_labels:
+            return 0, failures
         return 100, []
 
     # 가중치: 식사(60%) + URL(25%) + Day수일치(10%) + 중복페널티(-5%)
@@ -381,7 +480,8 @@ def _score_wizard_plan_quality(
     japanese_url_penalty  = min(36.0, len(japanese_url_days)      * 12.0)
     generic_penalty       = min(24.0, len(generic_activity_days)  * 8.0)
     generic_meal_penalty  = min(36.0, len(generic_meal_days)      * 12.0)
+    activity_penalty      = min(40.0, len(missing_activity_labels) * 10.0)
 
-    raw = meal_score + url_score + day_score - dup_penalty - header_penalty - card_mismatch_penalty - far_penalty - placeholder_penalty - japanese_url_penalty - generic_penalty - generic_meal_penalty
+    raw = meal_score + url_score + day_score - dup_penalty - header_penalty - card_mismatch_penalty - far_penalty - placeholder_penalty - japanese_url_penalty - generic_penalty - generic_meal_penalty - activity_penalty
     score = max(0, min(100, int(round(raw))))
     return score, failures
