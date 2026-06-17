@@ -3253,6 +3253,7 @@ a.place-card:hover .place-maps-hint {
 .plan-vk-name { font-size: .875rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .plan-vk-badge { font-size: .7rem; color: var(--gold, #c9a84c); }
 .plan-vk-addr { font-size: .75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plan-vacs-category-label { font-size: .8rem; font-weight: 700; color: var(--text-muted); margin: .75rem 0 .35rem; padding-left: .1rem; }
 .plan-ev-desc { font-size: .72rem; color: var(--muted); margin-top: .15rem; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .plan-ev-source { font-size: .65rem; background: rgba(201,168,76,.15); color: var(--gold, #c9a84c); border-radius: 3px; padding: .05em .3em; margin-left: .25em; }
 .plan-place-grid, .plan-sport-grid {
@@ -3824,6 +3825,18 @@ body.page-wizard::before {
   border-color: rgba(255, 255, 255, 0.12);
   box-shadow: none;
 }
+.page-wizard .top-nav {
+  z-index: 10;
+}
+.page-wizard .btn.wiz-btn-outline {
+  color: rgba(255, 255, 255, 0.8);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.page-wizard .btn.wiz-btn-outline:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.1);
+}
 
 .page-wizard .top-nav {
   padding: 0.9rem 1.35rem;
@@ -3849,6 +3862,21 @@ body.page-wizard::before {
   background: rgba(255, 255, 255, 0.16);
   color: #fff;
   border-color: rgba(255, 255, 255, 0.34);
+}
+
+.page-wizard .accom-search-row input {
+  background: #fff !important;
+  color: #222 !important;
+  border-color: rgba(255, 255, 255, 0.6) !important;
+}
+.page-wizard .accom-search-row .btn.secondary {
+  background: #fff !important;
+  color: var(--accent) !important;
+  border-color: #fff !important;
+}
+.page-wizard .accom-search-row .btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.85) !important;
+  border-color: rgba(255, 255, 255, 0.85) !important;
 }
 
 .page-wizard .nav-plan-mode[aria-current="page"] {
@@ -4321,6 +4349,17 @@ body.page-wizard::before {
 
 .page-wizard .btn.primary:hover:not(:disabled) {
   background: linear-gradient(135deg, #e56c49 0%, #d84f37 55%, #aa3631 100%);
+}
+
+.page-wizard .plan-actions .btn.wiz-btn-outline {
+  color: var(--text-muted);
+  border-color: var(--border);
+  background: transparent;
+}
+.page-wizard .plan-actions .btn.wiz-btn-outline:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--accent-soft);
 }
 
 .page-wizard .chip.selected,

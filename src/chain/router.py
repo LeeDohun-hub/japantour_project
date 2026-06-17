@@ -6369,7 +6369,32 @@ def _repair_wizard_itinerary_rules(
 # ─── Wizard plan quality scorer & auto-retry ────────────────────────────────
 
 _WIZARD_QUALITY_PASS_THRESHOLD = 70   # 이 점수 이상이면 재시도 중단
-_WIZARD_QUALITY_MAX_RETRIES    = 2    # 최대 추가 시도 횟수 (총 시도 = retries + 1)
+_WIZARD_QUALITY_MAX_RETRIES    = 1    # 최대 추가 시도 횟수 (총 시도 = retries + 1)
+
+
+def _append_vacation_section_fallback(plan_text: str, stays: list) -> str:
+    """バカンス候補セクションがLLM出力に含まれていない場合、stays データで補完する。"""
+    import re as _re
+    if _re.search(r'##\s*バカンス宿泊候補', plan_text):
+        return plan_text  # 이미 있음
+    if not stays:
+        return plan_text  # 데이터 없음 → 그대로
+    lines = ["\n\n## バカンス宿泊候補"]
+    cat_map: dict[str, list[str]] = {}
+    for s in stays[:20]:
+        title = (s.get("title") or "").strip()
+        cat = (s.get("cat3") or s.get("cat2") or "풀빌라").strip()
+        addr = (s.get("addr1") or "").strip()
+        if not title:
+            continue
+        cat_map.setdefault(cat, [])
+        entry = f"{title}" + (f" | {addr}" if addr else "")
+        cat_map[cat].append(entry)
+    for cat, items in cat_map.items():
+        lines.append(f"\n**{cat}**")
+        for i, item in enumerate(items[:5], 1):
+            lines.append(f"{i}. {item}")
+    return plan_text + "\n".join(lines)
 
 
 def _score_wizard_plan_quality(
@@ -9370,6 +9395,18 @@ def route_and_answer(
         f"[分類: {category} / キーワード: {keyword}]\n\n"
         f"[Reference Data]\n{context_block}"
     )
+    # バカンス選択時: 末尾に必須出力指示を追記 (mini モデル対応)
+    _uc_stay_is_vacation = is_wizard_plan and any(
+        str(a).lower() == "vacation"
+        for a in (traveler_profile or {}).get("activities") or []
+    )
+    if _uc_stay_is_vacation:
+        user_content += (
+            "\n\n【絶対必須・最終出力】プラン本文（最終日まで）をすべて書き終えた後、"
+            "必ず「## バカンス宿泊候補」という見出しのセクションを出力すること。"
+            "種別（**풀빌라** / **캠핑장** / **펜션** など）ごとに番号付きリスト5件以上。"
+            "형식: 1. 시설명 | 주소。このセクションを省略することは絶対に禁止。"
+        )
     messages.append({"role": "user", "content": user_content})
 
     _model = ITINERARY_MODEL if category == "itinerary" else ANSWER_MODEL
@@ -9542,6 +9579,9 @@ def route_and_answer(
                 for _chunk in _raw_token_gen():
                     chunks.append(_chunk)
                 final = _finalize_answer_text("".join(chunks))
+            # バカンス候補セクション누락 보완
+            if _uc_stay_is_vacation:
+                final = _append_vacation_section_fallback(final, visitkorea_stays or [])
             # 스트리밍에서도 name_ja 적용 (api_places 리스트 in-place 교체)
             if _jp_name_map:
                 api_places[:] = _apply_jp_names_to_places(api_places, _jp_name_map)
@@ -9601,6 +9641,9 @@ def route_and_answer(
                 **({} if _reasoning else {"temperature": answer_temperature}),
             )
             reply = _finalize_answer_text(completion.choices[0].message.content or "")
+        # バカンス候補セクション 누락 보완
+        if _uc_stay_is_vacation:
+            reply = _append_vacation_section_fallback(reply, visitkorea_stays or [])
     except Exception as _ans_exc:
         logger.error("Answer generation failed (model=%s): %s", _model, _ans_exc)
         raise

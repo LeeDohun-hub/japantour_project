@@ -1,4 +1,4 @@
-/* Korea Travel Wizard — single-page 7-step flow */
+﻿/* Korea Travel Wizard — single-page 7-step flow */
 
 function getCsrfToken() {
   return document.cookie.split(';')
@@ -7,7 +7,7 @@ function getCsrfToken() {
     ?.split('=')[1] ?? '';
 }
 
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 6;
 let currentStep = 1;
 let currentUser = null;
 let wizardData = {};
@@ -21,7 +21,7 @@ const wizNavBar  = $("wizNavBar");
 const wizBtnBack = $("wizBtnBack");
 const wizBtnNext = $("wizBtnNext");
 
-const STEP_LABELS = ["ログイン","フライト","宿泊","観光","予算","詳細","プラン"];
+const STEP_LABELS = ["ログイン","フライト","宿泊","観光","詳細","プラン"];
 
 // ── INIT ──────────────────────────────────────────────────────────────────
 async function init() {
@@ -32,10 +32,7 @@ async function init() {
   setupChipGroup("regionChips",          true);
   setupRegionCityPicker();
   setupChipGroup("activityChips",        false);
-  setupChipGroup("budgetPriorityChips",  false);
-  setupChipGroup("budgetStyleChips",     true);
   setupChipGroup("companionChips",       true);
-  setupChipGroup("mobilityChips",        true);
   setupChipGroup("foodPreferenceChips", false);
   setupChipGroup("foodAvoidChips",        false);
   // no_pork ↔ bossam 충돌: 한쪽 선택 시 반대쪽 자동 해제
@@ -50,14 +47,12 @@ async function init() {
     }
   });
   setupChipGroup("paceChips",            true);
-  setupChipGroup("languageChips",        true);
   setupChipGroup("vacationChips",        false);
   setupChipGroup("sportsChips",          false);
   setupChipGroup("travelStyleChips",     false);
   setupChipGroup("flightTripTypeChips",  true);
   setupSportsDetailToggle();
   setupVacationDetailToggle();
-  setupStep6();
   setupNavigation();
   setupAddrDropdown();
   setupUndecidedAddrDropdown();
@@ -252,10 +247,6 @@ function validate(step) {
     }
     if (err) err.style.display = "none";
   }
-  if (step === 5) {
-    const errEl = $("budgetTotalError");
-    if (errEl) errEl.textContent = "";
-  }
   if (step === 4) {
     const regions = chips("regionChips");
     const areaErr = $("regionAreaError");
@@ -352,23 +343,12 @@ function collect(step) {
       break;
     }
     case 5:
-      wizardData.budget = {
-        currency: $("budgetCurrency").value,
-        total:    $("budgetTotal").value,
-        daily:    $("budgetDaily").value,
-        priority: chips("budgetPriorityChips"),
-        style:    chips("budgetStyleChips")[0] || "",
-      };
-      break;
-    case 6:
       wizardData.additional = {
         companion:        chips("companionChips")[0]  || "",
-        mobility:         chips("mobilityChips")[0]   || "",
         foodPreferences:  chips("foodPreferenceChips"),
         foodAvoid:        chips("foodAvoidChips"),
         pace:             chips("paceChips")[0]        || "",
         travelStyles:     chips("travelStyleChips"),
-        language:         chips("languageChips")[0]   || "jp_first",
         note:             $("additionalNote")?.value  || "",
       };
       break;
@@ -1341,13 +1321,6 @@ function setupStep3() {
   });
 }
 
-// ── STEP 6: BUDGET ────────────────────────────────────────────────────────
-function setupStep6() {
-  $("budgetCurrency")?.addEventListener("change", (e) => {
-    $("dailyCurrencySym").textContent = e.target.value === "KRW" ? "₩" : "¥";
-  });
-}
-
 // ── CHIPS ─────────────────────────────────────────────────────────────────
 function setupChipGroup(id, singleSelect) {
   const el = $(id);
@@ -1768,15 +1741,7 @@ function _collectLockedPlanItems() {
 
 function _buildPlanAutoDefaults(d) {
   const days = Math.max(1, Number(d.days || 3));
-  const dailyJpy = days >= 5 ? 12000 : 10000;
   return {
-    budget: {
-      currency: "JPY",
-      daily: dailyJpy,
-      total: dailyJpy * days,
-      style: "normal",
-      auto: true,
-    },
     additional: {
       companion: "friends",
       pace: days >= 4 ? "relaxed" : "packed",
@@ -1851,10 +1816,8 @@ async function generatePlan(isReroll = false) {
   };
   const profilePayload = {
     ...wizardData,
-    budget: wizardData.budget?.total ? wizardData.budget : autoDefaults.budget,
     additional: mergedAdditional,
     plan_auto_defaults: {
-      budget: !wizardData.budget?.total,
       foodPreferences: !userAdditional.foodPreferences?.length,
       details: !userAdditional.companion || !userAdditional.pace || !userAdditional.travelStyles?.length,
     },
@@ -2237,9 +2200,7 @@ function buildPrompt(isReroll = false) {
       ? userAdditional.travelStyles
       : autoDefaults.additional.travelStyles,
   };
-  const promptBudget = d.budget?.total ? d.budget : autoDefaults.budget;
   const lockedItems = _collectLockedPlanItems();
-  const sym = d.budget?.currency === "KRW" ? "₩" : "¥";
   const aMap = { food:"グルメ", shopping:"ショッピング", nightview:"夜景", tradition:"伝統文化",
                  festival:"祭り", hallyu:"韓流・K-pop", drama:"公演", kpop:"K-pop", cafe:"カフェ巡り",
                  nature:"自然", photo:"フォトスポット", sports:"スポーツ観戦", vacation:"バカンス" };
@@ -2253,7 +2214,7 @@ function buildPrompt(isReroll = false) {
                  arex:"鉄道・地下鉄（AREX）", subway:"鉄道・地下鉄" }; // 하위호환
   const cMap = { solo:"一人旅", couple:"カップル", friends:"友人", family:"ファミリー", parents:"親との旅行" };
   const pMap = { packed:"びっしり", relaxed:"のんびり" };
-  const sMap = { budget:"コスパ重視", normal:"バランス", premium:"プレミアム" };
+
 
   const lines = [
     `${_promptGreeting(currentUser || {})}韓国旅行プランを日本語で作成してください。以下の情報を基に、日程ごとの具体的なプランを提案してください。`,
@@ -2394,19 +2355,8 @@ function buildPrompt(isReroll = false) {
   const vacTypes = d.vacationTypes || [];
   const vacParts = vacTypes.map((v) => vacMap[v] || v);
   if (vacParts.length || actMerged.includes("vacation")) {
-    const VACS_REF_ONLY = "【厳守】プールヴィラ・キャンピング場などのバカンス宿泊施設名は、日程本文（Day1〜最終日）の各コマに記載しないこと。各日の日程には「プールヴィラでリゾート体験」等の概要のみ記述すること。ただし、全日程終了後に「## バカンス宿泊候補」という独立したセクションを必ず作成し、参照データ（宿泊候補リスト）に掲載された施設を種別ごとに番号付きリスト形式で出力すること（例: **풀빌라** \\n1. 〇〇펜션 | 住所 \\n**캠핑장** \\n1. 〇〇글램핑 | 住所）。";
+    const VACS_REF_ONLY = "【厳守】プールヴィラ・キャンピング場などのバカンス宿泊施設名は、日程本文（Day1〜最終日）の各コマに記載しないこと。各日の日程には「プールヴィラでリゾート体験」「해변에서 휴식」等の概要のみ記述すること。【必須出力】全日程終了後に「## バカンス宿泊候補」という独立したセクションを絶対に作成すること。参照データ（宿泊候補リスト）がある場合はその施設を使う。参照データが空またはない場合でも、AIが確実に知っている該当エリアの実在する宿泊施設（プールヴィラ・ペンション・キャンプ場・해수욕장인근숙소）を5件以上リストアップすること（架空名・想像名は禁止）。形式: 種別見出し＋番号付きリスト（例: **풀빌라** \\n1. 〇〇펜션 | 住所 \\n**캠핑장** \\n1. 〇〇글램핑 | 住所）。このセクションを省略・スキップすることは絶対禁止。";
     lines.push(`【バカンス】${vacParts.length ? vacParts.join("・") : "バカンス"} — バカンス気分を意識した日程にすること。${VACS_REF_ONLY}`);
-  }
-
-  if (promptBudget?.total) {
-    const bsSym = promptBudget.currency === "KRW" ? "₩" : "¥";
-    const prMap = { transport:"交通費重視", stay:"宿泊費重視", food:"食費重視" };
-    let bs = `総予算:${bsSym}${promptBudget.total}`;
-    if (promptBudget.daily) bs += `、1日:${bsSym}${promptBudget.daily}`;
-    if (promptBudget.style) bs += `、予算の考え方:${sMap[promptBudget.style]||promptBudget.style}`;
-    if (promptBudget.priority?.length) bs += `、重視費目:${promptBudget.priority.map(p => prMap[p]||p).join("/")}`;
-    if (promptBudget.auto) bs += "（未入力のためシステムが標準値を設定）";
-    lines.push(`【予算】${bs}`);
   }
 
   const add = promptAdditional;
@@ -2456,7 +2406,7 @@ function buildPrompt(isReroll = false) {
       "【遠方移動日の地図】2日目に宿泊先から遠方観光地へ移動する場合、2日目の最初のブロックは必ず「宿泊先→目的地エリアの主要駅/最初の観光地」への移動にし、本文にも経路を明記する。地図ルート上でも宿泊先を出発点として扱える構成にする。",
       "【遠方移動日の食事】宿泊先から遠方観光エリアへ移動する日も、到着後の昼食1件（具体的な店名＋地図URL）と夕食1件（具体的な店名＋地図URL）を必ず含める。「移動に充てる」「到着後は休憩」だけで食事を省略することを禁止する。",
       "【帰還日の構成】遠方エリアから宿泊先へ戻る日は、午前〜昼食までは目的地エリア内で具体スポット1件＋具体昼食1件を入れ、午後に宿泊先へ戻る。帰還日を「移動」「休息」「周辺で食事」だけで終わらせない。",
-      "【場所重複禁止】同一の観光スポット・食事店を複数の日に重複させない。Reference Dataの候補数が不足する場合は、候補リスト外の実在する周辺スポットを補完してよい（創作・架空名は禁止）。候補不足を理由に「スポットなし」「リスト外のため省略」とだけ書いて日程を空欄にすることを禁止する。",
+      "【場所重複禁止】同一の観光スポット・食事店を複数の日に重複させない。Reference Dataの候補数が不足する場合は、候補リスト外の実在する周辺スポットを補完してよい（創作・架空名は禁止）。候補不足を理由に「スポットなし」「リスト外のため省略」とだけ書いて日程を空欄にすることを禁止する。【URL必須】リスト外スポット・食事店を使用する場合も必ず次行に地図URLを書くこと。Reference DataにURLがない場合は「https://map.naver.com/v5/search/장소명」形式（韓国語名をURLエンコード）で生成すること。URLなしで場所名だけ書くことは禁止。",
       "【遠方観光地の扱い】宿泊先と希望エリアが遠い場合（例: ソウル/仁川/京畿の宿泊先から釜山・光州・江原・済州など）は、毎日宿泊先から日帰り往復させない。2日目に遠方エリアへ移動した後は、その地域に滞在している前提で連続日程を組む。3日目以降に「元の宿泊先から遠方へ出発」と書くことは禁止。出国前日に元の宿泊先または出国空港圏へ戻る移動ブロックを1回だけ入れる。最終日は元の宿泊先/空港圏から出国する。"
     );
   }
@@ -2490,7 +2440,7 @@ function buildPrompt(isReroll = false) {
     "【夜スロット絶対禁止】[夜]スロットには飲食店・カフェ・バー・屋台・食事場所を一切置かない。[夜]は夜景・散歩・公園・文化エリア・宿泊休憩のみ。夕食は[夕食]スロットで済ませる。夕食後の追加飲食は禁止。",
     "【カード表示用ノイズ禁止】本文に「外観写真」「評価」「営業中」「住所」「地図」「経路」「지도」「통로」「この日の動線上の候補」「予算の目安」を場所名の直前直後に書かない。場所名の直後はReference Dataの地図URL（map.naver.com）だけを書く。",
     "【食事 — 厳守】朝食は入れない。観光可能な旅行日の食事は昼食1件・夕食1件の2回だけ。到着が遅い入国日・出国が早い最終日は食事ブロックを書かない。食事は昼食・夕食スロット以外で絶対に使わない。「近郊で食事」「店名は記載しない」「한식店」「現地のレストラン」「別の韓国料理店」「コンビニ」「軽食」「間食」「候補が足りない/全部終わった」「(식사 후보 리스트에 해당하는 가게가 없습니다)」は絶対禁止。【通常】Reference Dataの「食事候補」リストの店名＋次行にその地図URL（map.naver.com）を書く。候補が足りない場合は同一エリアまたは近接エリアの検証済み候補から選ぶ。帰還日・宿泊エリア候補は帰還後の夕食だけ使用可。【例外：食事候補ゼロ件】Reference Dataの「食事候補」が全エリア合計0件の場合のみ、AIが確実に知っているその都市の実在飲食店を使用可。店名は韓国語正式表記、地図URLは「https://map.naver.com/v5/search/店名（URL-encode）」形式。架空・想像の店名は引き続き禁止。",
-    "【観光】「観光スポット候補」リストの施設名＋URLのみ。リスト外の創作禁止。「〇〇周辺を散策」「〇〇 일대/주변 산책」「近くを歩く」「ショッピングや散策」だけの抽象予定は禁止。散策でも必ず候補リスト内の具体施設名・公園名・通り名・モール名＋地図URLを書き、UIカード化できる位置情報にする。",
+    "【観光】「観光スポット候補」リストの施設名＋URLのみが基本。候補不足時は実在スポット補完可（架空禁止）。「〇〇周辺を散策」「〇〇 일대/주변 산책」「近くを歩く」「ショッピングや散策」だけの抽象予定は禁止。散策でも必ず具体施設名・公園名・通り名・モール名を書く。【URL絶対必須】全ての観光スポット・散策地点は必ず名称の次行に地図URL（map.naver.com）を書くこと。Reference Dataにある場合はそのURL、ない場合は「https://map.naver.com/v5/search/한국어장소명」形式で生成。URLなしで場所名だけ書くことは絶対禁止。",
     "【スポーツ】Sports Schedule Resultsの試合またはオフシーズン案内をそのまま記載。ジム・ストリートへの置き換え禁止。",
     "営業時間・料金・チケットは必要な場合だけ文末で一言。本文に「時間外の可能性」「営業時間外かもしれません」は書かない。",
     "【朝の扱い】午前に観光地・公園・展望台・体験施設を入れるのは可。ただし朝食・朝ごはん・朝カフェ・ブランチ・食堂・レストラン・カフェは入れない。朝の飲食店訪問は禁止。食事店は昼食と夕食だけ。"
@@ -3479,9 +3429,7 @@ function _nameKeysFromLine(line) {
   const quoted = [...line.matchAll(/[『「']([^』」']+)[』」']|[「『]([^」』]+)[」』]/g)];
   for (const m of quoted) keys.push(_normalizePlaceName(m[1] || m[2]));
   for (const q of _autoPlaceQueriesFromLine(line)) keys.push(_normalizePlaceName(q));
-  const bare = line.match(
-    /([\u3131-\uD79D]{2,}(?:한우|마을|궁|거리|길|식당|카페|공원|역|몰|호텔|박물관|시장|맛집|레스토랑|restaurant|cafe|park|station))/i
-  );
+  const bare = line.match(    /([ㄱ-힝]{2,}(?:한우|마을|궁|거리|길|식당|카페|공원|역|몰|호텔|박물관|시장|맛집|레스토랑|정원|사|절|성당|성|산성|왕릉|능|고택|서원|향교|유적|기념관|전시관|전망대|온천|폭포|계곡|해변|해수욕장|수목원|식물원|항구|등대|미술관|테마파크|워터파크|놀이공원|경기장|수족관|restaurant|cafe|park|station))/i );
   if (bare) keys.push(_normalizePlaceName(bare[1]));
   return keys.filter(Boolean);
 }
@@ -3909,9 +3857,12 @@ function _tryRenderPlaceCard(indexes, rendered, url, renderedScope, slotKind = "
     return false;
   }
   // 주소도 Naver 점수도 없는 비음식 장소 = 엔리치 완전 실패 → 탈락
+  // 단, URL이 있는 경우(공원·사찰·정원 등 자연/문화 관광지)는 허용
   if (!_isFoodCard && !place.address && place.naver_score == null) {
-    rendered.add(key);
-    return false;
+    if (!(place.maps_url || place.google_maps_uri)) {
+      rendered.add(key);
+      return false;
+    }
   }
   const pk = _placeRenderKey(place);
   if (pk && rendered.has(pk)) { rendered.add(key); return false; }
@@ -3925,6 +3876,31 @@ function _tryRenderPlaceCard(indexes, rendered, url, renderedScope, slotKind = "
   if (pk) renderedScope?.add(pk);
   if (_isFoodCard && globalScope) { globalScope.add(key); if (pk) globalScope.add(pk); }
   return true;
+}
+
+function _renderVacationCards(items) {
+  const byCategory = {};
+  const catOrder = [];
+  for (const { category, name, addr } of items) {
+    const cat = category || "";
+    if (!byCategory[cat]) { byCategory[cat] = []; catOrder.push(cat); }
+    byCategory[cat].push({ name, addr });
+  }
+  const catEmoji = { "풀빌라": "🏊", "캠핑장": "⛺", "글램핑": "⛺", "펜션": "🏡", "해수욕장인근숙소": "🏖" };
+  let html = '<div class="plan-refs-section">';
+  for (const cat of catOrder) {
+    const emoji = catEmoji[cat] || "🏖";
+    if (cat) html += `<div class="plan-vacs-category-label">${emoji} ${_escapeHtml(cat)}</div>`;
+    html += '<div class="plan-vk-grid">';
+    for (const { name, addr } of byCategory[cat]) {
+      const naverUrl = `https://map.naver.com/p/search/${encodeURIComponent(name)}`;
+      const addrHtml = addr ? `<div class="plan-vk-addr">${_escapeHtml(addr)}</div>` : "";
+      html += `<a class="plan-vk-card" href="${_escapeHtml(naverUrl)}" target="_blank" rel="noopener"><div class="plan-vk-thumb-wrap"><span class="plan-vk-thumb plan-vk-thumb--fallback" aria-hidden="true">${emoji}</span></div><div class="plan-vk-text"><div class="plan-vk-name">${_escapeHtml(name)}</div>${addrHtml}</div></a>`;
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
 }
 
 function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
@@ -4149,6 +4125,31 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
       }
     }
 
+    // suffix 목록에 없는 관광지 처리: byName 직접 조회 (Reference Data에 있을 때만 카드화, 없으면 텍스트)
+    if (trimmed.length >= 2 && trimmed.length <= 30) {
+      const _tryDirectLookup = (text) => {
+        const k = _normalizePlaceName(text);
+        if (!k) return false;
+        const p = placeIndexes.byName[k];
+        if (!p) return false;
+        const u = p.google_maps_uri || p.maps_url;
+        if (!u) return false;
+        if (_tryRenderPlaceCard(placeIndexes, rendered, u, renderedDayPlaces, currentSlotKind, renderedAllPlaces)) {
+          pushStep(emitCard(p));
+          return true;
+        }
+        return false;
+      };
+      // 1) 줄 전체 직접 조회
+      if (_tryDirectLookup(trimmed)) return;
+      // 2) 괄호 안 내용 조회 (예: カヤ庭園（가야정원）→ 가야정원)
+      const _parenInner = trimmed.match(/[（(]([^）)]{2,})[）)]/)?.[1];
+      if (_parenInner && _tryDirectLookup(_parenInner)) return;
+      // 3) 괄호 앞 부분 조회 (예: 曹渓山道立公園（조계산도립공원）→ 曹渓山道立公園)
+      const _parenBefore = trimmed.match(/^(.{2,}?)[（(]/)?.[1]?.trim();
+      if (_parenBefore && _tryDirectLookup(_parenBefore)) return;
+    }
+
     if (_isPlanSlotLabel(trimmed)) {
       const match = trimmed.match(_PLAN_SLOT_RE);
       const slot = match?.slice(1).find(Boolean) || trimmed;
@@ -4173,9 +4174,31 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
     pushStep(`<p class="plan-line">${_formatPlanTextLine(trimmed)}</p>`);
   };
 
+  let _inVacSection = false;
+  const _vacItems = [];
+  let _vacCategory = "";
+
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim();
     if (!trimmed) continue;
+
+    // バカンス宿泊候補 섹션 감지
+    if (/^##\s*バカンス宿泊候補/.test(trimmed)) {
+      _inVacSection = true;
+      closeTimeline();
+      continue;
+    }
+    if (_inVacSection) {
+      if (/^##/.test(trimmed)) { _inVacSection = false; } // 다른 ## 섹션이 오면 종료
+      else {
+        const boldM = trimmed.match(/^\*\*(.+?)\*\*:?$/);
+        if (boldM) { _vacCategory = boldM[1].trim(); continue; }
+        const numM = trimmed.match(/^\d+\.\s+(.+?)(?:\s*[|｜]\s*(.+))?$/);
+        if (numM) { _vacItems.push({ category: _vacCategory, name: numM[1].trim(), addr: (numM[2] || "").trim() }); }
+        continue;
+      }
+    }
+
     // 빈 줄을 건너뛰고 다음 비어있지 않은 줄을 찾아서 URL 존재 여부 확인
     let nextNonEmpty = "";
     for (let j = i + 1; j < lines.length; j++) {
@@ -4202,6 +4225,7 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
   }
 
   closeTimeline();
+  if (_vacItems.length > 0) out.push(_renderVacationCards(_vacItems));
   return out.join("");
 }
 
@@ -4670,9 +4694,6 @@ function _buildPlanConditionTagsHtml() {
     solo: "🧍 一人旅", couple: "💑 カップル", friends: "👫 友人",
     family: "👨‍👩‍👧 ファミリー", parents: "👴 親との旅行",
   };
-  const MOBILITY = {
-    any: "🚶 徒歩多め", stairs: "⚠ 階段少なめ", wheelchair: "♿ ベビーカー・車椅子",
-  };
   const FOOD_PREF = {
     grilled_meat: "🥩 焼肉・BBQ", bossam: "🐷 ポッサム・チョッパル", soup: "🍲 スープ・チゲ",
     noodles: "🍜 麺料理", seafood: "🦐 海鮮・刺身", chicken: "🍗 韓国チキン",
@@ -4687,15 +4708,12 @@ function _buildPlanConditionTagsHtml() {
     must_see: "📍 有名観光地", healing: "🧘 癒し", culture: "🎨 文化・歴史",
     local_vibe: "✨ 雰囲気", shop_hard: "🛒 ショッピング", food_first: "🍽 グルメ優先",
   };
-  const LANG = { jp_first: "🇯🇵 日本語", kr_ok: "🇰🇷 韓国語も" };
-
   function tag(cls, text) {
     return `<span class="plan-cond-tag plan-cond-tag--${cls}">${text}</span>`;
   }
 
   const tags = [];
   if (add.companion && COMPANION[add.companion]) tags.push(tag("companion", COMPANION[add.companion]));
-  if (add.mobility && MOBILITY[add.mobility]) tags.push(tag("mobility", MOBILITY[add.mobility]));
   for (const v of (add.foodPreferences || [])) {
     if (FOOD_PREF[v]) tags.push(tag("food", FOOD_PREF[v]));
   }
@@ -4706,7 +4724,6 @@ function _buildPlanConditionTagsHtml() {
   for (const v of (add.travelStyles || [])) {
     if (STYLE[v]) tags.push(tag("style", STYLE[v]));
   }
-  if (add.language && LANG[add.language]) tags.push(tag("lang", LANG[add.language]));
   if (!add.auto && add.note && add.note.trim()) {
     const short = _escapeHtml(add.note.trim().slice(0, 28)) + (add.note.trim().length > 28 ? "…" : "");
     tags.push(tag("note", `📝 ${short}`));

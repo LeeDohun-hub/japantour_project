@@ -483,50 +483,8 @@
         </div>
       </section>
 
-      <!-- ⑥ 予算 -->
+      <!-- ⑥ 追加情報 -->
       <section class="wiz-card" data-step="5">
-        <div class="wiz-card-inner">
-          <div class="wiz-step-header">
-            <span class="wiz-step-num">💰 予算</span>
-            <h2>予算はどのくらいですか？</h2>
-          </div>
-          <div class="budget-section">
-            <div class="field-sm">
-              <label>総予算 <span class="opt">任意</span></label>
-              <div class="budget-input-row">
-                <select id="budgetCurrency" class="currency-sel">
-                  <option value="JPY">¥ 円</option>
-                  <option value="KRW">₩ ウォン</option>
-                </select>
-                <input type="number" id="budgetTotal" placeholder="例：150000" min="0" />
-              </div>
-              <p class="field-error" id="budgetTotalError"></p>
-            </div>
-            <div class="field-sm">
-              <label>1日の予算 <span class="opt">任意</span></label>
-              <div class="budget-input-row">
-                <span class="currency-sym" id="dailyCurrencySym">¥</span>
-                <input type="number" id="budgetDaily" placeholder="例：30000" min="0" />
-              </div>
-            </div>
-          </div>
-          <div class="wiz-section-label" style="margin-top:1.25rem">重視したい費目 <span class="opt">任意</span></div>
-          <div class="chip-grid" id="budgetPriorityChips">
-            <button class="chip" data-val="transport">🚌 交通</button>
-            <button class="chip" data-val="stay">🏨 宿泊</button>
-            <button class="chip" data-val="food">🍜 食費</button>
-          </div>
-          <div class="wiz-section-label" style="margin-top:1.25rem">予算の考え方 <span class="opt">任意</span></div>
-          <div class="chip-grid" id="budgetStyleChips">
-            <button class="chip" data-val="budget">💡 コスパ重視</button>
-            <button class="chip" data-val="normal">⚖ バランス</button>
-            <button class="chip" data-val="premium">✨ プレミアム</button>
-          </div>
-        </div>
-      </section>
-
-      <!-- ⑦ 追加情報 -->
-      <section class="wiz-card" data-step="6">
         <div class="wiz-card-inner">
           <div class="wiz-step-header">
             <span class="wiz-step-num">📝 追加情報</span>
@@ -542,14 +500,6 @@
                 <button class="chip" data-val="friends">👫 友人</button>
                 <button class="chip" data-val="family">👨‍👩‍👧 ファミリー</button>
                 <button class="chip" data-val="parents">👴 親との旅行</button>
-              </div>
-            </div>
-            <div class="add-group">
-              <div class="wiz-section-label">移動について</div>
-              <div class="chip-grid" id="mobilityChips">
-                <button class="chip" data-val="any">🚶 徒歩多めでもOK</button>
-                <button class="chip" data-val="stairs">⚠ 階段は少なめがよい</button>
-                <button class="chip" data-val="wheelchair">♿ ベビーカー・車椅子</button>
               </div>
             </div>
             <div class="add-group add-group--wide">
@@ -598,13 +548,6 @@
               </div>
             </div>
             <div class="add-group">
-              <div class="wiz-section-label">言語の希望</div>
-              <div class="chip-grid" id="languageChips">
-                <button class="chip" data-val="jp_first">🇯🇵 日本語案内優先</button>
-                <button class="chip" data-val="kr_ok">🇰🇷 韓国語メニューも挑戦</button>
-              </div>
-            </div>
-            <div class="add-group">
               <div class="wiz-section-label">その他（性別・趣味・関心など）</div>
               <textarea id="additionalNote" rows="2" placeholder="例：30代女性、カフェ好き、BTS好き..." class="wiz-textarea"></textarea>
             </div>
@@ -612,8 +555,8 @@
         </div>
       </section>
 
-      <!-- ⑧ プラン出力 -->
-      <section class="wiz-card" data-step="7">
+      <!-- ⑦ プラン出力 -->
+      <section class="wiz-card" data-step="6">
         <div class="wiz-card-inner">
           <div class="wiz-step-header">
             <span class="wiz-step-num">🗓 プラン</span>
