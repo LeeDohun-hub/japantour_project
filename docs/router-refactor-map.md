@@ -23,9 +23,15 @@ The safest extraction path is to move tested, low-I/O helper groups first, then 
 
 ## Extraction Status
 
-- 2026-06-17: Started `src/chain/itinerary_repair.py`.
-- Moved pure repair helpers, URL restoration, slot placeholder regexes, repair queueing, plain-place detection, and meal-block timing helpers into `itinerary_repair.py`.
-- Kept private-name aliases in `router.py` so existing tests and call sites continue to work.
+- 2026-06-17: 6개 모듈 추출 완료 (commit 5bc6f7b).
+  - `itinerary_repair.py` 901줄 — URL 수리, 슬롯 파싱, 식사 타이밍, area focus
+  - `itinerary_places.py` 381줄 — place classifier, 쿼리 빌더, 후보 병합
+  - `itinerary_regions.py` 513줄 — 지역 판별, zone 체크, 에리어 결정
+  - `itinerary_quality.py` 382줄 — 퀄리티 스코어링, vacation fallback
+  - `travel_context.py` 430줄 — 공항/항공편/예산/여행자 포맷터
+  - `live_context.py` 783줄 — VisitKorea/KTO/festival/vacation 포맷터
+  - `router.py` 9657 → 6626줄 (31% 감소)
+- 모든 기존 심볼 `router.py`에서 re-export 유지, 기존 테스트 59/60 통과 (나머지 1개는 추출 전부터 실패).
 
 ## Proposed Modules
 
