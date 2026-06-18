@@ -99,7 +99,29 @@
     return /[\u3400-\u9fff]/.test(s) && !/[가-힣]/.test(s);
   }
 
-  function _extractKoreanFromParens(str) {
+  // 한글+한자 혼재 이름에서 CJK 한자 제거 -> Naver 검색 호환성
+  function _stripMixedCJK(str) {
+    const s = String(str || "");
+    if (/[가-힣]/.test(s) && /[㐀-鿿]/.test(s)) {
+      return s.replace(/[㐀-鿿]+s*/g, "").replace(/s{2,}/g, " ").trim();
+    }
+    return s;
+  }
+
+  // 알려진 Naver 정확 검색명 (간략 표기 -> 공식 등록명)
+  const KNOWN_NAVER_NAMES = {
+    "명동성당": "천주교 서울대교구 주교좌명동대성당",
+    "명동대성당": "천주교 서울대교구 주교좌명동대성당",
+  };
+  function _resolveKnownNaverName(name) {
+    const compact = (name || "").replace(/s+/g, "");
+    for (const [k, v] of Object.entries(KNOWN_NAVER_NAMES)) {
+      if (compact === k.replace(/s+/g, "")) return v;
+    }
+    return "";
+  }
+
+    function _extractKoreanFromParens(str) {
     const m = String(str || "").match(/[（(]([가-힣][가-힣\s·]{0,40})[)）]/);
     return m ? m[1].trim() : null;
   }
@@ -120,7 +142,7 @@
     const jpName = String(place?.name_ja || place?.display_name_ja || "").trim();
     const fromJaParens = _extractKoreanFromParens(jpName);
     if (fromJaParens) return fromJaParens;
-    if (name && _hasKorean(name) && !_hasJapanese(name)) return name;
+    if (name && _hasKorean(name) && !_hasJapanese(name)) return _stripMixedCJK(name);
     const fallbackParens = _extractKoreanFromParens(fallbackName);
     if (fallbackParens) return fallbackParens;
     const fallback = String(fallbackName || "").trim();
@@ -129,6 +151,8 @@
   }
 
   function _koreanSearchName(name, place) {
+    const knownName = _resolveKnownNaverName(name);
+    if (knownName) return knownName;
     const koName = _bestKoreanName(place, name);
     if (koName) return koName;
     if (!_hasJapanese(name)) return name;

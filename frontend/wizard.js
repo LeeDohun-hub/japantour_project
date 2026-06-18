@@ -246,6 +246,27 @@ function validate(step) {
       return false;
     }
     if (err) err.style.display = "none";
+
+    const val = sel.dataset.val;
+    if (val === "decided") {
+      const sidoEl = $("addrSido");
+      const regionErr = $("accomRegionError");
+      if (!sidoEl?.value) {
+        if (regionErr) regionErr.style.display = "block";
+        sidoEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+        return false;
+      }
+      if (regionErr) regionErr.style.display = "none";
+    } else if (val === "undecided") {
+      const sidoUndEl = $("addrSidoUnd");
+      const undRegionErr = $("accomUndecidedRegionError");
+      if (!sidoUndEl?.value) {
+        if (undRegionErr) undRegionErr.style.display = "block";
+        sidoUndEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+        return false;
+      }
+      if (undRegionErr) undRegionErr.style.display = "none";
+    }
   }
   if (step === 4) {
     const regions = chips("regionChips");
@@ -3542,6 +3563,15 @@ function _hasJapanesePlaceText(text) {
   return /[\u3040-\u30ff]/.test(s) || (/[\u3400-\u9fff]/.test(s) && !/[가-힣]/.test(s));
 }
 
+// 한글+한자 혼재 이름(예: "명동교자 本店")에서 CJK 한자 제거 -> Naver 검색 호환성
+function _stripMixedCJK(str) {
+  const s = String(str || "");
+  if (/[가-힣]/.test(s) && /[㐀-鿿]/.test(s)) {
+    return s.replace(/[㐀-鿿]+s*/g, "").replace(/s{2,}/g, " ").trim();
+  }
+  return s;
+}
+
 function _extractKoreanPlaceName(text) {
   const m = String(text || "").match(/[（(]([가-힣][가-힣\s·]{0,40})[)）]/);
   return m ? m[1].trim() : "";
@@ -3553,7 +3583,7 @@ function _koreanPlaceName(p) {
   if (fromName) return fromName;
   const fromJa = _extractKoreanPlaceName(p?.name_ja || "");
   if (fromJa) return fromJa;
-  if (/[가-힣]/.test(name) && !_hasJapanesePlaceText(name)) return name;
+  if (/[가-힣]/.test(name) && !_hasJapanesePlaceText(name)) return _stripMixedCJK(name);
   return "";
 }
 
@@ -3766,7 +3796,7 @@ function _renderInlinePlaceCard(p, proseHint) {
   const priceLabel = p.price_level
     ? `<span class="plan-place-card__price">${_escapeHtml(p.price_level)}</span>`
     : "";
-  const naverQuery = [p.name, p.address].filter(Boolean).join(" ");
+  const naverQuery = [_stripMixedCJK(p.name || "") || p.name, p.address].filter(Boolean).join(" ");
   const naverCoord = p.latitude != null && p.longitude != null
     ? `&lat=${encodeURIComponent(p.latitude)}&lng=${encodeURIComponent(p.longitude)}`
     : "";

@@ -1,6 +1,5 @@
 """Itinerary quality scoring and vacation section fallback.
 
-wizard 플랜 품질 채점 및 바카ン스 섹션 보완 helpers.
 router.py에서 추출한 함수 모음 — 동작은 완전히 동일하다.
 """
 
