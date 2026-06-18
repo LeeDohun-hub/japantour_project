@@ -2064,6 +2064,8 @@
         // 단, Maps URL에서 직접 생성된 stop(축제명 등)은 일본어라도 유지
         if (!hasCoords && !p.name && !stop.sourceUrl && !/[가-힣]/.test(rawLabel)) return null;
         const name = esc(rawLabel || stop.label || p.name);
+        // 공항·숙박 외에 이름이 없는 stop은 빈 카드가 되므로 제거
+        if (!name && !stop.isAirport && !stop.isAccommodation) return null;
         const lockable = !stop.isAirport && !stop.isAccommodation;
         const lockKey = stopLockKey(stop, day.day);
         const isLocked = _lockedStops.has(lockKey);
