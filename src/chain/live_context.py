@@ -119,6 +119,41 @@ def _fmt_visitkorea_attractions(items: list[TourApiItem]) -> str:
 
 
 # ─── 결과 데이터클래스 ─────────────────────────────────────────────────
+_KTO_LANDMARK_SUFFIXES = (
+    "언덕", "고개", "마을", "거리", "골목", "계단", "폭포", "호수", "계곡",
+    "봉", "령", "재", "협곡", "절벽", "암석", "암", "석",
+)
+
+def _kto_naver_search_name(name: str) -> str:
+    """KTO 지명을 Naver Places에서 검색 가능한 이름으로 변환.
+
+    KTO DataLab는 '동산청라언덕'처럼 네이버에 없는 복합 지명을 반환하는 경우가 있다.
+    1) 국립/도립 공원 접미사 제거 (prefix 필수): '팔공산국립공원' → '팔공산'
+       '남산공원'·'동대문역사문화공원'처럼 prefix 없는 공원은 건드리지 않음.
+    2) 2글자 동네 접두어 제거: '동산청라언덕' → '청라언덕'
+       잘린 후 부분이 실제 지형 접미어(언덕·고개·마을 등)로 끝나야 적용.
+    """
+    # 1) 국립/도립/군립/시립/자연/생태 공원 접미사 제거
+    #    prefix를 필수로 만들어 '남산공원' 같은 일반 공원은 보존
+    stripped = re.sub(
+        r"\s*(?:국립|도립|군립|시립|자연|생태|광역시립)\s*공원$", "", name
+    ).strip()
+    if stripped and stripped != name and len(stripped) >= 2:
+        return stripped
+
+    # 2) 2글자 접두어 제거 — 공백 없는 6자 이상 순한글, 잘린 후가 지형 접미어로 끝날 때만
+    if (
+        len(name) >= 6
+        and " " not in name
+        and re.fullmatch(r"[가-힣]+", name)
+    ):
+        candidate = name[2:]
+        if len(candidate) >= 3 and any(candidate.endswith(s) for s in _KTO_LANDMARK_SUFFIXES):
+            return candidate
+
+    return name
+
+
 def _fmt_kto_datalab_items(title: str, items: list[KtoDataLabItem], limit: int = 12) -> str:
     if not items:
         return ""
@@ -128,6 +163,10 @@ def _fmt_kto_datalab_items(title: str, items: list[KtoDataLabItem], limit: int =
         if not label:
             continue
         line = f"{i}. {label}"
+        # Naver에서 검색 불가한 복합 지명은 실제 검색어를 병기해 LLM이 올바른 URL 생성하도록 안내
+        naver_name = _kto_naver_search_name(label)
+        if naver_name != label:
+            line += f" (네이버 검색어: {naver_name})"
         if it.related_name and it.related_name != label:
             line += f" -> {it.related_name}"
         if it.area:
@@ -252,15 +291,29 @@ def _kto_candidate_queries(
 
     out: list[str] = []
     seen: set[str] = set()
-    for _, name in sorted(weighted, key=lambda x: x[0], reverse=True):
-        cleaned = " ".join(name.split()).strip()
+    # chunk 변형 포함 시 limit을 초과할 수 있으므로 내부에서는 limit*2 까지 수집
+    for _, query in sorted(weighted, key=lambda x: x[0], reverse=True):
+        cleaned = " ".join(query.split()).strip()
         if not cleaned or cleaned in seen:
             continue
         seen.add(cleaned)
         out.append(cleaned)
-        if len(out) >= limit:
+
+        # 복합 지명 변형 쿼리 삽입: "동산청라언덕 대구" → "청라언덕 대구" 도 바로 뒤에 추가
+        # 이 변형이 Naver에서 검색되어 placeIndex에 등록되면 LLM plan anchor가 살아남는다
+        tokens = cleaned.split()
+        place_token = tokens[0]
+        region_tokens = tokens[1:]
+        naver_name = _kto_naver_search_name(place_token)
+        if naver_name != place_token:
+            variant = " ".join([naver_name] + region_tokens).strip()
+            if variant not in seen:
+                seen.add(variant)
+                out.append(variant)
+
+        if len(out) >= limit * 2:
             break
-    return out
+    return out[:limit]
 
 
 def _vk_attraction_to_naver_queries(

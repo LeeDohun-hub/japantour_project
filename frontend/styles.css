@@ -2158,6 +2158,51 @@ a.btn {
   margin: 0;
 }
 
+/* 미등록 티켓 URL (스포츠 경기 등) 커스텀 카드 */
+.plan-ticket-external {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  padding: .75rem 1rem;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e0e0e0);
+  border-radius: var(--radius, 10px);
+  margin: .5rem 0;
+}
+.plan-ticket-external-label {
+  font-size: .95rem;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a2e);
+}
+.plan-ticket-external-buttons {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+.plan-place-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .35rem .85rem;
+  border-radius: var(--radius-sm, 6px);
+  font-size: .82rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.plan-place-btn--map {
+  background: var(--accent-soft, #eef2ff);
+  color: var(--accent, #3b5bdb);
+  border: 1px solid var(--accent-light, #c5d0f5);
+}
+.plan-place-btn--map:hover { background: var(--accent-light, #c5d0f5); }
+.plan-place-btn--ticket {
+  background: var(--gold-soft, #fff8e6);
+  color: var(--gold-dark, #b07d00);
+  border: 1px solid var(--gold-light, #ffd97d);
+}
+.plan-place-btn--ticket:hover { background: var(--gold-light, #ffd97d); }
+
 /* ── Plan output ── */
 .plan-loading { padding: 1.5rem 0; }
 .plan-bar-wrap { display: flex; align-items: center; gap: .65rem; margin-bottom: .75rem; }

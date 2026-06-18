@@ -886,15 +886,6 @@ Major malls / department stores (Lotte World Mall, Times Square, Starfield, Shin
   - If they are not in the candidate list, do not add shopping malls from general knowledge.
   - When a listed mall is used, listing known brand tenants (Dior, Hermès, LV, Chanel, Olive Young, Aland, etc.) from training knowledge is ALLOWED.
 
-Government / civic offices:
-  - NEVER add city halls, ward offices, county offices, provincial offices, community service centers, police/fire stations, post offices, tax offices, courts, prosecutors' offices, public health centers, or government homepages as tourist stops.
-  - Even if an office is described as a local culture/administration center, it is not an itinerary attraction. Use a real park, museum, market, street, mall, temple, gallery, performance venue, cafe, or restaurant candidate instead.
-
-Area names:
-  - ALWAYS use specific Korean neighborhood names (明洞メインストリート, 弘大 걷고싶은거리,
-    신사동 가로수길, 東大門DDP周辺, 光藏市場, 益善洞, 三清洞, etc.).
-  - NEVER use vague terms like "Seoul shopping area" or "Gangnam area."
-
 [KOREA-ONLY RULE — ABSOLUTE]
   - ALL restaurants, cafes, and tourist spots must be SOUTH KOREA locations only.
   - NEVER suggest or name any establishment located in Japan, even Korean-style restaurants
@@ -908,7 +899,8 @@ Area names:
   - If a chain restaurant or attraction (e.g. "홍대개미", "KT&G 상상마당") appears in Reference Data, use ONLY the branch whose URL and address are in Reference Data. NEVER pick a different branch from training knowledge (e.g. 부산점, 부평점, 인천점 when the destination is 홍대/서울).
   - NEVER include places from outside the traveler's selected destination region. If the destination is 서울 麻浦区（弘大）, every place must have a 서울 address — not 부산, 인천, 경기도, 제주도, etc.
   - Do NOT use 보정동카페거리(용인), 수산공원(김포), or any other place whose address is in a different city/region from the destination.
-  - Zero-candidate fallback (line 735) is the ONLY exception for meal slots — even then, use only restaurants in the SAME city as the destination.
+  - Zero-candidate fallback for meal slots: if 「食事候補」 is completely empty, you MAY use training knowledge (see ZERO-CANDIDATE EXCEPTION above). Use only restaurants in the SAME city.
+  - ATTRACTION ZERO-CANDIDATE EXCEPTION: If the Reference Data contains a 「観光スポット候補 — ゼロ候補フォールバック」 section, you MAY use well-known real tourist spots (national parks, national museums, cultural heritage sites, historic districts, cultural centers) from training knowledge. Requirements: (a) Korean official name only; (b) map URL must use https://map.naver.com/p/search/[URL-encoded-Korean-name]; (c) only use spots you are CERTAIN exist in that city; (d) align with the traveler's selected activities (nature/tradition/photo/nightview etc.); (e) NEVER use generic text like 「周辺を散策」 — always output a specific name + URL.
 """
     elif category == "itinerary":
         place_rule = """
@@ -1105,6 +1097,8 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "  Reference Dataに地図URLがない場合でも、実在が確実な韓国の有名観光地・自然スポット\n"
             "  （国立公園、海水욕장、문화재、마을、호수 등）は Naver 検索URLのみ使用可:\n"
             "  `https://map.naver.com/p/search/한국어장소명` (例: 아바이마을 → https://map.naver.com/p/search/아바이마을)\n"
+            "  同名施設が複数都市に存在しうる場合（솔로몬로파크・국립과학관・이월드など）は必ず都市名を検索語に含める:\n"
+            "  例: https://map.naver.com/p/search/솔로몬로파크%20광주\n"
             "  ただし place ID 形式（/p/place/12345 など）は一切禁止。必ず /p/search/ 形式で。**\n"
             "\n"
             "【2日目以降 — 構成ルール】\n"
@@ -1126,67 +1120,12 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "  入居ブランド（Dior・Hermès・LV・Chanel・Olive Young・無人良品等）は\n"
             "  研修知識から記述してよい。フロア案内も可。\n"
             "\n"
-            "【食事推薦 — 厳格ルール】\n"
-            "- **韓国国内の店のみ**: 新大久保・新宿・渋谷など日本の地名が入った店名は\n"
-            "  韓国旅行プランへの記載が絶対禁止。在日コリア店舗は使用不可。\n"
-            "- 昼食・夕食は **「食事候補」リストの店のみ** 使用。リスト外の店名創作は **絶対禁止**。\n"
-            "- **【エリア制限】** 各日の食事・観光地は「食事候補」「観光スポット候補」リストの店のみ使用。\n"
-            "  リストは目的エリア外の場所を除外済み。リスト外の地名・店名を使う・創作することは絶対禁止。\n"
-            "- **【最重要】食事候補リストに1件でも店がある場合、必ずその実在店舗名・URLを使うこと。**\n"
-            "  「面類料理を提供する韓国料理店」「○○地域・차분한 분위기」のようなジャンル説明形式は\n"
-            "  **食事候補セクションが完全に空のときのみ許可**。候補が1件でもあれば絶対に使用禁止。\n"
-            "- **【食事回数】観光可能な旅行日は食事を昼食・夕食の2回だけ書く**:\n"
-            "  朝食・ブランチ・軽食・夜食は不可。昼食だけ/夕食だけにしない。ただし到着が遅い入国日、出国便が早い最終日は食事ブロック自体を書かない。カフェ巡り希望時の午後カフェ候補は食事回数に含めず、必ず店名＋地図URLで場所カード化する。\n"
-            "  書き方の優先順位:\n"
-            "  ① 候補リストに未使用の店が2件以上ある → 昼食と夕食にそれぞれ別の店を使う\n"
-            "    （例）昼食\n"
-            "         店名A\n"
-            "         https://map.naver.com/...\n"
-            "         夕食\n"
-            "         店名B\n"
-            "         https://map.naver.com/...\n"
-            "  ② 該当日の未使用店が1件のみ → もう一方は同一エリア/近接エリアの検証済み候補から選ぶ（帰還日・宿泊エリアは帰還後の夕食だけ）\n"
-            "  ③ 候補が完全に空（全エリア0件） → AIが確実に知っている当該都市の実在飲食店名（韓国語正式表記）を使用し、地図URLは「https://map.naver.com/v5/search/[URL-encoded-name]」形式。架空・創作名は禁止。「식사 후보 리스트에 해당하는 가게가 없습니다」等のデータ不足通知を本文に書くことは禁止。\n"
-            "    【厳禁】「[地域名]의 실재점」「실재점」「実在店」「の実在店」をそのまま店名として使うことは絶対禁止。\n"
-            "    【厳禁】「예) 광안리 회집」「예) ○○식당」のように「예)」(例えば)を店名の前につけることは絶対禁止。실제 고유 가게명만 사용할 것。\n"
-            "    必ず具体的な韓国語店名（例: 광주식당、미가식당、국밥집 등 固有名詞）を書く。\n"
-            "  ▶ 食事メニュー未選択の場合: 候補リストの中から多様なジャンルの店を自由に選んでよい。\n"
-            "- **朝の扱い**: 午前に観光地・公園・展望台・体験施設を入れるのは可。ただし朝食・朝ごはん・朝カフェ・ブランチ・食堂・レストラン・カフェは入れない。朝の飲食店訪問は禁止。食事店は昼食・夕食だけ。\n"
-            "- 好みメニュー（韓国チキン・クッパ等）と一致する店を優先。候補リストに好みの店がない日は\n"
-            "  リスト内の別の韓国料理店を使う（その場合は「好みのメニューは現地で探すのもおすすめ」を\n"
-            "  一言添えてよい）。ジャンル説明文に逃げることは禁止。\n"
-            "  **禁止**: ウェディングホール・コンベンション・配達専門（배달전용）・イベント会場。\n"
-            "- 昼食・夕食それぞれ **最大1店舗**（候補から1件のみ）。\n"
-            "  複数店羅列・「おすすめ店5選」形式は禁止。\n"
-            "- **同一店名・同一チェーン店の再利用禁止**: プラン全体で同じ店名/チェーン名は1回のみ使用。\n"
-            "  候補リストに選択肢が少ない場合は、本文で説明せず、同一エリア/近接エリアの検証済み候補で補う。帰還日・宿泊エリアの候補は帰還後だけ使用可。\n"
-            "  「近郊で食事（店名は記載しない）」「コンビニ」「軽食」「間食」「候補が足りない」「候補が全部終わった」で代替することは禁止。\n"
-            "- **スロット別セクション厳守 — 絶対**: [午前][午後]スロットは「観光スポット候補（食事には使わない）」からのみ選ぶ。\n"
-            "  飲食店・カフェ・食事場所を午前・午後に置くことは禁止（「外観を楽しむ」「写真スポット」名目も含む）。\n"
-            "  [昼食][夕食]スロットは「食事候補」からのみ選ぶ。観光スポット候補のエントリを食事として使うことは禁止。\n"
-            "  観光スポット候補が日程分不足する日は、移動・休憩ブロックで補い、食事候補や抽象的なエリア散策で埋めない。\n"
-            "- **昼食直後の飲食店禁止 — 最重要**: 昼食を入れたら、その次の予定（午後ブロック、②③④などの番号付き次項目、昼食直後の行）に\n"
-            "  食堂・レストラン・カフェ・デザート・軽食店・市場グルメを絶対に置かない。昼食の次は必ず観光スポット候補の施設、体験、自然、買い物、移動、または休憩にする。\n"
-            "  カフェ巡り希望・グルメ希望があっても昼食直後は飲食店禁止。夕食は、昼食後に少なくとも1つの非飲食スポット/移動/休憩を挟んだ後だけ置ける。\n"
-            "- **夜スロット飲食禁止 — 絶対**: [夜]スロットには飲食店・カフェ・バー・屋台・食事場所を一切書かない。\n"
-            "  [夜]は夜景・河川散策・公園・文化エリア・市場（食べ歩き目的ではなく散策）または宿泊休憩のみ。\n"
-            "  夕食は[夕食]スロットで1店舗完結させる。夕食後に追加飲食スロットを作ることは絶対に禁止。\n"
-            "  【市場ルール厳守】[夜]に市場（남문시장・광장시장等）を書く場合: 市場名とNaver URLのみ1件。\n"
-            "  市場内の飲食店・食堂・屋台（정솥밥・順豆腐・호떡など）を市場の直後・同スロット内に追加しない。\n"
-            "  夕食を別の店で済ませた日は、市場は散策目的のみ — 市場に来て再び食べる行程にしない。\n"
-            "- **1日の食事上限**: 昼食1件＋夕食1件が1日の最大食事数。同じ日に昼食・夕食以外の食事スロット（朝食除く）を追加しない。\n"
-            "- **同一スポット再利用**: 同じ日に同じ場所を2回使うことは禁止。ただし異なる日への再利用は、他に候補がない場合のみ許可（食事スロットの空白・プレースホルダー防止を優先）。\n"
-            "  候補が少ない日は隣接エリアまたはVisitKorea候補から補完し、それでも足りない場合は既出の店を別日に再利用する。遠方滞在中に宿泊エリア候補へ逃げない。\n"
-            "- **夕方・夜の具体候補優先**: 夜景・川沿い散策・市場・公園・文化通りなど夜に向く観光スポット候補があり、利用可能と判断できる場合は、\n"
-            "  その具体施設名とURLを夜ブロックに使う。\n"
-            "- **周辺散策の抽象文禁止**: 「ロッテワールドタワー周辺を散策」「〇〇周辺を散策」「近くを歩く」「ショッピングや散策」だけで済ませない。\n"
-            "  散策でも必ず観光スポット候補の具体施設名・公園名・通り名・モール名とURLを使う。\n"
-            "- **夜の抽象文禁止**: 候補があるのに「宿泊先で休息」「静かな夜を満喫」「宿泊先周辺のレストランやカフェで軽食・休息」\n"
-            "  「宿泊施設または民泊で宿泊・休息」だけで済ませない。利用可能な候補がない場合のみ、理由を書かず宿泊先で休息にする。「時間外の可能性」は本文に書かない。\n"
-            "- 選んだ店は「店名」の直後に **Reference Dataの地図URLを1行だけ** 記載。地図URLは必ず\n"
-            "  食事候補リストの値をそのままコピーすること（URL省略・改変禁止）。\n"
-            "- 本文に ★評価・(○○件)・営業中・¥・住所・「地図」「経路」「지도」「통로」は **書かない**\n"
-            "  （ただし場所名＋地図URLは必須。システムが外観写真・評価・住所・地図・経路カードを自動表示する）。\n"
+            "【食事追加ルール】\n"
+            "- 好みメニュー（韓国チキン・クッパ等）と一致する店を優先。禁止: ウェディングホール・配達専門（배달전용）。\n"
+            "- 候補ゼロ時のフォールバック: AIが確実に知る当該都市の実在飲食店名（韓国語正式表記）を使用。\n"
+            "  【厳禁】「[地域名]의 실재점」「실재점」「実在店」をそのまま店名とすること。\n"
+            "  【厳禁】「예) 광안리 회집」「예) ○○식당」のように「예)」を店名の前につけること。\n"
+            "- 同じ日に同じ場所を2回使うことは禁止。別日の再利用は候補不足の場合のみ許可。\n"
             "- 【食事で避ける】・アレルギー・辛味苦手等と矛盾する店は禁止。\n"
             "\n"
             "【チケット・イベントURL】\n"
@@ -1926,8 +1865,12 @@ def _fmt_penultimate_day_return_rule(
         f"▶ 최종일 전날(penultimate day) 오전~점심: {dest_str} 현지에서 구체 관광지 1곳과 구체 식당 1곳을 배치한 뒤, 오후에 KTX·고속버스로 수도권 귀환 이동 블록 필수 배치.\n"
         f"▶ 귀환 이동 예: 오후 3~5시 출발 → 숙소 오후 6~8시 도착.\n"
         f"▶ 귀환 당일 저녁【절대 엄수】: {dest_str} 지역 식당 사용 완전 금지. "
-        f"반드시 「食事候補【帰還日・宿泊エリア】」 목록에서 숙소 근처(수도권) 식당 1건만 배치. "
         f"귀환 이동 블록 이후에 {dest_str} 지역 음식점이 등장하면 오류.\n"
+        f"▶ 「食事候補【帰還日・宿泊エリア】」 목록이 Reference Data에 있는 경우: 반드시 그 목록에서 숙소 근처(수도권) 식당 1건만 배치.\n"
+        f"▶ 「食事候補【帰還日・宿泊エリア】」 목록이 Reference Data에 없는 경우(제로 후보 예외): "
+        f"AI의 확실한 지식으로 숙박 지역(수도권) 실재 음식점 1건을 선택하고 "
+        f"https://map.naver.com/p/search/[URL-encoded-가게명] 형식의 네이버 검색 URL을 사용한다. "
+        f"{dest_str} 지역 음식점은 이 경우에도 절대 사용 금지.\n"
         f"▶ 귀환일을 '휴식/주변에서 식사' 같은 추상 문장만으로 끝내지 말 것. 반드시 구체 식당명과 네이버 지도 URL을 포함.\n"
         f"▶ 최종일(마지막 날): {dest_str} 재방문 없이 숙소 주변 또는 공항 방면 일정으로 마무리."
     )
@@ -3248,9 +3191,13 @@ def _place_matches_destination_profile(place: "NearbyPlace", traveler_profile: d
     )
     if not ids and not region_keys:
         return True
-    blob = " ".join(
+    # Use the actual address first. Chain names can contain an area that is not the
+    # branch location, e.g. "홍대개미 용산아이파크몰점"; using the name would let
+    # a Yongsan branch pass a Mapo/Hongdae itinerary filter.
+    address_blob = str(place.address or "").strip()
+    blob = address_blob or " ".join(
         str(x or "")
-        for x in (place.address, place.name, getattr(place, "search_area", ""))
+        for x in (getattr(place, "search_area", ""), place.name)
     )
     return region_resolver.address_matches_destination(
         blob,
@@ -4367,7 +4314,7 @@ def _fmt_places(
 
     if group_by_area:
         by_area: dict[str, list[NearbyPlace]] = {}
-        for p in places:
+        for p in places[:20]:  # 토큰 상한 — group_by_area도 최대 20건
             label = p.search_area or "その他"
             by_area.setdefault(label, []).append(p)
         blocks: list[str] = []
@@ -5958,10 +5905,10 @@ def route_and_answer(
         _f_kto_dl   = _pool.submit(_do_kto_datalab)
 
         def _do_itinerary_with_vk_priority() -> list:
-            # VK 완료를 최대 10초만 대기. 느릴 경우 VK 없이 바로 Naver 검색 시작해
+            # VK 완료를 최대 3초만 대기. 느릴 경우 VK 없이 바로 Naver 검색 시작해
             # 나머지 타임아웃을 최대한 음식/관광지 검색에 사용한다.
             try:
-                _vk_s, _vk_f, _vk_a, _ = _f_vk.result(timeout=5)
+                _vk_s, _vk_f, _vk_a, _ = _f_vk.result(timeout=3)
                 _vk_a_filtered = _filter_vk_attractions_by_subarea(_vk_a, traveler_profile)
                 vk_pq = _vk_attraction_to_naver_queries(_vk_a_filtered, limit=20) if _vk_a_filtered else None
                 vk_extra = _vk_attractions_to_naver_places(_vk_a_filtered) if _vk_a_filtered else None
@@ -5998,7 +5945,7 @@ def route_and_answer(
         )
         sports_events        = _timed(_f_sports,   8,  [],                      "sports")
         visitkorea_stays, visitkorea_festivals, visitkorea_attractions, visitkorea_error = _timed(
-            _f_vk,     14,  ([], [], [], "timeout"),                             "visitkorea"
+            _f_vk,      8,  ([], [], [], "timeout"),                             "visitkorea"
         )
         kto_datalab_context, kto_priority_queries = _timed(
             _f_kto_dl,  8,  ("", []),                                            "kto_datalab"
@@ -6076,7 +6023,8 @@ def route_and_answer(
     )
 
     # ── 5단계: 컨텍스트 조립 ──────────────────────────────────────────
-    ctx_parts: list[str] = [_PROJECT_CHAT_CONTEXT]
+    # itinerary 생성 시 앱 기능 설명 컨텍스트는 불필요 — 토큰 절약
+    ctx_parts: list[str] = [] if category == "itinerary" else [_PROJECT_CHAT_CONTEXT]
     if category == "itinerary":
         used_places = [
             item for item in (traveler_profile or {}).get("used_plan_places") or []
@@ -6208,11 +6156,14 @@ def route_and_answer(
             ]
         # 목적 관광지 기반 관광 스팟 필터 (식사와 동일 기준)
         cafe_keys = {f"{p.name}|{p.address}" for p in cafe_places}
+        # 식당 이름 집합 (이름 기반 중복 제거 — 같은 가게가 식사+관광 양쪽에 나오는 버그 방지)
+        food_names_lower = {(p.name or "").strip().lower() for p in food_places}
         attr_all_places = _filter_ref_data_quality(
             [p for p in itinerary_places
              if not _is_meal_candidate_place(p)
              and not _foodish_signal(p)
              and f"{p.name}|{p.address}" not in cafe_keys
+             and (p.name or "").strip().lower() not in food_names_lower
              and (has_shopping_interest or not _is_shopping_mall_place(p))],
         )
         stay_attr_places: list[NearbyPlace] = []
@@ -6249,7 +6200,7 @@ def route_and_answer(
                 ctx_parts.append(
                     "=== 食事候補【帰還日・宿泊エリア】===\n"
                     + _fmt_places(
-                        _dedup_food_by_chain(stay_food_places[:8], max_per_chain=1, seen={}),
+                        _dedup_food_by_chain(stay_food_places[:6], max_per_chain=1, seen={}),
                         group_by_area=True,
                     )
                     + "\n※【厳守】この候補は遠方観光から宿泊先へ戻った後の夕食（帰還移動ブロック以降）、または最終日の空港移動前だけ使用可。遠方滞在中の昼食・夕食には絶対使わない。帰還日の夕食は必ずこのリストから選ぶ（遠方エリアの店は使用禁止）。候補があるのに「店名は記載しない」は禁止。\n"
@@ -6264,12 +6215,13 @@ def route_and_answer(
             ctx_parts.append(
                 "=== カフェ候補（昼食・夕食には使わない／午後の休憩用）===\n"
                 + _fmt_places(
-                    _dedup_food_by_chain(cafe_places[:12], max_per_chain=1, seen={}),
+                    _dedup_food_by_chain(cafe_places[:8], max_per_chain=1, seen={}),
                     group_by_area=True,
                 )
-                + "\n※ カフェ好き・カフェ巡り希望がある場合、観光可能日の午後に1件まで具体店名＋地図URL（map.naver.com）で組み込む。これは「カフェ休憩」という文字だけではなく、必ず位置情報カードになる店名とURLにする。\n"
+                + "\n※ カフェ好き・カフェ巡り希望がある場合、観光可能日の午後に厳密に1件だけ（2件以上絶対禁止）具体店名＋地図URL（map.naver.com）で組み込む。\n"
+                + "※ 絶対禁止: 同じ日に2件以上のカフェを並べること。「カフェ巡り」でも1日1カフェが上限。連続カフェカード禁止。\n"
                 + "※ 昼食直後には置かず、必ず観光/体験/買い物/移動など非飲食スポットを1つ挟んでから入れる。\n"
-                + "※ チェーン店より、ローカル・有名・雰囲気のあるカフェを優先。候補があるのに抽象的な「カフェ休憩」「カフェタイム」「周辺カフェで休憩」だけで済ませない。\n"
+                + "※ チェーン店（スターバックス・투썸플레이스・이디야 等）より、ローカル・有名・雰囲気のあるカフェを優先。候補があるのに抽象的な「カフェ休憩」「カフェタイム」「周辺カフェで休憩」だけで済ませない。\n"
             )
         if attr_places:
             ctx_parts.append(
@@ -6284,11 +6236,19 @@ def route_and_answer(
                 + _fmt_places(stay_attr_places[:6], group_by_area=True)
                 + "\n※ 遠方観光から宿泊先へ戻った日・予備日の軽い散策にのみ使用。候補がある日は抽象的な「ショッピングや散策」だけで終わらせない。\n"
             )
-        elif category == "itinerary" and is_wizard_plan:
+        if not attr_places and not stay_attr_places and category == "itinerary" and is_wizard_plan:
             ctx_parts.append(
-                "=== 観光スポット候補 — 取得不可 ===\n"
-                "検証済み観光スポットがありません。具体的施設名・URLの創作禁止。\n"
-                "「周辺を散策」「近くを歩く」など位置情報カード化できない抽象観光は書かない。観光枠を作らず移動・休憩に切り替える。\n"
+                "=== 観光スポット候補 — ゼロ候補フォールバック ===\n"
+                "検索APIから検証済み観光スポットが取得できませんでした。\n"
+                "【例外ルール — 食事ゼロ候補例外と同等】\n"
+                "目的地都市で確実に実在する有名な観光スポット（国立公園・国立博物館・美術館・文化遺産・歴史地区・文化センター等）を\n"
+                "トレーニング知識から使用してよい。\n"
+                "条件: (a)韓国語正式名のみ（架空名禁止）; "
+                "(b)地図URLは必ず https://map.naver.com/p/search/[URL-encoded-韓国語名] 形式（/p/place/ID形式禁止）; "
+                "複数都市に同名施設がある場合（솔로몬로파크・국립과학관など）は必ず都市名を含める — 例: 솔로몬로파크%20광주; "
+                "(c)確実に存在すると知っている場所のみ; (d)目的都市以外の場所は絶対禁止。\n"
+                "【厳禁】「周辺を散策」「近くを歩く」などURLのない抽象表現。観光枠はすべて具体名＋URLで埋める。\n"
+                "やりたいこと選択（自然・伝統文化・フォトスポット・夜景・ショッピング等）に合う観光スポットを優先する。\n"
             )
         if is_wizard_plan:
             cafe_plan_rule = (

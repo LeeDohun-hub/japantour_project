@@ -276,7 +276,14 @@ def _build_itinerary_attraction_queries(
             add(f"{area} 공연장")
             add(f"{area} 문화공간")
             add(f"{area} 라이브 공연")
-            add(f"{area} 대학로 공연")
+            add(f"{area} 뮤지컬")
+            # 대학로는 서울 전용 공연 특구 — 서울 지역일 때만 추가
+            _seoul_indicators = ("서울", "seoul", "종로", "홍대", "명동", "동대문", "마포", "강남")
+            if any(si in area.lower() for si in _seoul_indicators):
+                add(f"{area} 대학로 공연")
+            else:
+                add(f"{area} 예술의전당")
+                add(f"{area} 콘서트")
         if "festival" in acts:
             add(f"{area} 축제")
             add(f"{area} 행사")

@@ -89,7 +89,12 @@ _AREA_KEY_TO_EVENT_REGION: dict[str, str] = {
     "incheon": "incheon",
     "gangwon": "gangwon",
     "chungcheong": "chungcheong",
+    "daejeon": "chungcheong",   # 대전 칩 → 충청 마커(대전/大田/忠清 등) 매칭
+    "cheongju": "chungcheong",
+    "cheonan": "chungcheong",
     "jeolla": "jeolla",
+    "gwangju": "jeolla",        # 광주 칩 → 전라 마커 매칭
+    "jeonju": "jeolla",
     "gyeongsang": "gyeongsang",
     "gyeongbuk": "gyeongsang",
     "gyeongnam": "gyeongsang",
@@ -152,6 +157,15 @@ _REGION_HINTS_DEFAULT: tuple[str, ...] = (
     "서귀포",
     "済州",
     "jeju",
+    # 비수도권 주요 도시
+    "부산",
+    "대전",
+    "광주",
+    "전주",
+    "대구",
+    "울산",
+    "춘천",
+    "강릉",
 )
 
 

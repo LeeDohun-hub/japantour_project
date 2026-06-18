@@ -5,8 +5,9 @@
   "use strict";
 
   const MAPS_URL_RE = /^https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps|goo\.gl\/maps|maps\.app\.goo\.gl|map\.naver\.com)\/\S+/i;
+  const MARKDOWN_MAPS_URL_RE = /\[[^\]]+\]\((https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps|goo\.gl\/maps|maps\.app\.goo\.gl|map\.naver\.com)\/[^)\s]+)\)/i;
   const DAY_HEADER_RE =
-    /^(?:#{1,3}\s*)?(?:【\s*)?(?:Day\s*)?(\d+)\s*日目|^(?:#{1,3}\s*)?第\s*(\d+)\s*日|^(?:#{1,3}\s*)?Day\s*(\d+)\b|最終日|帰国日|最終\s*日|^첫날|^(\d+)\s*(?:일째|일차|일\s*차)|^최종일|^마지막\s*날/i;
+    /^(?:#{1,3}\s*)?(?:【\s*)?(?:Day\s*)?(\d+)\s*日目|^(?:#{1,3}\s*)?第\s*(\d+)\s*日|^(?:#{1,3}\s*)?Day\s*(\d+)\b|最終日|帰国日|最終\s*日|^첫날|^(?:둘째|두\s*번째|셋째|세\s*번째|넷째|네\s*번째|다섯째|다섯\s*번째|여섯째|여섯\s*번째)\s*날(?=$|\s|[:：\-])|^(\d+)\s*(?:일째|일차|일\s*차)|^최종일|^마지막\s*날/i;
   const GMAPS_CALLBACK = "__planMapGmapsReady";
 
   // 한국 영토 바운딩 박스 (geocoding 결과 검증용)
@@ -65,8 +66,103 @@
     );
   }
 
+  function _koTokens(s) {
+    return String(s || "").match(/[가-힣]{2,}/g) || [];
+  }
+
+  function _compactText(s) {
+    return String(s || "").toLowerCase().replace(/[^0-9a-z가-힣ぁ-んァ-ヶ一-龥]+/gi, "");
+  }
+
+  function _placeNameMatchesLabel(placeName, label) {
+    const pn = _compactText(placeName);
+    const ln = _compactText(label);
+    if (!pn || !ln) return true;
+    if (pn === ln || pn.includes(ln) || ln.includes(pn)) return true;
+    const pTokens = new Set(_koTokens(placeName));
+    const lTokens = _koTokens(label);
+    return lTokens.some((t) => pTokens.has(t));
+  }
+
+  function _stopSearchName(stop) {
+    const label = String(stop?.label || "").replace(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*/, "").trim();
+    if (label) return label;
+    return String(stop?.place?.name || "").trim();
+  }
+
+  function _stopSearchUrl(stop) {
+    const q = _stopSearchName(stop);
+    return q ? `https://map.naver.com/p/search/${encodeURIComponent(q)}` : "#";
+  }
+
+  function _landmarkSearchAliases(name) {
+    const value = String(name || "").replace(/\s+/g, "").trim();
+    const out = [];
+    const parkStripped = value.replace(/(?:국립|도립|군립|시립|자연|생태|광역시립)공원$/, "");
+    if (parkStripped && parkStripped !== value && parkStripped.length >= 2) out.push(parkStripped);
+    const landmarkSuffixes = ["언덕", "고개", "마을", "거리", "골목", "계단", "폭포", "호수", "계곡", "봉", "령", "재", "협곡", "절벽"];
+    if (/^[가-힣]{6,}$/.test(value)) {
+      const stripped2 = value.slice(2);
+      if (stripped2.length >= 3 && landmarkSuffixes.some((s) => stripped2.endsWith(s))) out.push(stripped2);
+    }
+    return out.filter((q, idx, arr) => q && arr.indexOf(q) === idx);
+  }
+
+  function _isFoodLikeText(text) {
+    return /미분당|육통령|육회|연어|홍콩반점|반점|짜장|짬뽕|중화|중식|고기|갈비|삼겹|국밥|순대|칼국수|쌀국수|라멘|라면|냉면|곰탕|설렁탕|해장|찌개|탕|비빔|곱창|막창|횟집|식당|맛집|레스토랑|고깃집|고기집|포차|술집|호프/i
+      .test(String(text || ""));
+  }
+
+  function _isCafeLikeText(text) {
+    return /카페|커피|베이커리|케이크|디저트|브런치|베이글|빵집|빵/i
+      .test(String(text || ""));
+  }
+
+  function _nearbyAreaTokens(area) {
+    const a = String(area || "").trim();
+    if (!a) return [];
+    const groups = {
+      "홍대": ["홍대", "마포", "상수", "합정", "연남", "망원", "신촌", "서대문"],
+      "弘大": ["홍대", "마포", "상수", "합정", "연남", "망원", "신촌", "서대문"],
+      "hongdae": ["홍대", "마포", "상수", "합정", "연남", "망원", "신촌", "서대문"],
+      "신촌": ["신촌", "서대문", "홍대", "마포", "연세로", "이대"],
+    };
+    return groups[a] || [a];
+  }
+
+  function _extractMapsUrl(line) {
+    const t = String(line || "").trim();
+    const md = t.match(MARKDOWN_MAPS_URL_RE);
+    if (md) return md[1];
+    const raw = t.match(/https?:\/\/(?:maps\.google\.com|www\.google\.com\/maps|goo\.gl\/maps|maps\.app\.goo\.gl|map\.naver\.com)\/\S+/i);
+    return raw ? raw[0].replace(/[)\]}>、。.,]+$/, "") : "";
+  }
+
+  function _isMapsUrlLine(line) {
+    return !!_extractMapsUrl(line);
+  }
+
+  function _isAnyUrlLine(line) {
+    return /https?:\/\//i.test(String(line || ""));
+  }
+
+  function _knownKoreanSearchName(name) {
+    const compact = _compactText(name);
+    if (/弘益.*現代美術館|홍익.*현대미술관/i.test(compact)) return "홍익대학교 현대미술관";
+    if (/dynamicmaze|다이나믹메이즈/i.test(compact)) return "다이나믹메이즈 서울 인사동";
+    return "";
+  }
+
   function mapsOpenUrl(stop) {
     const p = stop?.place || {};
+    const label = _stopSearchName(stop);
+    const knownSearch = _knownKoreanSearchName(p.name || label);
+    if (knownSearch) {
+      return `https://map.naver.com/p/search/${encodeURIComponent(knownSearch)}`;
+    }
+    if (p.name && /[가-힣]/.test(label) && !_placeNameMatchesLabel(p.name, label)) {
+      return _stopSearchUrl(stop);
+    }
     const opts = {
       url: stop?.url,
       label: stop?.label,
@@ -118,7 +214,9 @@
     const coord = stop?.lat != null && stop?.lng != null
       ? `&lat=${encodeURIComponent(stop.lat)}&lng=${encodeURIComponent(stop.lng)}`
       : "";
-    const mapUrl = p.maps_url || p.google_maps_uri || stop?.url || "";
+    const mapUrl = p.name && /[가-힣]/.test(stopLabel) && !_placeNameMatchesLabel(p.name, stopLabel)
+      ? (stop?.url || "")
+      : (p.maps_url || p.google_maps_uri || stop?.url || "");
     if (/map\.naver\.com/i.test(mapUrl)) {
       return `/api/naver-photo/?url=${encodeURIComponent(mapUrl)}&q=${encodeURIComponent(photoQuery)}${coord}&image_fallback=1`;
     }
@@ -574,8 +672,12 @@
     out.forEach((day) => {
       const deduped = [];
       for (const stop of day.stops || []) {
-        if (!deduped.some((existing) => _sameStop(existing, stop))) {
+        const dupIdx = deduped.findIndex((existing) => _sameStop(existing, stop));
+        if (dupIdx === -1) {
           deduped.push(stop);
+        } else if (stop.lat != null && deduped[dupIdx].lat == null) {
+          // 좌표 있는 stop이 나중에 오면 기존 좌표 없는 항목을 교체
+          deduped[dupIdx] = stop;
         }
       }
       day.stops = deduped;
@@ -654,6 +756,8 @@
     if (/^【(?:予算|旅行|全体|注意|参考|移動|ポイント|チェックリスト)/.test(t)) return true;
     if (/^\[(?:予算|旅行|全体|注意|参考|移動|ポイント)/.test(t)) return true;
     if (/^(?:예산|여행의\s*포인트|전체\s*포인트|주의|참고)\b/.test(t)) return true;
+    if (_isAnyUrlLine(t) && !_isMapsUrlLine(t)) return true;
+    if (/^\[[^\]]+\]\(https?:\/\//i.test(t) && !_isMapsUrlLine(t)) return true;
     if (/^★\s*\d/.test(t) || /^(?:営業中|営業終了|영업\s*중|영업\s*종료|¥+|₩+)/.test(t)) return true;
     if (/(?:Google|グーグル|평점|評価|口コミ|件|메뉴|メニュー)/i.test(t)) return true;
     // Korean naver-score lines like "Naver 70.0 Blog 24,592" or "네이버 54.8 Blog 7"
@@ -691,6 +795,9 @@
       add(venueM[1]);
       return out; // venue lines → only return the extracted venue name
     }
+    for (const m of t.matchAll(/[（(]([^）)]{2,60})[）)]/g)) {
+      add(m[1]);
+    }
     add(t);
     for (const part of t.split(/[·・]/)) add(part);
     const quoteHead = t.split(/[「『'””<]/)[0];
@@ -704,6 +811,7 @@
     if (!placeIndex?.byName) return null;
     if (_isTransitOrAnchorLine(line)) return null;
     if (_isRecommendationLine(line) || _isPlanNoiseLine(line)) return null;
+    if (/[가-힣A-Za-z0-9）)]에서\s+.{4,}/.test(String(line || ""))) return null;
     for (const text of _candidateVenueTexts(line)) {
       if (
         !text ||
@@ -725,6 +833,7 @@
           const next = original.slice(keyLenApprox, keyLenApprox + 1);
           if (!next || /[\s'’"“”「」『』<＜(（·・:：-]/.test(next)) return p;
         }
+        if (norm.length >= 4 && key.startsWith(norm)) return p;
       }
     }
     return null;
@@ -781,8 +890,9 @@
     for (let i = 0; i < lines.length; i++) {
       const t = lines[i].trim();
       if (!t) continue;
-      if (MAPS_URL_RE.test(t)) {
-        const url = t.split(/\s/)[0];
+      const mapsUrl = _extractMapsUrl(t);
+      if (mapsUrl) {
+        const url = mapsUrl;
         const place = byUrl[mapsUrlKey(url)] || null;
         // Always allow the raw Maps URL itself so URL-matched stops are never filtered
         allowed.add(`url:${mapsUrlKey(url)}`);
@@ -910,7 +1020,7 @@
         : p.primary_type || p.types?.[0] || "スポット",
       address: p.address || "",
       url: p.google_maps_uri || p.maps_url || stop?.url || "",
-      note: stop?.line && !MAPS_URL_RE.test(stop.line) ? stop.line : "",
+      note: stop?.line && !_isMapsUrlLine(stop.line) && !_isAnyUrlLine(stop.line) ? stop.line : "",
     };
   }
 
@@ -936,7 +1046,7 @@
     if (i <= 0) return "";
     for (let j = i - 1; j >= 0; j--) {
       const t = lines[j].trim();
-      if (!t || MAPS_URL_RE.test(t) || t.startsWith("http")) continue;
+      if (!t || _isMapsUrlLine(t) || _isAnyUrlLine(t)) continue;
       if (_isPlanNoiseLine(t) || _isRecommendationLine(t)) continue;
       if (DAY_HEADER_RE.test(t)) return "";
       if (_isSlotLabelLine(t)) continue; // 슬롯 레이블(午前/점심 등)은 장소명 아님
@@ -963,6 +1073,8 @@
       }
       // Strip half-width trailing parentheticals
       label = label.replace(/\s*\([^)]{1,40}\)\s*$/, "").trim();
+      // Strip orphaned outer parens left by nested paren removal (e.g. "八公山国立公園）" → "八公山国立公園")
+      label = label.replace(/^[（(]+/, "").replace(/[）)]+$/, "").trim();
       // Strip Japanese activity descriptions after particles (で, を, に, は, が + verb)
       label = label.replace(/\s*[でをにはが].+$/, "").trim();
       // Strip Korean activity descriptions after 에서 + space (location-action pattern)
@@ -978,6 +1090,18 @@
     const t = line.trim();
     if (/^(?:#{1,3}\s*)?(?:【\s*)?(?:最終日|帰国日|最終\s*日|최종일|마지막\s*날)\s*(?:[】\]:：\-].*)?$/.test(t)) return -1;
     if (/^첫날/.test(t)) return 1;
+    const koOrdinal = t.match(/^(둘째|두\s*번째|셋째|세\s*번째|넷째|네\s*번째|다섯째|다섯\s*번째|여섯째|여섯\s*번째)\s*날(?=$|\s|[:：\-])/);
+    if (koOrdinal) {
+      const compact = koOrdinal[1].replace(/\s+/g, "");
+      const map = {
+        "둘째": 2, "두번째": 2,
+        "셋째": 3, "세번째": 3,
+        "넷째": 4, "네번째": 4,
+        "다섯째": 5, "다섯번째": 5,
+        "여섯째": 6, "여섯번째": 6,
+      };
+      return map[compact] || null;
+    }
     const m = t.match(/(\d+)\s*日目|第\s*(\d+)\s*日|Day\s*(\d+)|(\d+)\s*(?:일째|일차|일\s*차)/i);
     if (m) return parseInt(m[1] || m[2] || m[3] || m[4], 10);
     return null;
@@ -986,18 +1110,41 @@
   function isDayHeaderLine(line) {
     const t = String(line || "").trim();
     if (parseDayNumber(t) === null) return false;
-    return /^(?:#{1,3}\s*)?(?:【\s*)?(?:\d+\s*日目|第\s*\d+\s*日|Day\s*\d+\b|\d+\s*(?:일째|일차|일\s*차)|첫날\b|最終日|帰国日|最終\s*日|최종일|마지막\s*날)/i.test(t);
+    return /^(?:#{1,3}\s*)?(?:【\s*)?(?:\d+\s*日目|第\s*\d+\s*日|Day\s*\d+\b|\d+\s*(?:일째|일차|일\s*차)|첫날(?=$|\s|[:：\-])|(?:둘째|두\s*번째|셋째|세\s*번째|넷째|네\s*번째|다섯째|다섯\s*번째|여섯째|여섯\s*번째)\s*날(?=$|\s|[:：\-])|最終日|帰国日|最終\s*日|최종일|마지막\s*날)/i.test(t);
   }
 
   function findPlaceForLine(line, placeIndex) {
     return _explicitPlaceFromLine(line, placeIndex);
   }
 
+  function _placeMatchedParenthetical(line, place) {
+    if (!place?.name) return "";
+    for (const m of String(line || "").matchAll(/[（(]([^）)]{2,60})[）)]/g)) {
+      const inside = m[1].trim();
+      if (inside && _placeNameMatchesLabel(place.name, inside)) return inside;
+    }
+    return "";
+  }
+
+  function rawLineBeforeUrl(lines, url) {
+    const i = lines.findIndex((ln) => ln.trim().startsWith(url) || ln.includes(url));
+    if (i <= 0) return "";
+    for (let j = i - 1; j >= 0; j--) {
+      const t = lines[j].trim();
+      if (!t || _isMapsUrlLine(t) || _isAnyUrlLine(t)) continue;
+      if (_isPlanNoiseLine(t) || _isRecommendationLine(t) || _isSlotLabelLine(t)) continue;
+      if (DAY_HEADER_RE.test(t)) return "";
+      return t;
+    }
+    return "";
+  }
+
   function placeToStop(place, line, sourceLineIdx = null) {
     if (!place) return null;
     // Prefer the plan-text line as label so that Naver search mismatch
     // (e.g. wrong POI returned for a query) doesn't replace the correct name.
-    const label = line || place.name || "スポット";
+    const parenVenue = _placeMatchedParenthetical(line, place);
+    const label = parenVenue ? (place.name || parenVenue) : (line || place.name || "スポット");
     return {
       url: place.google_maps_uri || place.maps_url || "",
       place,
@@ -1018,12 +1165,20 @@
     const pushStop = (dayObj, url, lineIdx) => {
       const trimmed = lines[lineIdx].trim();
       const urlOnly = trimmed.split(/\s/)[0];
-      const place = (placeIndex.byUrl || placeIndex || {})[mapsUrlKey(urlOnly)] || null;
+      let place = (placeIndex.byUrl || placeIndex || {})[mapsUrlKey(urlOnly)] || null;
       // cafe-anchor: = カフェ巡り synthetic search query — skip (no specific venue)
       // anchor: = real venue with no Naver coords (e.g. event hall) — allow, shown as grey pin
       const pid = place?.place_id || "";
       if (pid.startsWith("cafe-anchor:")) return;
-      const label = labelBeforeUrl(lines, urlOnly) || place?.name || "スポット";
+      let label = labelBeforeUrl(lines, urlOnly) || place?.name || "スポット";
+      const parenVenue = _placeMatchedParenthetical(rawLineBeforeUrl(lines, urlOnly) || label, place);
+      if (parenVenue) label = place?.name || parenVenue;
+      // byUrl 매칭 실패(LLM이 /p/search/ URL을 생성했지만 API 결과는 /p/place/ URL인 경우)
+      // → label 이름으로 byName 재시도하여 좌표를 복원
+      if (!place && placeIndex.byName) {
+        const nk = _normStopText(label);
+        if (nk) place = placeIndex.byName[nk] || null;
+      }
       const rec = {
         url: urlOnly,
         place,
@@ -1050,8 +1205,9 @@
         days.push(current);
         continue;
       }
-      if (MAPS_URL_RE.test(t)) {
-        const url = t.split(/\s/)[0];
+      const mapsUrl = _extractMapsUrl(t);
+      if (mapsUrl) {
+        const url = mapsUrl;
         if (current) pushStop(current, url, i);
         else pushStop(null, url, i);
         continue;
@@ -1101,7 +1257,7 @@
 
         for (let i = dayHeaderIdx + 1; i < sectionEnd; i++) {
           const t = lines[i].trim();
-          if (!t || MAPS_URL_RE.test(t)) continue;
+          if (!t || _isMapsUrlLine(t) || _isAnyUrlLine(t)) continue;
           if (_isSlotLabelLine(t) || _isPlanNoiseLine(t) || _isTransitOrAnchorLine(t) || _isRecommendationLine(t)) continue;
           const place = _explicitPlaceFromLine(t, placeIndex);
           if (!place) continue;
@@ -1245,6 +1401,9 @@
     if (x == null || y == null || !global.naver?.maps?.TransCoord) return stop;
     const nx = Number(x), ny = Number(y);
     if (!Number.isFinite(nx) || !Number.isFinite(ny)) return stop;
+    // TM128 유효 범위 검증 (한국 TM128: X≈60000~700000, Y≈120000~700000)
+    // WGS84×10^7 값(수억 단위)이 잘못 들어오면 TM128로 해석 시 쓰레기 좌표 발생
+    if (nx < 60000 || nx > 700000 || ny < 120000 || ny > 700000) return stop;
     try {
       const nmap = global.naver.maps;
       const latLng = nmap.TransCoord.fromTM128ToLatLng(new nmap.Point(nx, ny));
@@ -1555,9 +1714,9 @@
     let idx = Number(stop?.sourceLineIdx);
     if (!Number.isInteger(idx) || idx < dayStart || idx >= dayEnd) return null;
     let start = idx;
-    if (MAPS_URL_RE.test(lines[idx] || "") && idx - 1 >= dayStart) {
+    if (_isMapsUrlLine(lines[idx] || "") && idx - 1 >= dayStart) {
       const prev = String(lines[idx - 1] || "").trim();
-      if (prev && !MAPS_URL_RE.test(prev) && !DAY_HEADER_RE.test(prev)) start = idx - 1;
+      if (prev && !_isMapsUrlLine(prev) && !DAY_HEADER_RE.test(prev)) start = idx - 1;
     }
     while (start - 1 >= dayStart) {
       const prev = String(lines[start - 1] || "").trim();
@@ -1575,7 +1734,7 @@
         end++;
         break;
       }
-      if (DAY_HEADER_RE.test(t) || MAPS_URL_RE.test(t) || _isSlotLine(t)) break;
+      if (DAY_HEADER_RE.test(t) || _isMapsUrlLine(t) || _isAnyUrlLine(t) || _isSlotLine(t)) break;
       if (/^[-・*①②③④⑤⑥⑦⑧⑨⑩]\s+/.test(t)) break;
       end++;
     }
@@ -1752,6 +1911,11 @@
         if (/문화|예술|전시/.test(top)) return "文化施設";
         if (/숙박/.test(top)) return "ホテル";
       }
+      // place 데이터 없을 때(place=null) 이름으로 카테고리 추론
+      // 카테고리 없으면 무조건 "観光スポット"이 되는 것 방지
+      const labelLower = String(stop.label || p.name || "").toLowerCase();
+      if (_isFoodLikeText(labelLower)) return "飲食店";
+      if (_isCafeLikeText(labelLower)) return "カフェ";
       return esc(catRaw || "観光スポット");
     }
 
@@ -1786,7 +1950,7 @@
         const thumb = stopThumbHtml(stop);
         const mapsUri = esc(mapsOpenUrl(stop));
         // Hide tip when it's a Maps URL or duplicates the stop label.
-        const tipRaw = stop.line && !MAPS_URL_RE.test(stop.line) ? stop.line : "";
+        const tipRaw = stop.line && !_isMapsUrlLine(stop.line) && !_isAnyUrlLine(stop.line) ? stop.line : "";
         const tip = tipRaw && tipRaw !== stop.label ? esc(tipRaw) : "";
         const dragAttrs = `draggable="false" data-draggable="false"`;
         const dragHandle = `<span class="plan-day-stop__drag plan-day-stop__drag--fixed" aria-hidden="true">•</span>`;
@@ -1846,100 +2010,210 @@
   async function geocodeMissingStops(days) {
     const seenQueries = new Set();
 
+    // sessionStorage 캐시 — 같은 세션에서 재생성 시 geocoding 재시도 방지
+    const _CACHE_NS = "gc2_";
+    function _cacheGet(key) {
+      try {
+        const v = sessionStorage.getItem(_CACHE_NS + key);
+        return v ? JSON.parse(v) : null;
+      } catch (_) { return null; }
+    }
+    function _cacheSet(key, val) {
+      try { sessionStorage.setItem(_CACHE_NS + key, JSON.stringify(val)); } catch (_) {}
+    }
+
     function queriesForStop(stop) {
+      const label = _stopSearchName(stop);
+      const placeName = String(stop.place?.name || "").trim();
+      const preferLabel = !stop.isAccommodation
+        && placeName
+        && /[가-힣]/.test(label)
+        && !_placeNameMatchesLabel(placeName, label);
       const raw = stop.isAccommodation
         ? (stop.place?.address || stop.line || stop.label)
+        : preferLabel
+          ? label
         : (stop.place?.address || stop.place?.name || stop.label);
       const base = String(raw || "").replace(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*/, "").trim();
       if (!base || base.length < 2) return [];
       const noParen = base.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
       const spacedRoadQuery = noParen.replace(/([\uac00-\ud7a3])(\d)/g, "$1 $2");
-      return [base, noParen, spacedRoadQuery, `${noParen} South Korea`, `South Korea ${noParen}`]
+      // \uc9c0\uc5ed\uba85 \ud3ec\ud568 \ucffc\ub9ac \uc6b0\uc120 \uc2dc\ub3c4 \u2014 "\ud0dc\uc885\ub300 \ubd80\uc0b0" / "\uba85\ub3d9\uce7c\uad6d\uc218 \ubd80\uc0b0" \ucc98\ub7fc
+      // \ub3d9\uba85 \uc7a5\uc18c\uac00 \uc5ec\ub7ec \ub3c4\uc2dc\uc5d0 \uc788\uc744 \ub54c \uc9c0\uc5ed hint \uc5c6\uc73c\uba74 \uc5c9\ub6b1\ud55c \uacf3\uc774 \ubc18\ud658\ub428
+      const regionHint = String(_mapMeta.regionCities || _mapMeta.region_cities || "")
+        .split(/[,\u00b7\/\s]+/).map((s) => s.trim()).filter((s) => s.length >= 2)[0] || "";
+      const withRegion = regionHint && !noParen.includes(regionHint) ? `${noParen} ${regionHint}` : "";
+      const aliasQueries = _landmarkSearchAliases(noParen);
+      const aliasWithRegion = aliasQueries
+        .map((q) => regionHint && !q.includes(regionHint) ? `${q} ${regionHint}` : q);
+
+      // ── 복합 지명 분해 쿼리 생성 ─────────────────────────────────────────
+      // 1) 공원 접미사 제거: "팔공산국립공원" → "팔공산"
+      //    Naver Places API는 국립공원을 직접 인덱싱 안 함 → 산 이름 단독으로 재시도
+      const noParkSuffix = noParen
+        .replace(/\s*(?:국립|도립|군립|시립|자연|생태|광역시립)?\s*공원$/, "")
+        .trim();
+      const parkStripped = noParkSuffix !== noParen && noParkSuffix.length >= 2 ? noParkSuffix : "";
+
+      // 2) 2·3글자 접두어 제거: "동산청라언덕" → "청라언덕"
+      //    한국어 복합 지명에서 동네명(2글자) + 실제 명소명 패턴
+      const strip2 = noParen.length >= 6 ? noParen.slice(2) : "";
+      const strip3 = noParen.length >= 7 ? noParen.slice(3) : "";
+      const addRegion = (q) =>
+        (regionHint && q && !q.includes(regionHint) ? `${q} ${regionHint}` : "");
+
+      const extras = [
+        parkStripped && addRegion(parkStripped),
+        parkStripped,
+        strip2 && addRegion(strip2),
+        strip2,
+        strip3 && addRegion(strip3),
+        strip3,
+      ].filter(Boolean);
+
+      return [...aliasWithRegion, ...aliasQueries, withRegion, base, noParen, ...extras, spacedRoadQuery, `${noParen} South Korea`, `South Korea ${noParen}`]
         .map((q) => q.trim())
         .filter((q, idx, arr) => q && arr.indexOf(q) === idx);
     }
 
-    async function geocodeOne(query) {
-      if (seenQueries.has(query)) return null;
-      seenQueries.add(query);
-      const res = await fetch(
-        `/api/places/geocode/?q=${encodeURIComponent(query)}&limit=1`
-      );
-      const body = await res.json();
-      return body.places?.[0] || null;
+    // Naver Local Search — 관광지·박물관·자연지형에 적합 (캐시 적용)
+    async function searchOne(query) {
+      const ck = "s:" + query;
+      if (seenQueries.has(ck)) return null;
+      seenQueries.add(ck);
+      const cached = _cacheGet(ck);
+      if (cached !== null) return cached;
+      try {
+        const res = await fetch(`/api/places/search/?q=${encodeURIComponent(query)}&limit=1&type=general`);
+        const body = await res.json();
+        const place = body.places?.[0] || null;
+        _cacheSet(ck, place);
+        return place;
+      } catch (_) { return null; }
     }
 
-    for (const day of days) {
-      for (const stop of day.stops) {
-        if (stop.lat != null) continue;
-        const q = stop.isAccommodation
-          ? (stop.place?.address || stop.line || stop.label)
-          : (stop.place?.address || stop.place?.name || stop.label);
-        if (!q || q.length < 2) continue;
-        for (const candidate of queriesForStop(stop)) {
-          try {
-            const p = await geocodeOne(candidate);
-            if (p?.latitude == null) continue;
-            const lat = Number(p.latitude), lng = Number(p.longitude);
-            if (!_isKoreanCoords(lat, lng)) continue;
-            stop.lat = lat;
-            stop.lng = lng;
-            if (stop.isAccommodation) {
-              stop.place = {
-                ...stop.place,
-                address: stop.place?.address || p.address || candidate,
-                latitude: lat,
-                longitude: lng,
-                google_maps_uri: p.maps_url || stop.url || "",
-                maps_url: p.maps_url || stop.url || "",
-              };
-            } else {
-              // Preserve original place name/address; only update coordinates and maps URI.
-              stop.place = {
-                ...p,
-                name: stop.place?.name || p.name,
-                address: stop.place?.address || p.address,
-                latitude: lat,
-                longitude: lng,
-                google_maps_uri: stop.place?.google_maps_uri || stop.url || p.maps_url,
-                maps_url: stop.place?.maps_url || stop.url || p.maps_url,
-              };
-            }
-            break;
-          } catch (_) {
-            /* try next candidate */
-          }
-        }
-        if (stop.lat != null) continue;
-        try {
-          const res = await fetch(
-            `/api/places/search/?q=${encodeURIComponent(q + " 대한민국")}&limit=1&type=general`
-          );
-          const body = await res.json();
-          const p = body.places?.[0];
-          if (p?.latitude != null) {
-            const lat = Number(p.latitude), lng = Number(p.longitude);
-            if (_isKoreanCoords(lat, lng)) {
-              stop.lat = lat;
-              stop.lng = lng;
-              if (stop.isAccommodation) {
-                stop.place = {
-                  ...stop.place,
-                  latitude: lat,
-                  longitude: lng,
-                  google_maps_uri: stop.url || "",
-                };
-              } else {
-                stop.place = { ...stop.place, ...p, google_maps_uri: p.maps_url || stop.url };
-              }
-            }
-            // 한국 영역 밖 좌표(일본 등)는 null 유지
-          }
-        } catch (_) {
-          /* skip */
+    // Naver 주소 지오코더 — 숙박·도로명 주소에 적합 (캐시 적용)
+    async function geocodeOne(query) {
+      const ck = "g:" + query;
+      if (seenQueries.has(ck)) return null;
+      seenQueries.add(ck);
+      const cached = _cacheGet(ck);
+      if (cached !== null) return cached;
+      try {
+        const res = await fetch(`/api/places/geocode/?q=${encodeURIComponent(query)}&limit=1`);
+        const body = await res.json();
+        const place = body.places?.[0] || null;
+        _cacheSet(ck, place);
+        return place;
+      } catch (_) { return null; }
+    }
+
+    function _resultMatchesStop(stop, place, candidate) {
+      const label = _stopSearchName(stop);
+      const name = String(place?.name || "").trim();
+      if (!/[가-힣]/.test(`${label} ${candidate}`)) return true;
+      if (!name) return false;
+      if (_placeNameMatchesLabel(name, candidate) || _placeNameMatchesLabel(name, label)) return true;
+      for (const alias of _landmarkSearchAliases(label)) {
+        if (_placeNameMatchesLabel(name, alias)) return true;
+      }
+      const target = _compactText(`${label} ${candidate}`);
+      const cat = String(place?.category || "").toLowerCase();
+      if (/(공원|산|언덕|관광|명소|계곡|폭포|호수)/.test(target) && /(협회|단체|기관|사무소|회사|기업|법인)/.test(cat)) {
+        return false;
+      }
+      return false;
+    }
+
+    function _foodPlaceMatchesTripArea(stop, place) {
+      const label = _stopSearchName(stop);
+      if (!_isFoodLikeText(label) && !_isCafeLikeText(label)) return true;
+      const regionHint = String(_mapMeta.regionCities || _mapMeta.region_cities || "")
+        .split(/[,\u00b7\/\s]+/).map((s) => s.trim()).filter((s) => s.length >= 2)[0] || "";
+      const tokens = _nearbyAreaTokens(regionHint);
+      if (!tokens.length) return true;
+      const hay = `${place?.name || ""} ${place?.address || ""} ${place?.search_area || ""}`;
+      return tokens.some((t) => hay.includes(t));
+    }
+
+    function _applyCoords(stop, p) {
+      const lat = Number(p.latitude), lng = Number(p.longitude);
+      if (!_isKoreanCoords(lat, lng)) return false;
+      stop.lat = lat;
+      stop.lng = lng;
+      if (stop.isAccommodation) {
+        stop.place = {
+          ...stop.place,
+          address: stop.place?.address || p.address || "",
+          latitude: lat, longitude: lng,
+          google_maps_uri: p.maps_url || stop.url || "",
+          maps_url: p.maps_url || stop.url || "",
+        };
+      } else {
+        stop.place = {
+          ...p,
+          name: stop.place?.name || p.name,
+          address: stop.place?.address || p.address,
+          latitude: lat, longitude: lng,
+          google_maps_uri: stop.place?.google_maps_uri || stop.url || p.maps_url,
+          maps_url: stop.place?.maps_url || stop.url || p.maps_url,
+        };
+      }
+      return true;
+    }
+
+    // 개별 stop geocoding — Local Search 우선, 주소 geocoder fallback
+    async function resolveStop(stop) {
+      const label = _stopSearchName(stop);
+      const repairingMismatch = !stop.isAccommodation
+        && stop.place?.name
+        && /[가-힣]/.test(label)
+        && !_placeNameMatchesLabel(stop.place.name, label);
+      if (stop.lat != null && !repairingMismatch) return;
+      const candidates = queriesForStop(stop);
+      if (!candidates.length) return;
+
+      // 1차: 관광지 → Naver Local Search (POI 이름 검색에 적합)
+      if (!stop.isAccommodation) {
+        for (const candidate of candidates) {
+          const p = await searchOne(candidate);
+          if (p?.latitude != null && _resultMatchesStop(stop, p, candidate) && _foodPlaceMatchesTripArea(stop, p) && _applyCoords(stop, p)) return;
         }
       }
+      // 2차: 주소 geocoder (숙박은 여기가 첫 시도, 관광지는 fallback)
+      for (const candidate of candidates) {
+        const p = await geocodeOne(candidate);
+        if (
+          p?.latitude != null &&
+          (stop.isAccommodation || (_resultMatchesStop(stop, p, candidate) && _foodPlaceMatchesTripArea(stop, p))) &&
+          _applyCoords(stop, p)
+        ) return;
+      }
+      if (repairingMismatch) {
+        stop.lat = null;
+        stop.lng = null;
+        stop.place = null;
+      }
     }
+
+    // 모든 stop을 병렬 처리 — 순차 처리 대비 5~10x 속도 향상
+    const allStops = days.flatMap((day) =>
+      day.stops.filter((s) => {
+        const label = _stopSearchName(s);
+        const repairingMismatch = !s.isAccommodation
+          && s.place?.name
+          && /[가-힣]/.test(label)
+          && !_placeNameMatchesLabel(s.place.name, label);
+        if (s.lat != null && !repairingMismatch) return false;
+        const q = s.isAccommodation
+          ? (s.place?.address || s.line || s.label)
+          : repairingMismatch
+            ? label
+          : (s.place?.address || s.place?.name || s.label);
+        return q && q.length >= 2;
+      })
+    );
+    await Promise.allSettled(allStops.map((stop) => resolveStop(stop)));
   }
 
   function authErrorHtml(cfg) {

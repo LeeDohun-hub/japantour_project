@@ -3377,6 +3377,12 @@ function _isBadPlanPlaceQuery(value) {
   if (/^(?:具体|구체|현지|人気|有名|추천|人気の)?\s*(?:곳|장소|スポット|場所)$/i.test(q)) return true;
   if (/실제.{0,20}(?:요리점|음식점|식당|레스토랑)/i.test(q)) return true;
   if (/을\s*사용$/.test(q)) return true;
+  // 시간대 슬롯 레이블 단독(오전/오후/점심/저녁 등)은 장소명 아님
+  if (/^(?:午前|午後|昼食|夕食|朝食|夜|ランチ|ディナー|朝|昼|食事|점심|저녁|아침|오전|오후|식사|모닝|브런치)$/.test(compact)) return true;
+  // 장소명은 50자 이내 — 그 이상은 설명문으로 간주
+  if (q.length > 50) return true;
+  // 문장 종결어미·조사로 끝나면 설명문 (보고, 마쳐, 하며, 합니다, ます, てください 등)
+  if (/(?:하고|하며|하여|하기|마쳐|마치고|보고|보며|즐기고|즐기며|합니다|합시다|ます|ました|ください|て下さい|とおり|ながら)[.。，,]?\s*$/.test(q)) return true;
   return false;
 }
 
@@ -3504,10 +3510,13 @@ function _queryLabelForUrl(lines, url, lineIdx) {
     const t = _cleanPlanPlaceLabel(lines[j].trim());
     if (!t || _isEchoCardLine(t)) continue;
     if (_extractUrlsFromLine(t).length) continue;
-    return t
-      .replace(/^\[[\d:〜~\-]+\]\s*/, "")
-      .replace(/^[-・*]\s*/, "")
-      .trim();
+    // 슬롯 레이블(오전/오후/점심/저녁 등)은 장소명이 아님 — 건너뜀
+    if (_isPlanSlotLabel(lines[j].trim())) continue;
+    const candidate = t.replace(/^\[[\d:〜~\-]+\]\s*/, "").replace(/^[-・*]\s*/, "").trim();
+    // 36자 초과는 설명문(散文)으로 간주 — 장소명으로 사용하지 않고 스캔 종료
+    if (candidate.length > 36) break;
+    if (_isBadPlanPlaceQuery(candidate)) break;
+    return candidate;
   }
   return "";
 }
@@ -3961,12 +3970,24 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
   let renderedDayPlaces = new Set();
   let currentSlotKind = "";
 
-  const _ticketCardsForUrls = (urls) => {
-    if (!LP) {
-      return urls.map(
-        (url) =>
-          `<a href="${_escapeHtml(url)}" target="_blank" rel="noopener" class="plan-ticket-link">🎫 公演チケット</a>`
+  const _ticketCardsForUrls = (urls, eventLabel = "") => {
+    const _ticketExternalCard = (url, label) => {
+      const displayLabel = label || "チケット予約";
+      // 지도 버튼: 레이블로 네이버 검색 (경기장명 포함된 레이블이면 정확히 찾힘)
+      const mapsSearchUrl = label
+        ? `https://map.naver.com/p/search/${encodeURIComponent(label)}`
+        : "";
+      return (
+        `<div class="plan-ticket-external">` +
+        `<div class="plan-ticket-external-label">${_escapeHtml(displayLabel)}</div>` +
+        `<div class="plan-ticket-external-buttons">` +
+        `<a href="${_escapeHtml(mapsSearchUrl || "#")}" target="_blank" rel="noopener" class="plan-place-btn plan-place-btn--map">地図</a>` +
+        `<a href="${_escapeHtml(url)}" target="_blank" rel="noopener" class="plan-place-btn plan-place-btn--ticket">🎫 チケット</a>` +
+        `</div></div>`
       );
+    };
+    if (!LP) {
+      return urls.map((url) => _ticketExternalCard(url, eventLabel));
     }
     return urls.map((rawUrl) => {
       const url = LP.normalizeUrl(rawUrl);
@@ -3975,7 +3996,9 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
         const venueCard = known.venue_place ? _renderInlinePlaceCard(known.venue_place) : "";
         return LP.renderCard(LP.eventToPreview(known, url)) + venueCard;
       }
-      return LP.renderSkeleton(url);
+      // KOPIS 미등록 티켓 URL (스포츠 경기 등): 커스텀 카드로 처리
+      const label = _normalizeQueryLabelForEnrich(eventLabel) || eventLabel || "";
+      return _ticketExternalCard(url, label);
     });
   };
 
@@ -4010,6 +4033,8 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
       // "장소A 설명 + 장소B 카드" 이중 출력을 막는다.
       if (place) return true;
     }
+    // 다음 줄이 티켓 URL이면 현재 줄을 이벤트 레이블로 캡처 (_pendingProse에 저장)
+    if (_PLAN_TICKET_URL_RE.test((nextRawLine || "").trim())) return true;
     return false;
   };
 
@@ -4021,19 +4046,19 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
 
     const ticketUrls = LP ? LP.extractTicketUrls(line) : [];
     if (ticketUrls.length) {
-      const prose = LP ? LP.stripUrlsFromProse(line, ticketUrls) : line;
-      const cardParts = _ticketCardsForUrls(ticketUrls);
-      if (prose && !_isEchoCardLine(prose)) {
-        pushStep(`<p class="plan-line">${_formatPlanTextLine(prose)}</p>${cardParts.join("")}`);
-      } else {
-        pushStep(cardParts.join(""));
-      }
+      // _pendingProse = 이전 줄에서 캡처한 이벤트 레이블 (lineLooksLikePlaceLabelBeforeUrl이 캡처)
+      const savedLabel = _pendingProse || "";
+      _pendingProse = null;
+      const cardParts = _ticketCardsForUrls(ticketUrls, savedLabel);
+      pushStep(cardParts.join(""));
       return;
     }
 
     if (_PLAN_TICKET_URL_RE.test(trimmed)) {
       const ticketUrl = LP ? LP.normalizeUrl(trimmed.split(/\s/)[0]) : trimmed.split(/\s/)[0];
-      pushStep(_ticketCardsForUrls([ticketUrl]).join(""));
+      const savedLabel = _pendingProse || "";
+      _pendingProse = null;
+      pushStep(_ticketCardsForUrls([ticketUrl], savedLabel).join(""));
       return;
     }
 
