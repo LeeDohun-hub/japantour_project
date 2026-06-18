@@ -32,8 +32,8 @@
 | Frontend | HTML, CSS, Vanilla JavaScript |
 | Backend | Django, Django REST-style views |
 | AI | OpenAI Chat/Embedding API |
-| RAG | FAISS 또는 pgvector, BM25, RRF |
-| DB | SQLite 개발 기본, PostgreSQL + pgvector 선택 |
+| RAG | pgvector, BM25, RRF |
+| DB | PostgreSQL + pgvector 선택 |
 | External APIs | Naver Maps/Search, 공공데이터포털, VisitKorea, JUSO |
 | Legacy UI | Streamlit `app_japan_tour.py` |
 

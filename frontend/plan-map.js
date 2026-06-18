@@ -552,6 +552,84 @@
     </article>`;
   }
 
+  function _longDistanceDepartureDay() {
+    const regionCities = String(_mapMeta.regionCities || _mapMeta.region_cities || "").trim();
+    if (!regionCities) return null;
+    const accAddr = String(_mapMeta.accommodation?.address || _mapMeta.accommodation?.region || "").toLowerCase();
+    const cities = regionCities.split(/[,·\/\s]+/).filter((s) => s.length >= 2).map((s) => s.toLowerCase());
+    if (cities.some((c) => accAddr.includes(c))) return null;
+    for (let i = 0; i < _planDays.length - 1; i++) {
+      const seg = _airportAccommodationSegment(_planDays[i]);
+      if (seg?.from?.stop?.isAirport) {
+        const next = _planDays[i + 1];
+        if (next && !_airportAccommodationSegment(next)) return next;
+      }
+    }
+    return null;
+  }
+
+  function _longDistanceReturnDay() {
+    const regionCities = String(_mapMeta.regionCities || _mapMeta.region_cities || "").trim();
+    if (!regionCities) return null;
+    const accAddr = String(_mapMeta.accommodation?.address || _mapMeta.accommodation?.region || "").toLowerCase();
+    const cities = regionCities.split(/[,·\/\s]+/).filter((s) => s.length >= 2).map((s) => s.toLowerCase());
+    if (cities.some((c) => accAddr.includes(c))) return null;
+    for (let i = _planDays.length - 1; i >= 1; i--) {
+      const seg = _airportAccommodationSegment(_planDays[i]);
+      if (seg?.to?.stop?.isAirport) {
+        const prev = _planDays[i - 1];
+        if (prev && !_airportAccommodationSegment(prev)) return prev;
+      }
+    }
+    return null;
+  }
+
+  function _renderTransitLegCard(from, to, title) {
+    if (!from || !to) return "";
+    const naverWebUrl = _naverRouteWebUrl(from, to, "transit");
+    const naverNmapUrl = _naverRouteNmapUrl(from, to, "transit");
+    const kakaoUrl = _kakaoRouteUrl(from, to);
+    return `<article class="plan-transfer-card">
+      <div class="plan-transfer-card__icon">🚇</div>
+      <div class="plan-transfer-card__body">
+        <div class="plan-transfer-card__title">${esc(title)}</div>
+        <div class="plan-transfer-card__route">
+          <span>${esc(_routeStopName(from, "出発地"))}</span>
+          <span class="plan-transfer-card__arrow">→</span>
+          <span>${esc(_routeStopName(to, "到着地"))}</span>
+        </div>
+      </div>
+      <div class="plan-transfer-card__actions">
+        <a href="${esc(naverWebUrl)}" target="_blank" rel="noopener"${naverNmapUrl ? ` data-nmap="${esc(naverNmapUrl)}"` : ""} class="plan-naver-route-btn">Naver公共交通</a>
+        <a href="${esc(kakaoUrl)}" target="_blank" rel="noopener">Kakao経路</a>
+      </div>
+    </article>`;
+  }
+
+  function renderLongDistanceTransitCard(day) {
+    if (!day) return "";
+    const regionCity = String(_mapMeta.regionCities || _mapMeta.region_cities || "")
+      .split(/[,·\/\s]+/).filter((s) => s.length >= 2)[0] || "";
+    if (!regionCity) return "";
+    const accommodation = buildAccommodationStop(_mapMeta);
+    const accPoint = _routePoint(accommodation);
+    if (!accPoint) return "";
+    const stops = (day.stops || []).filter((s) => !s.isAirport && !s.isAccommodation);
+    if (!stops.length) return "";
+    let html = "";
+    const depDay = _longDistanceDepartureDay();
+    if (depDay && depDay.day === day.day) {
+      const firstStop = stops.find((s) => _routePoint(s));
+      if (firstStop) html += _renderTransitLegCard(accPoint, _routePoint(firstStop), `宿泊先 → ${regionCity} ルート`);
+    }
+    const retDay = _longDistanceReturnDay();
+    if (retDay && retDay.day === day.day) {
+      const lastStop = [...stops].reverse().find((s) => _routePoint(s));
+      if (lastStop) html += _renderTransitLegCard(_routePoint(lastStop), accPoint, `${regionCity} → 宿泊先 ルート`);
+    }
+    return html;
+  }
+
   function _normStopText(s) {
     return String(s || "")
       .toLowerCase()
@@ -1584,7 +1662,8 @@
             showMapStatus("");
           }
         } else {
-          showMapStatus("公共交通ルートを取得できないため、目安線を表示しています。", true);
+          showMapStatus("");
+          routePath = [];
         }
       } else if (_selectedTransportHasCarRoute()) {
         showMapStatus("車ルートを読み込み中…");
@@ -1623,9 +1702,8 @@
         routeStroke = "#6B7280";
         showMapStatus("");
       } else if (_selectedTransportHasTransitRoute()) {
-        // 대중교통: 관광 스팟 간은 직선 점선 표시 (ODsay는 공항↔숙소 구간 전용)
-        routeStroke = "#7C3AED";
         showMapStatus("");
+        routePath = [];
       } else {
         // 자동차: Naver Directions 5 실제 도로 경로
         showMapStatus("ルートを読み込み中…");
@@ -1991,7 +2069,7 @@
       })
       .filter(Boolean)
       .join("");
-    el.innerHTML = `${renderAirportTransferCard(day)}${stopCards}`;
+    el.innerHTML = `${renderAirportTransferCard(day)}${renderLongDistanceTransitCard(day)}${stopCards}`;
     el.querySelectorAll(".plan-day-stop__lock").forEach((btn) => {
       btn.addEventListener("click", () => {
         const key = btn.dataset.lockKey || "";
@@ -2122,6 +2200,17 @@
       if (/(공원|산|언덕|관광|명소|계곡|폭포|호수)/.test(target) && /(협회|단체|기관|사무소|회사|기업|법인)/.test(cat)) {
         return false;
       }
+      // 이름과 쿼리/레이블 간 3글자 이상 한국어 공통 부분문자열이 있으면 허용
+      // (예: "광주중외공원" ↔ "중외공원광주" — _placeNameMatchesLabel이 잡지 못한 케이스)
+      if (name && !_isFoodLikeText(label) && !_isCafeLikeText(label)) {
+        const nc = _compactText(name), cc = _compactText(candidate), lc = _compactText(label);
+        for (let len = 3; len <= Math.min(nc.length, 6); len++) {
+          for (let i = 0; i <= nc.length - len; i++) {
+            const sub = nc.slice(i, i + len);
+            if (/[가-힣]{3}/.test(sub) && (cc.includes(sub) || lc.includes(sub))) return true;
+          }
+        }
+      }
       return false;
     }
 
@@ -2173,11 +2262,17 @@
       const candidates = queriesForStop(stop);
       if (!candidates.length) return;
 
+      // 좌표 없어도 이름 일치 시 보관 — 3차 meta-only fallback용
+      // (공공 공원·자연지형 등 Naver Local Search 미인덱싱 장소 대응)
+      let bestEffortPlace = null;
+
       // 1차: 관광지 → Naver Local Search (POI 이름 검색에 적합)
       if (!stop.isAccommodation) {
         for (const candidate of candidates) {
           const p = await searchOne(candidate);
-          if (p?.latitude != null && _resultMatchesStop(stop, p, candidate) && _foodPlaceMatchesTripArea(stop, p) && _applyCoords(stop, p)) return;
+          if (!p) continue;
+          if (p.latitude != null && _resultMatchesStop(stop, p, candidate) && _foodPlaceMatchesTripArea(stop, p) && _applyCoords(stop, p)) return;
+          if (!bestEffortPlace && _resultMatchesStop(stop, p, candidate)) bestEffortPlace = p;
         }
       }
       // 2차: 주소 geocoder (숙박은 여기가 첫 시도, 관광지는 fallback)
@@ -2193,6 +2288,19 @@
         stop.lat = null;
         stop.lng = null;
         stop.place = null;
+        return;
+      }
+      // 3차: 좌표 확보 실패 시 place 메타만 적용
+      // 지도 핀은 없지만 Naver photo_url·naver_local_link를 이용한 카드/사진 렌더링 가능
+      if (!stop.place && bestEffortPlace) {
+        stop.place = {
+          ...bestEffortPlace,
+          name: label || bestEffortPlace.name || "",
+          google_maps_uri: stop.url || bestEffortPlace.maps_url || bestEffortPlace.google_maps_uri || "",
+          maps_url: stop.url || bestEffortPlace.maps_url || "",
+          latitude: null,
+          longitude: null,
+        };
       }
     }
 
