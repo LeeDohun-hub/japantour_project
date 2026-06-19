@@ -2056,6 +2056,9 @@ def api_chat_stream(request):
     from tour_api.llm_service import run_chat_stream
 
     def _sse_gen():
+        # 연결 직후 즉시 첫 청크 전송 → nginx proxy_read_timeout 리셋
+        # gunicorn이 LLM API 초기화 중 30s 타임아웃으로 워커를 kill하는 것 방지
+        yield ": ping\n\n"
         full_reply = ""
         try:
             for event_type, data in run_chat_stream(

@@ -1951,6 +1951,13 @@ a.btn {
   font-weight: 700;
   color: var(--text);
 }
+.plan-day-stop__name-ko {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #888;
+  margin-top: 0.1rem;
+}
 .plan-day-stop__lock {
   flex-shrink: 0;
   min-width: 3.5rem;
