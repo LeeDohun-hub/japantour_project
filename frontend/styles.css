@@ -3245,6 +3245,17 @@ a.place-card:hover .place-maps-hint {
   flex: 0 0 auto; width: auto !important; margin-top: 0 !important;
   white-space: nowrap; align-self: center;
   padding: .5rem .85rem; font-size: .8rem;
+  background: var(--accent) !important;
+  color: #fff !important;
+  border-color: var(--accent) !important;
+}
+.hotel-select-btn:hover {
+  background: var(--accent-dark, #1a3a6e) !important;
+  border-color: var(--accent-dark, #1a3a6e) !important;
+}
+.hotel-select-btn.selected {
+  background: #28a745 !important;
+  border-color: #28a745 !important;
 }
 @media (max-width: 560px) {
   .hotel-card {

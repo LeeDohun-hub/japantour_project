@@ -127,6 +127,29 @@ def api_juso_search(request):
     return JsonResponse(payload)
 
 
+_ACCOM_CAT_KEYWORDS = ("숙박", "호텔", "모텔", "게스트하우스", "펜션", "리조트", "콘도", "민박", "호스텔", "여관", "여인숙", "레지던스")
+_PET_HOTEL_WORDS = ("애견", "고양이", "반려", "동물", "펫", "pet", "dog", "cat")
+
+
+def _is_accom_place(category: str, name: str) -> bool:
+    cat = (category or "").lower()
+    nm = (name or "").lower()
+    for kw in _ACCOM_CAT_KEYWORDS:
+        if kw in cat:
+            return True
+    # 카테고리 없어도 이름에 호텔 단어가 있으면 허용 (단, 애견호텔 제외)
+    for kw in ("호텔", "hotel", "리조트", "resort", "게스트하우스", "guesthouse", "모텔", "펜션"):
+        if kw in nm:
+            for pet in _PET_HOTEL_WORDS:
+                if pet in nm:
+                    return False
+            return True
+    # 카테고리가 없거나 빈 경우 통과 (나중에 지도 링크로 확인 가능)
+    if not cat:
+        return True
+    return False
+
+
 @require_GET
 def api_places_search(request):
     """위저드 Step 3 숙박시설 검색 — Naver Local/Maps."""
@@ -164,6 +187,8 @@ def api_places_search(request):
             if sclient.is_configured:
                 area_hint = " ".join(x for x in (sido, sigungu) if x).strip()
                 scored = sclient.search_places(query, display=limit, area_hint=area_hint)
+                if (sido or sigungu) and scored:
+                    scored = [p for p in scored if _is_accom_place(p.category or "", p.name or "")]
                 places = [
                     {
                         "name": p.name,

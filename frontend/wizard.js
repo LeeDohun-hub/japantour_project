@@ -2881,7 +2881,15 @@ function _renderHotelPage(page) {
   el.style.display = "block";
 
   el.querySelectorAll(".hotel-select-btn").forEach((btn) => {
-    btn.addEventListener("click", () => _selectHotelFromList(_allHotels[+btn.dataset.idx]));
+    btn.addEventListener("click", () => {
+      el.querySelectorAll(".hotel-select-btn").forEach((b) => {
+        b.classList.remove("selected");
+        b.textContent = "このホテルを選択";
+      });
+      btn.classList.add("selected");
+      btn.textContent = "✅ 選択中";
+      _selectHotelFromList(_allHotels[+btn.dataset.idx]);
+    });
   });
 
   if (pagerEl) {
