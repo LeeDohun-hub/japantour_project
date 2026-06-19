@@ -4117,6 +4117,9 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
       // LLM이 "장소A" 라고 쓰고 URL은 "장소B"를 가리킬 때
       // "장소A 설명 + 장소B 카드" 이중 출력을 막는다.
       if (place) return true;
+      // place가 itinerary_places에 없어도 유효한 Naver map URL이면 현재 줄을 장소 레이블로 캡처.
+      // 이래야 _pendingProse에 "교보문고 광화문점" 같은 이름이 저장되어 fallback anchor card에 쓰인다.
+      if (!place && /map\.naver\.com/i.test(url) && current.length >= 2) return true;
     }
     // 다음 줄이 티켓 URL이면 현재 줄을 이벤트 레이블로 캡처 (_pendingProse에 저장)
     if (_PLAN_TICKET_URL_RE.test((nextRawLine || "").trim())) return true;
