@@ -59,6 +59,7 @@
   const _lockedStops = new Map();
   const _drivingRouteCache = new Map();
   const _transitRouteCache = new Map();
+  const _naverResolveCache = new Map();
 
   function esc(s) {
     return String(s || "").replace(/[&<>"']/g, (c) =>
@@ -150,7 +151,52 @@
     const compact = _compactText(name);
     if (/弘益.*現代美術館|홍익.*현대미술관/i.test(compact)) return "홍익대학교 현대미술관";
     if (/dynamicmaze|다이나믹메이즈/i.test(compact)) return "다이나믹메이즈 서울 인사동";
+    if (/명동성당|명동대성당|myeongdong.*cathedral/i.test(compact)) return "천주교 서울대교구 주교좌명동대성당";
     return "";
+  }
+
+  async function _resolveNaverCanonical(rawName) {
+    if (!rawName || rawName.length < 2) return null;
+    if (_naverResolveCache.has(rawName)) return _naverResolveCache.get(rawName);
+    const pending = fetch(`/api/naver-resolve/?q=${encodeURIComponent(rawName)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const result = data?.canonical ? data : null;
+        _naverResolveCache.set(rawName, result);
+        return result;
+      })
+      .catch(() => {
+        _naverResolveCache.set(rawName, null);
+        return null;
+      });
+    // 이미 promise를 캐시에 넣어 중복 요청 방지
+    _naverResolveCache.set(rawName, pending);
+    return pending;
+  }
+
+  function _naverCanonicalUrl(resolved) {
+    const canonical = resolved?.canonical;
+    if (!canonical) return null;
+    const lat = resolved.lat;
+    const lng = resolved.lng;
+    if (lat && lng && lat > 10 && lng > 100) {
+      return `https://map.naver.com/p/search/${encodeURIComponent(canonical)}?c=${lng},${lat},16,0,0,0,dh`;
+    }
+    return `https://map.naver.com/p/search/${encodeURIComponent(canonical)}`;
+  }
+
+  async function _prefetchNaverResolveForEl(containerEl) {
+    const links = containerEl.querySelectorAll("a[data-raw-name]");
+    for (const link of links) {
+      const rawName = link.dataset.rawName;
+      if (!rawName) continue;
+      _resolveNaverCanonical(rawName).then((resolved) => {
+        const url = _naverCanonicalUrl(resolved);
+        if (url && link.dataset.rawName === rawName) {
+          link.href = url;
+        }
+      });
+    }
   }
 
   function mapsOpenUrl(stop) {
@@ -2018,6 +2064,8 @@
         // 단, Maps URL에서 직접 생성된 stop(축제명 등)은 일본어라도 유지
         if (!hasCoords && !p.name && !stop.sourceUrl && !/[가-힣]/.test(rawLabel)) return null;
         const name = esc(rawLabel || stop.label || p.name);
+        // 공항·숙박 외에 이름이 없는 stop은 빈 카드가 되므로 제거
+        if (!name && !stop.isAirport && !stop.isAccommodation) return null;
         const lockable = !stop.isAirport && !stop.isAccommodation;
         const lockKey = stopLockKey(stop, day.day);
         const isLocked = _lockedStops.has(lockKey);
@@ -2034,13 +2082,16 @@
         const dragHandle = `<span class="plan-day-stop__drag plan-day-stop__drag--fixed" aria-hidden="true">•</span>`;
         // 카드 리스트 표시 순번: 좌표 유무 관계없이 day 내 통합 순번 (1, 2, 3...)
         const seqNum = stopIdx + 1;
+        const resolveAttr = (!stop.isAirport && !stop.isAccommodation && rawLabel)
+          ? ` data-raw-name="${esc(rawLabel)}"`
+          : "";
         if (hasCoords) {
           mapNum++;
           const color = colors[stopIdx % colors.length]; // seqNum-1 = stopIdx → matches map pin color
           return `<article class="plan-day-stop plan-day-stop--fixed" ${dragAttrs} data-stop-index="${stopIdx}">
             <span class="plan-day-stop__num" style="background:${color}">${seqNum}</span>
             ${dragHandle}
-            <a class="plan-day-stop__thumb" href="${mapsUri}" target="_blank" rel="noopener">${thumb}</a>
+            <a class="plan-day-stop__thumb" href="${mapsUri}"${resolveAttr} target="_blank" rel="noopener">${thumb}</a>
             <div class="plan-day-stop__body">
               <div class="plan-day-stop__head">
                 <h4 class="plan-day-stop__name">${name}</h4>
@@ -2055,7 +2106,7 @@
           return `<article class="plan-day-stop plan-day-stop--no-map plan-day-stop--fixed" ${dragAttrs} data-stop-index="${stopIdx}">
             <span class="plan-day-stop__num" style="background:#aaa">${seqNum}</span>
             ${dragHandle}
-            <a class="plan-day-stop__thumb" href="${mapsUri}" target="_blank" rel="noopener">${thumb}</a>
+            <a class="plan-day-stop__thumb" href="${mapsUri}"${resolveAttr} target="_blank" rel="noopener">${thumb}</a>
             <div class="plan-day-stop__body">
               <div class="plan-day-stop__head">
                 <h4 class="plan-day-stop__name">${name}</h4>
@@ -2070,6 +2121,7 @@
       .filter(Boolean)
       .join("");
     el.innerHTML = `${renderAirportTransferCard(day)}${renderLongDistanceTransitCard(day)}${stopCards}`;
+    _prefetchNaverResolveForEl(el);
     el.querySelectorAll(".plan-day-stop__lock").forEach((btn) => {
       btn.addEventListener("click", () => {
         const key = btn.dataset.lockKey || "";

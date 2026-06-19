@@ -20,6 +20,7 @@ urlpatterns = [
     path("plan-snapshot/", views.api_plan_snapshot, name="api_plan_snapshot"),
     path("plan-snapshots/", views.api_plan_snapshots, name="api_plan_snapshots"),
     path("plan-snapshot/<int:snapshot_id>/", views.api_plan_snapshot_detail, name="api_plan_snapshot_detail"),
+    path("naver-resolve/", views.api_naver_resolve, name="api_naver_resolve"),
     path("chat/", views.api_chat, name="api_chat"),
     path("chat/stream/", views.api_chat_stream, name="api_chat_stream"),
     path("auth/register/", views.api_register, name="api_register"),

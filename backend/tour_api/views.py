@@ -2531,3 +2531,60 @@ def serve_maps_open_url_js(request):
     resp = FileResponse(path.open("rb"), content_type="application/javascript; charset=utf-8")
     resp["Cache-Control"] = "no-cache"
     return resp
+
+
+@require_GET
+def api_naver_resolve(request):
+    """장소명 → 네이버 지역검색 첫 번째 결과(공식명+좌표) 반환.
+
+    GET /api/naver-resolve/?q=명동성당
+    → {"canonical": "천주교 서울대교구 주교좌명동대성당", "lat": 37.xxx, "lng": 126.xxx, ...}
+    """
+    import sys
+    from pathlib import Path as _P
+    _root = _P(settings.BASE_DIR).parent
+    if str(_root / "src") not in sys.path:
+        sys.path.insert(0, str(_root / "src"))
+    from src.api.naver_search_client import NaverSearchClient, _clean_html
+
+    q = (request.GET.get("q") or "").strip()
+    if not q or len(q) > 100:
+        return JsonResponse({"error": "q required"}, status=400)
+
+    import hashlib
+    cache_key = f"naver_resolve_v1:{hashlib.md5(q.encode()).hexdigest()}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return JsonResponse(cached)
+
+    client = NaverSearchClient()
+    if not client.is_configured:
+        return JsonResponse({"canonical": None, "error": "not_configured"})
+
+    items = client.search_local(q, display=1)
+    if not items:
+        result: dict = {"canonical": None}
+        cache.set(cache_key, result, timeout=3600)
+        return JsonResponse(result)
+
+    item = items[0]
+    name = _clean_html(item.get("title"))
+    lat = lng = None
+    try:
+        raw_x = float(item.get("mapx") or 0)
+        raw_y = float(item.get("mapy") or 0)
+        if raw_x > 10_000 and raw_y > 10_000:
+            lng = raw_x / 1e7
+            lat = raw_y / 1e7
+    except (TypeError, ValueError):
+        pass
+
+    result = {
+        "canonical": name,
+        "lat": lat,
+        "lng": lng,
+        "category": _clean_html(item.get("category") or ""),
+        "address": _clean_html(item.get("roadAddress") or item.get("address") or ""),
+    }
+    cache.set(cache_key, result, timeout=86400)
+    return JsonResponse(result)
