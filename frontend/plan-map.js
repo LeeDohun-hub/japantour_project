@@ -152,6 +152,8 @@
     if (/弘益.*現代美術館|홍익.*현대미술관/i.test(compact)) return "홍익대학교 현대미술관";
     if (/dynamicmaze|다이나믹메이즈/i.test(compact)) return "다이나믹메이즈 서울 인사동";
     if (/명동성당|명동대성당|myeongdong.*cathedral/i.test(compact)) return "천주교 서울대교구 주교좌명동대성당";
+    if (/명동.*메인|명동.*스트리트|meongdong.*main|meongdong.*street/i.test(compact)) return "명동거리";
+    if (/덕수궁.*돌담|徳寿宮.*石垣|石垣道/i.test(compact)) return "덕수궁 돌담길";
     return "";
   }
 
@@ -185,15 +187,42 @@
     return `https://map.naver.com/p/search/${encodeURIComponent(canonical)}`;
   }
 
-  async function _prefetchNaverResolveForEl(containerEl) {
+  async function _prefetchNaverResolveForEl(containerEl, day) {
     const links = containerEl.querySelectorAll("a[data-raw-name]");
+    let mapNeedsRefresh = false;
+    const resolvePromises = [];
     for (const link of links) {
       const rawName = link.dataset.rawName;
       if (!rawName) continue;
-      _resolveNaverCanonical(rawName).then((resolved) => {
+      // "徳寿宮石垣道（덕수궁 돌담길）" → 괄호 안 한국어로 Naver 검색 (정확도 향상)
+      const parenKo = rawName.match(/[（(]([가-힣][가-힣\s·]{0,30})[）)]/);
+      const resolveQuery = parenKo ? parenKo[1].trim() : rawName;
+      const p = _resolveNaverCanonical(resolveQuery).then((resolved) => {
         const url = _naverCanonicalUrl(resolved);
         if (url && link.dataset.rawName === rawName) {
           link.href = url;
+        }
+        // resolve 결과 좌표로 stop lat/lng 업데이트 (map pin 복원)
+        const lat = resolved?.lat;
+        const lng = resolved?.lng;
+        if (lat && lng && lat > 10 && lng > 100 && day?.stops) {
+          const article = link.closest("[data-stop-index]");
+          const stopIdx = article ? parseInt(article.dataset.stopIndex, 10) : -1;
+          const stop = stopIdx >= 0 ? day.stops[stopIdx] : null;
+          if (stop && stop.lat == null) {
+            stop.lat = lat;
+            stop.lng = lng;
+            mapNeedsRefresh = true;
+          }
+        }
+      });
+      resolvePromises.push(p);
+    }
+    // 모든 resolve 완료 후 한 번만 지도 재렌더링
+    if (resolvePromises.length) {
+      Promise.all(resolvePromises).then(() => {
+        if (mapNeedsRefresh && day && day.day === _activeDay) {
+          renderMapForDay(day);
         }
       });
     }
@@ -1303,6 +1332,24 @@
         const nk = _normStopText(label);
         if (nk) place = placeIndex.byName[nk] || null;
       }
+      // label이 일본어(漢字)라 byName 미스 → Naver search URL 쿼리 텀으로 재시도
+      // e.g. label="明洞聖堂", URL="/p/search/명동성당"
+      //   → "명동성당" 시도, 또 _knownKoreanSearchName("명동성당")="천주교서울대교구주교좌명동대성당" 시도
+      if (!place && placeIndex.byName) {
+        const searchMatch = urlOnly.match(/\/search\/([^?&/#]+)/);
+        if (searchMatch) {
+          const decoded = (() => { try { return decodeURIComponent(searchMatch[1]); } catch (_) { return searchMatch[1]; } })();
+          const qk = _normStopText(decoded);
+          if (qk) place = placeIndex.byName[qk] || null;
+          if (!place) {
+            const knownFull = _knownKoreanSearchName(decoded);
+            if (knownFull) {
+              const kk = _normStopText(knownFull);
+              if (kk) place = placeIndex.byName[kk] || null;
+            }
+          }
+        }
+      }
       const rec = {
         url: urlOnly,
         place,
@@ -2121,7 +2168,7 @@
       .filter(Boolean)
       .join("");
     el.innerHTML = `${renderAirportTransferCard(day)}${renderLongDistanceTransitCard(day)}${stopCards}`;
-    _prefetchNaverResolveForEl(el);
+    _prefetchNaverResolveForEl(el, day);
     el.querySelectorAll(".plan-day-stop__lock").forEach((btn) => {
       btn.addEventListener("click", () => {
         const key = btn.dataset.lockKey || "";

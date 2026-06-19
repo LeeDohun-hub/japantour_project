@@ -19,6 +19,15 @@ from typing import Any
 
 import requests
 
+try:
+    from django.core.cache import cache as _django_cache
+    _CACHE_AVAILABLE = True
+except ImportError:
+    _django_cache = None  # type: ignore[assignment]
+    _CACHE_AVAILABLE = False
+
+_VK_CACHE_TTL = 7200  # 2시간 — TourAPI 관광지 데이터는 자주 바뀌지 않음
+
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://apis.data.go.kr/B551011/JpnService2"
@@ -707,18 +716,27 @@ class VisitKoreaClient:
         """areaBasedList2 — 지역별 관광지·문화시설."""
         if not area_code:
             return [], "", "", 0
+        cache_key = f"vk:abl2:{area_code}:{sigungu_code}:{content_type_id}:{num_of_rows}:{page_no}"
+        if _CACHE_AVAILABLE:
+            cached = _django_cache.get(cache_key)
+            if cached is not None:
+                logger.debug("VK cache hit: %s", cache_key)
+                return cached  # type: ignore[return-value]
         extra: dict[str, str] = {
             "areaCode": area_code,
             "contentTypeId": content_type_id,
         }
         if sigungu_code:
             extra["sigunguCode"] = sigungu_code
-        return self._list(
+        result = self._list(
             "areaBasedList2",
             extra,
             page_no=page_no,
             num_of_rows=num_of_rows,
         )
+        if _CACHE_AVAILABLE:
+            _django_cache.set(cache_key, result, _VK_CACHE_TTL)
+        return result
 
     def search_attractions_mixed(
         self,
@@ -759,6 +777,12 @@ class VisitKoreaClient:
             return [], "", "", 0
         if not self.service_key:
             raise ValueError("PUBLIC_API_KEY가 설정되지 않았습니다.")
+        cache_key = f"vk:green:{area_code}:{num_of_rows}"
+        if _CACHE_AVAILABLE:
+            cached = _django_cache.get(cache_key)
+            if cached is not None:
+                logger.debug("VK green cache hit: %s", cache_key)
+                return cached  # type: ignore[return-value]
         params: dict[str, str] = {
             "serviceKey": self.service_key,
             "MobileOS": MOBILE_OS,
@@ -785,7 +809,10 @@ class VisitKoreaClient:
         body = (raw.get("response") or {}).get("body") or {}
         total = int(body.get("totalCount") or 0)
         rows = _parse_items(raw)
-        return [_item_from_row(r) for r in rows], code, msg, total
+        result = [_item_from_row(r) for r in rows], code, msg, total
+        if _CACHE_AVAILABLE:
+            _django_cache.set(cache_key, result, _VK_CACHE_TTL)
+        return result
 
     def probe(self) -> dict[str, Any]:
         """searchFestival2 / searchStay2 연결·응답 요약 (디버그용)."""

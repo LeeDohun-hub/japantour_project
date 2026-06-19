@@ -3427,21 +3427,29 @@ function _autoPlaceQueriesFromLine(line) {
     if (q && !out.includes(q)) out.push(q);
   };
 
-  if (/명동|myeongdong/.test(s)) {
+  if (/명동|明洞|myeongdong/i.test(s)) {
     add("명동거리");
     add("명동성당");
-    if (/카페|cafe|coffee/.test(s)) add("명동 카페");
+    if (/카페|cafe|coffee/i.test(s)) add("명동 카페");
   }
-  if (/경복궁|gyeongbok|景福/.test(s)) add("경복궁");
-  if (/북촌|bukchon|北村/.test(s)) add("북촌한옥마을");
-  if (/익선|익성|ikseon/.test(s)) add("익선동 한옥거리");
-  if (/인사동|insadong/.test(s)) {
+  if (/경복궁|gyeongbok|景福宮?/i.test(s)) add("경복궁");
+  if (/북촌|bukchon|北村/i.test(s)) add("북촌한옥마을");
+  if (/익선|익성|ikseon/i.test(s)) add("익선동 한옥거리");
+  if (/인사동|insadong|仁寺洞/i.test(s)) {
     add("쌈지길");
     add("인사동길");
   }
-  if (/삼청동|samcheong/.test(s)) add("삼청동 카페거리");
-  if (/광화문|gwanghwamun/.test(s)) add("광화문광장");
-  if (/청계천|cheonggye/.test(s)) add("청계천");
+  if (/삼청동|samcheong|三清洞/i.test(s)) add("삼청동 카페거리");
+  if (/광화문|gwanghwamun|光化門/i.test(s)) add("광화문광장");
+  if (/청계천|cheonggye|清渓川/i.test(s)) add("청계천");
+  if (/남산|namsan|南山/i.test(s)) add("남산공원");
+  if (/동대문|dongdaemun|東大門/i.test(s)) add("동대문디자인플라자");
+  if (/창덕궁|changdeok|昌徳宮/i.test(s)) add("창덕궁");
+  if (/덕수궁|deoksugung|徳寿宮/i.test(s)) add("덕수궁 돌담길");
+  if (/홍대|弘大|홍익|hongdae/i.test(s)) add("홍대입구역");
+  if (/이태원|itaewon|梨泰院/i.test(s)) add("이태원");
+  if (/강남|gangnam|江南/i.test(s)) add("강남역");
+  if (/쌈지길|サムジキル/i.test(s)) add("쌈지길");
   if (/전통.*(잡화|쇼핑|공예)|雑貨|工芸/.test(s)) {
     add("쌈지길");
     add("인사동 전통문화의 거리");
@@ -3469,6 +3477,9 @@ function _nameKeysFromLine(line) {
   const keys = [];
   const quoted = [...line.matchAll(/[『「']([^』」']+)[』」']|[「『]([^」』]+)[」』]/g)];
   for (const m of quoted) keys.push(_normalizePlaceName(m[1] || m[2]));
+  // 일본어명（한국어명） 형식 — 괄호 안 한국어도 직접 조회
+  const parenKo = line.match(/[（(]([가-힣][가-힣\s·]{0,30})[）)]/);
+  if (parenKo) keys.push(_normalizePlaceName(parenKo[1]));
   for (const q of _autoPlaceQueriesFromLine(line)) keys.push(_normalizePlaceName(q));
   const bare = line.match(    /([ㄱ-힝]{2,}(?:한우|마을|궁|거리|길|식당|카페|공원|역|몰|호텔|박물관|시장|맛집|레스토랑|정원|사|절|성당|성|산성|왕릉|능|고택|서원|향교|유적|기념관|전시관|전망대|온천|폭포|계곡|해변|해수욕장|수목원|식물원|항구|등대|미술관|테마파크|워터파크|놀이공원|경기장|수족관|restaurant|cafe|park|station))/i );
   if (bare) keys.push(_normalizePlaceName(bare[1]));
