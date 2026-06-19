@@ -152,7 +152,7 @@ def _is_accom_place(category: str, name: str) -> bool:
 
 @require_GET
 def api_places_search(request):
-    """위저드 Step 3 숙박시설 검색 — Naver Local/Maps."""
+    """위저드 Step 3 숙박시설 검색 — TourAPI(JpnService2) 우선, Naver 폴백."""
     import sys
     from pathlib import Path as _P
     _root = _P(settings.BASE_DIR).parent
@@ -163,6 +163,7 @@ def api_places_search(request):
     from src.api.hotel_area_filter import build_hotel_search_query, filter_hotel_places
     from src.api.naver_maps_client import NaverMapsClient, naver_map_search_url
     from src.api.naver_search_client import NaverSearchClient
+    from src.api.visitkorea_client import VisitKoreaClient, wizard_to_kto_codes
 
     sido = request.GET.get("sido", "").strip()
     sigungu = request.GET.get("sigungu", "").strip()
@@ -173,6 +174,55 @@ def api_places_search(request):
         return JsonResponse({"places": []})
     if _is_bad_place_query(query):
         return JsonResponse({"places": [], "total": 0, "filtered_out": 0, "provider": "blocked_bad_query"})
+
+    # ── TourAPI searchStay2 우선 시도 (추천 모드, sido/sigungu 선택 시) ─────
+    search_mode = request.GET.get("mode", "recommend").strip()
+    if sido and search_mode != "search":
+        try:
+            vk = VisitKoreaClient()
+            if vk.is_configured:
+                area_code, sigungu_code = wizard_to_kto_codes(sido, sigungu)
+                if area_code:
+                    items, _, _, total = vk.search_stay(
+                        area_code=area_code,
+                        sigungu_code=sigungu_code,
+                        num_of_rows=20,
+                    )
+                    if not items and sigungu_code:
+                        # 시군구 코드가 있어도 결과 없으면 시·도 전체로 재시도
+                        items, _, _, total = vk.search_stay(
+                            area_code=area_code,
+                            num_of_rows=20,
+                        )
+                    if items:
+                        places = [
+                            {
+                                "name": it.title,
+                                "address": " ".join(x for x in (it.addr1, it.addr2) if x),
+                                "maps_url": it.maps_uri(),
+                                "google_maps_uri": it.maps_uri(),
+                                "rating": None,
+                                "user_rating_count": None,
+                                "price_level": None,
+                                "photo_name": None,
+                                "photo_url": it.first_image or it.first_image2 or "",
+                                "latitude": float(it.mapy) if it.mapy else None,
+                                "longitude": float(it.mapx) if it.mapx else None,
+                                "tel": it.tel,
+                                "source": "tourapi_stay",
+                                "content_id": it.content_id,
+                            }
+                            for it in items
+                        ]
+                        return JsonResponse({
+                            "places": places,
+                            "total": len(places),
+                            "total_before_filter": total,
+                            "filtered_out": 0,
+                            "provider": "tourapi_stay",
+                        })
+        except Exception as exc:
+            logger.warning("TourAPI searchStay2 failed, falling back to Naver: %s", exc)
     fetch_all = request.GET.get("all", "").lower() in ("1", "true", "yes")
     try:
         limit = min(max(int(request.GET.get("limit", 5)), 1), 20)
@@ -187,7 +237,8 @@ def api_places_search(request):
             if sclient.is_configured:
                 area_hint = " ".join(x for x in (sido, sigungu) if x).strip()
                 scored = sclient.search_places(query, display=limit, area_hint=area_hint)
-                if (sido or sigungu) and scored:
+                # 수동 검색(mode=search)은 유저가 직접 이름을 입력 → 카테고리 필터 불필요
+                if (sido or sigungu) and scored and search_mode != "search":
                     scored = [p for p in scored if _is_accom_place(p.category or "", p.name or "")]
                 places = [
                     {

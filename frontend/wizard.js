@@ -2703,8 +2703,8 @@ function _buildHotelSearchContext() {
   return { sido, sigungu, label, query };
 }
 
-function _hotelSearchParams(ctx) {
-  const params = new URLSearchParams({ all: "1", type: "hotel" });
+function _hotelSearchParams(ctx, mode = "recommend") {
+  const params = new URLSearchParams({ all: "1", type: "hotel", mode });
   if (ctx.query) params.set("q", ctx.query);
   if (ctx.sido) params.set("sido", ctx.sido);
   if (ctx.sigungu) params.set("sigungu", ctx.sigungu);
@@ -2744,8 +2744,10 @@ async function _fetchHotelManualSearch() {
     return;
   }
 
+  // 영문 label 대신 한글 sido/sigungu로 쿼리 구성 (Naver 검색 정확도)
+  const koreaPrefix = [ctx.sido, ctx.sigungu].filter(Boolean).join(" ").trim();
   const query = q
-    ? (ctx.label ? `${ctx.label} ${q}` : q)
+    ? (koreaPrefix ? `${koreaPrefix} ${q}` : q)
     : ctx.query;
   const area = ctx.label || q;
 
@@ -2763,7 +2765,7 @@ async function _fetchHotelManualSearch() {
 
   try {
     const manualCtx = { ...ctx, query };
-    const res = await fetch(`/api/places/search/?${_hotelSearchParams(manualCtx)}`);
+    const res = await fetch(`/api/places/search/?${_hotelSearchParams(manualCtx, "search")}`);
     const data = await res.json();
     _allHotels = data.places || [];
     _hotelArea = area;
@@ -2873,8 +2875,11 @@ function _renderHotelPage(page) {
   el.innerHTML =
     `<p class="hotel-results-label">📍 ${escHtml(area)} — ${listLabel} 全${total}件（${page + 1}/${totalPages}ページ）</p>` +
     slice.map((p, i) => {
-      const photoHtml = p.photo_name
-        ? `<img class="hotel-photo" src="/api/photo/?name=${encodeURIComponent(p.photo_name)}" loading="lazy" alt="${escHtml(p.name)}" onerror="this.style.display='none'" />`
+      const photoSrc = p.photo_name
+        ? `/api/photo/?name=${encodeURIComponent(p.photo_name)}`
+        : (p.photo_url || "");
+      const photoHtml = photoSrc
+        ? `<img class="hotel-photo" src="${escHtml(photoSrc)}" loading="lazy" alt="${escHtml(p.name)}" onerror="this.style.display='none'" />`
         : "";
       const ratingHtml = p.rating
         ? `<span class="hotel-rating">⭐ ${Number(p.rating).toFixed(1)}<span class="hotel-rating-cnt">${p.user_rating_count ? ` (${p.user_rating_count.toLocaleString()}件)` : ""}</span></span>`
