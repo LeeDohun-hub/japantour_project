@@ -4179,7 +4179,8 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
         } else if (!rendered.has(_mapsUrlKey(url))) {
           rendered.add(_mapsUrlKey(url));
           if (!(currentSlotKind === "cafe" && cafeGuard.used)) {
-            const fbp = _renderMapsUnresolvedFallback(url, placeIndexes.unresolved?.[_mapsUrlKey(url)], currentSlotKind);
+            const _fbLabel1 = _pendingProse || line.replace(/https?:\/\/[^\s]+/g, "").trim() || placeIndexes.unresolved?.[_mapsUrlKey(url)];
+            const fbp = _renderMapsUnresolvedFallback(url, _fbLabel1, currentSlotKind);
             if (fbp) {
               if (currentSlotKind === "cafe") cafeGuard.used = true;
               cardParts.push(fbp);
@@ -4252,9 +4253,11 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
       } else if (!rendered.has(_mapsUrlKey(url))) {
         rendered.add(_mapsUrlKey(url));
         if (!(currentSlotKind === "cafe" && cafeGuard.used)) {
-          const f3 = _renderMapsUnresolvedFallback(url, placeIndexes.unresolved?.[_mapsUrlKey(url)], currentSlotKind);
+          const _fbLabel3 = _pendingProse || placeIndexes.unresolved?.[_mapsUrlKey(url)];
+          const f3 = _renderMapsUnresolvedFallback(url, _fbLabel3, currentSlotKind);
           if (f3) {
             if (currentSlotKind === "cafe") cafeGuard.used = true;
+            _pendingProse = null;
             pushStep(f3);
           }
         }

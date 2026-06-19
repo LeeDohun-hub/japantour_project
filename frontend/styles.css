@@ -1326,8 +1326,8 @@ a.btn {
 }
 .btn.wiz-btn-outline:hover { color: var(--text); border-color: var(--border-strong); background: var(--accent-soft); }
 
-#btnRetryPlan { color: #c0392b; border-color: #c0392b; font-weight: 600; }
-#btnRetryPlan:hover { background: #c0392b; color: #fff; border-color: #c0392b; }
+#btnRetryPlan { background: #c0392b; color: #fff !important; border-color: #c0392b !important; font-weight: 600; }
+#btnRetryPlan:hover { background: #a93226; color: #fff !important; border-color: #a93226 !important; }
 
 /* Logged-in card */
 .logged-in-card {
