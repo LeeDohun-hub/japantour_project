@@ -3567,7 +3567,7 @@ function _hasJapanesePlaceText(text) {
 function _stripMixedCJK(str) {
   const s = String(str || "");
   if (/[가-힣]/.test(s) && /[㐀-鿿]/.test(s)) {
-    return s.replace(/[㐀-鿿]+s*/g, "").replace(/s{2,}/g, " ").trim();
+    return s.replace(/[㐀-鿿]+\s*/g, "").replace(/\s{2,}/g, " ").trim();
   }
   return s;
 }

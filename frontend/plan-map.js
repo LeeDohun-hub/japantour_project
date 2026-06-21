@@ -1114,7 +1114,8 @@
     const naverPlaceM = /map\.naver\.com/i.test(s) && s.match(/\/place\/(\d{6,})/i);
     if (naverPlaceM) return `naver-place:${naverPlaceM[1]}`;
     if (/map\.naver\.com/i.test(s)) {
-      return s.split("?")[0].replace(/\/$/, "");
+      const base = s.split("?")[0].replace(/\/$/, "");
+      try { return decodeURIComponent(base); } catch { return base; }
     }
     const m = s.match(/[?&]cid=(\d+)/);
     return m ? `cid:${m[1]}` : s.split("&g_mp=")[0].split("&")[0];

@@ -20,6 +20,55 @@ _MAPS_URL_IN_TEXT_RE = re.compile(
     re.I,
 )
 
+# 히라가나(3040–309F) + 가타카나(30A0–30FF) 감지
+_JP_KANA_RE = re.compile(r"[぀-ヿ]")
+
+# Naver 검색 URL에서 prefix와 쿼리 부분 분리
+_NAVER_SEARCH_URL_RE = re.compile(
+    r"(https?://map\.naver\.com/(?:v5|p)/search/)([^\s「」\]\)）]+)",
+    re.I,
+)
+
+
+def _fix_japanese_naver_urls(reply: str) -> str:
+    """Naver 검색 URL 쿼리에 히라가나·가타카나가 포함된 경우, 직전 줄의 한국어 장소명으로 교체한다.
+
+    LLM이 ZERO-CANDIDATE fallback 시 일본어 이름을 URL에 삽입하는 환각을 교정.
+    한자만 있는 경우는 한국어 한자일 수 있으므로 건드리지 않는다.
+    """
+    import urllib.parse
+
+    lines = reply.splitlines()
+    out: list[str] = []
+    _strip_decoration = re.compile(r"^[\s\-\*#>]+|[\s\-\*#>]+$")
+    _strip_brackets = re.compile(r"[\[「」『』【】\]\(\)（）]")
+
+    for idx, line in enumerate(lines):
+        m = _NAVER_SEARCH_URL_RE.search(line)
+        if m and _JP_KANA_RE.search(m.group(2)):
+            prev_name = ""
+            for back in range(1, min(4, idx + 1)):
+                candidate = lines[idx - back].strip()
+                # URL 포함 줄은 건너뜀
+                if _NAVER_SEARCH_URL_RE.search(candidate) or _MAPS_URL_IN_TEXT_RE.search(candidate):
+                    continue
+                candidate = re.sub(r"https?://\S+", "", candidate)
+                candidate = _strip_decoration.sub("", candidate)
+                candidate = _strip_brackets.sub("", candidate).strip()
+                if candidate:
+                    prev_name = candidate
+                    break
+
+            if prev_name:
+                prefix = m.group(1)
+                encoded = urllib.parse.quote(prev_name, safe="")
+                new_url = prefix + encoded
+                line = line[: m.start()] + new_url + line[m.end():]
+
+        out.append(line)
+
+    return "\n".join(out)
+
 
 def _norm_plan_place_name(text: str | None) -> str:
     return re.sub(r"\s+", "", str(text or "").strip().lower().strip("「」『』\"'`"))

@@ -137,6 +137,7 @@ from src.chain.itinerary_repair import (
     _extract_jp_name_map as _extract_jp_name_map,
     _apply_jp_names_to_places as _apply_jp_names_to_places,
     _repair_itinerary_place_urls as _repair_itinerary_place_urls,
+    _fix_japanese_naver_urls as _fix_japanese_naver_urls,
     _ITINERARY_SLOT_MARKERS as _ITINERARY_SLOT_MARKERS,
     _ITINERARY_DAY_RE as _ITINERARY_DAY_RE,
     _ITINERARY_BAD_PLACEHOLDER_RE as _ITINERARY_BAD_PLACEHOLDER_RE,
@@ -849,10 +850,11 @@ STRICT SECTION USAGE — NON-NEGOTIABLE:
   - Meal slots must be a concrete restaurant/cafe food venue name, never an attraction or generic food sentence. Forbidden examples: 「キッザニア ソウル」「ロッテワールドタワー」「公園近くの飲食店」「잠실 지역의 한국 음식점」「현지 맛을 즐길 수 있습니다」.
     ZERO-CANDIDATE EXCEPTION: If the 「食事候補」 section is completely empty (zero entries across ALL regions),
     you MAY use well-known real restaurants in the destination city from your training knowledge.
-    Requirements for the exception: (a) Korean official name only; (b) map URL must use Naver search format:
-    https://map.naver.com/v5/search/[URL-encoded-Korean-name]; (c) only use restaurants you are CERTAIN exist
-    in that Korean city — never fabricate; (d) still prohibited: generic descriptions like 「韓国料理店」,
-    "(식사 후보 리스트에 해당하는 가게가 없습니다)", or any "no candidate" notice.
+    Requirements for the exception: (a) Korean official name ONLY — NEVER use Japanese characters (hiragana/katakana) in the restaurant name or URL; (b) map URL must use Naver search format:
+    https://map.naver.com/v5/search/[URL-encoded-Korean-name] where the search query is the Korean name verbatim; (c) only use restaurants you are CERTAIN exist
+    in that Korean city — never fabricate a name; (d) still prohibited: generic descriptions like 「韓国料理店」,
+    "(식사 후보 리스트에 해당하는 가게가 없습니다)", or any "no candidate" notice;
+    (e) FORBIDDEN name examples: 「自然の中」「焼き菓子やコーヒー」「地元の食堂」— these are descriptions, not restaurant names; always use the real Korean name.
   - 「カフェ候補」 is a separate pool for itinerary rest/cafe time, not lunch/dinner. Never use cafe candidates as lunch/dinner unless no restaurant candidate exists.
 
 Restaurants / cafes:
@@ -900,7 +902,7 @@ Major malls / department stores (Lotte World Mall, Times Square, Starfield, Shin
   - NEVER include places from outside the traveler's selected destination region. If the destination is 서울 麻浦区（弘大）, every place must have a 서울 address — not 부산, 인천, 경기도, 제주도, etc.
   - Do NOT use 보정동카페거리(용인), 수산공원(김포), or any other place whose address is in a different city/region from the destination.
   - Zero-candidate fallback for meal slots: if 「食事候補」 is completely empty, you MAY use training knowledge (see ZERO-CANDIDATE EXCEPTION above). Use only restaurants in the SAME city.
-  - ATTRACTION ZERO-CANDIDATE EXCEPTION: If the Reference Data contains a 「観光スポット候補 — ゼロ候補フォールバック」 section, you MAY use well-known real tourist spots (national parks, national museums, cultural heritage sites, historic districts, cultural centers) from training knowledge. Requirements: (a) Korean official name only; (b) map URL must use https://map.naver.com/p/search/[URL-encoded-Korean-name]; (c) only use spots you are CERTAIN exist in that city; (d) align with the traveler's selected activities (nature/tradition/photo/nightview etc.); (e) NEVER use generic text like 「周辺を散策」 — always output a specific name + URL.
+  - ATTRACTION ZERO-CANDIDATE EXCEPTION: If the Reference Data contains a 「観光スポット候補 — ゼロ候補フォールバック」 section, you MAY use well-known real tourist spots (national parks, national museums, cultural heritage sites, historic districts, cultural centers) from training knowledge. Requirements: (a) Korean official name ONLY — NEVER use Japanese characters (hiragana/katakana) in the spot name or URL; forbidden examples: 「梧桐山公園」「北漢山夜景スポット」「韓国現代史」— use Korean: 「북한산국립공원」「수유근린공원」; (b) map URL MUST use https://map.naver.com/p/search/[URL-encoded-Korean-name] where the search query is the Korean official name verbatim — NEVER put Japanese characters in the URL; (c) only use spots you are CERTAIN exist in that city; (d) align with the traveler's selected activities (nature/tradition/photo/nightview etc.); (e) NEVER use generic text like 「周辺を散策」 or 「梧桐山公園の近くで散策」 — always output a specific name + URL; (f) NEVER duplicate the same spot across multiple days.
 """
     elif category == "itinerary":
         place_rule = """
@@ -2180,6 +2182,17 @@ _SEOUL_SUBAREA_ATTR_EXPANSION: dict[str, tuple[str, ...]] = {
     "seoul:yongsan":    ("이태원", "해방촌", "경리단길"),     # 용산구
     "seoul:seodaemun":  ("신촌", "연남동", "홍대"),           # 서대문구
     "seoul:eunpyeong":  ("북한산", "불광", "연신내"),         # 은평구
+    # 관광 밀도 낮음 구 — Naver Places 검색 보완을 위한 인접 동네·랜드마크 확장
+    "seoul:gangbuk":    ("북한산", "수유", "우이동", "미아"),          # 강북구
+    "seoul:dobong":     ("도봉산", "창동", "방학", "수유"),            # 도봉구
+    "seoul:nowon":      ("중계", "공릉", "태릉", "도봉산"),            # 노원구
+    "seoul:jungnang":   ("망우", "면목", "상봉", "묵동"),              # 중랑구
+    "seoul:yangcheon":  ("목동", "오목교", "신정"),                    # 양천구
+    "seoul:gangseo":    ("마곡", "발산", "화곡", "방화"),              # 강서구
+    "seoul:guro":       ("신도림", "구로디지털단지", "개봉"),           # 구로구
+    "seoul:geumcheon":  ("가산디지털단지", "독산", "시흥"),            # 금천구
+    "seoul:dongjak":    ("노량진", "상도", "흑석", "대방"),            # 동작구
+    "seoul:gwanak":     ("신림", "봉천", "낙성대", "서울대입구"),      # 관악구
 }
 
 
@@ -6523,6 +6536,7 @@ def route_and_answer(
             final, jp_map = _extract_jp_name_map(final)
             _jp_name_map.update(jp_map)
             final = _repair_itinerary_place_urls(final, api_places)
+            final = _fix_japanese_naver_urls(final)
             final = _repair_wizard_itinerary_rules(
                 final,
                 api_places,
