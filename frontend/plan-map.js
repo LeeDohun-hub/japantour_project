@@ -2437,7 +2437,27 @@
         stop.place = null;
         return;
       }
-      // 3차: 좌표 확보 실패 시 place 메타만 적용
+      // 3차: /api/naver-resolve/ fallback — Naver Local Search 미인덱싱 관광지(소규모 지역시설 등) 대응
+      // geocodeMissingStops가 await 완료 후 카드를 렌더링하므로 여기서 좌표를 채우면 번호까지 표시됨
+      if (!stop.isAccommodation && label) {
+        const resolved = await _resolveNaverCanonical(label);
+        if (resolved?.lat && resolved?.lng && _isKoreanCoords(resolved.lat, resolved.lng)) {
+          stop.lat = resolved.lat;
+          stop.lng = resolved.lng;
+          if (!stop.place) {
+            const canonical = resolved.canonical || label;
+            stop.place = {
+              name: canonical,
+              latitude: resolved.lat,
+              longitude: resolved.lng,
+              google_maps_uri: stop.url || `https://map.naver.com/p/search/${encodeURIComponent(canonical)}`,
+              maps_url: stop.url || `https://map.naver.com/p/search/${encodeURIComponent(canonical)}`,
+            };
+          }
+          return;
+        }
+      }
+      // 4차: 좌표 확보 실패 시 place 메타만 적용
       // 지도 핀은 없지만 Naver photo_url·naver_local_link를 이용한 카드/사진 렌더링 가능
       if (!stop.place && bestEffortPlace) {
         stop.place = {
