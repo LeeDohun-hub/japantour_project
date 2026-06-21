@@ -2464,6 +2464,18 @@
           if (p.latitude != null && _resultMatchesStop(stop, p, candidate) && _foodPlaceMatchesTripArea(stop, p) && _applyCoords(stop, p)) return;
           if (!bestEffortPlace && _resultMatchesStop(stop, p, candidate)) bestEffortPlace = p;
         }
+        // 1.5차: Places 검색 이름 매칭됐지만 좌표 없음 → Naver Local Search로 좌표 보완
+        // 예: "강북구립미술관"이 Places API에선 name만 반환하고 좌표 없는 경우
+        if (bestEffortPlace && bestEffortPlace.latitude == null) {
+          const namesToTry = [bestEffortPlace.name, ...candidates.slice(0, 2)].filter((n, i, a) => n && n.length >= 2 && a.indexOf(n) === i);
+          for (const name of namesToTry) {
+            const resolved = await _resolveNaverCanonical(name);
+            if (resolved?.lat && resolved?.lng && _isKoreanCoords(resolved.lat, resolved.lng)) {
+              const merged = { ...bestEffortPlace, latitude: resolved.lat, longitude: resolved.lng };
+              if (_applyCoords(stop, merged)) return;
+            }
+          }
+        }
       }
       // 2차: 주소 geocoder (숙박은 여기가 첫 시도, 관광지는 fallback)
       for (const candidate of candidates) {
@@ -2489,9 +2501,15 @@
           if (!m) return "";
           try { return decodeURIComponent(m[1].replace(/\+/g, " ")).trim(); } catch (_) { return ""; }
         })();
+        const _rRegionHint = String(_mapMeta.regionCities || _mapMeta.region_cities || "")
+          .split(/[,·\/\s]+/).map((s) => s.trim()).filter((s) => s.length >= 2)[0] || "";
+        const _addWithRegion = (base) =>
+          _rRegionHint && base && !base.includes(_rRegionHint) ? `${base} ${_rRegionHint}` : "";
         const resolveNames = [
           urlQ && /[가-힣]/.test(urlQ) ? urlQ : "",
+          urlQ && /[가-힣]/.test(urlQ) ? _addWithRegion(urlQ) : "",
           label,
+          _addWithRegion(label),
         ].filter((n, i, a) => n && a.indexOf(n) === i);
         for (const name of resolveNames) {
           const resolved = await _resolveNaverCanonical(name);
