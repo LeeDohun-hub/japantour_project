@@ -19,6 +19,15 @@ from typing import Any
 
 import requests
 
+try:
+    from django.core.cache import cache as _django_cache
+    _CACHE_AVAILABLE = True
+except ImportError:
+    _django_cache = None  # type: ignore[assignment]
+    _CACHE_AVAILABLE = False
+
+_VK_CACHE_TTL = 7200  # 2시간 — TourAPI 관광지 데이터는 자주 바뀌지 않음
+
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://apis.data.go.kr/B551011/JpnService2"
@@ -35,6 +44,101 @@ MOBILE_APP = "Japantour"
 
 # 서울 areaCode (legacy) — ldongCode2 연동 전 기본값
 SEOUL_AREA_CODE = "1"
+
+# 위저드 sido 이름 → JpnService2 areaCode
+WIZARD_SIDO_TO_AREA: dict[str, str] = {
+    "서울특별시": "1",
+    "인천광역시": "2",
+    "대전광역시": "3",
+    "대구광역시": "4",
+    "광주광역시": "5",
+    "부산광역시": "6",
+    "울산광역시": "7",
+    "세종특별자치시": "8",
+    "경기도": "31",
+    "강원특별자치도": "32",
+    "강원도": "32",
+    "충청북도": "33",
+    "충청남도": "34",
+    "경상북도": "35",
+    "경상남도": "36",
+    "전북특별자치도": "37",
+    "전라북도": "37",
+    "전라남도": "38",
+    "제주특별자치도": "39",
+    "제주도": "39",
+}
+
+# (area_code, 도시명 한글 키워드) → sigungu_code  (JpnService2 searchStay2)
+_CITY_SIGUNGU: dict[tuple[str, str], str] = {
+    ("31", "가평"): "1",  ("31", "고양"): "2",  ("31", "과천"): "3",
+    ("31", "광명"): "4",  ("31", "광주"): "5",  ("31", "구리"): "6",
+    ("31", "군포"): "7",  ("31", "남양주"): "9", ("31", "동두천"): "10",
+    ("31", "부천"): "11", ("31", "성남"): "12", ("31", "수원"): "13",
+    ("31", "시흥"): "14", ("31", "안산"): "15", ("31", "안성"): "16",
+    ("31", "안양"): "17", ("31", "양주"): "18", ("31", "양평"): "19",
+    ("31", "여주"): "20", ("31", "연천"): "21", ("31", "오산"): "22",
+    ("31", "용인"): "23", ("31", "의왕"): "24", ("31", "의정부"): "25",
+    ("31", "이천"): "26", ("31", "파주"): "27", ("31", "평택"): "28",
+    ("31", "포천"): "29", ("31", "하남"): "30", ("31", "화성"): "31",
+    ("32", "강릉"): "1",  ("32", "고성"): "2",  ("32", "동해"): "3",
+    ("32", "삼척"): "4",  ("32", "속초"): "5",  ("32", "양구"): "6",
+    ("32", "양양"): "7",  ("32", "영월"): "8",  ("32", "원주"): "9",
+    ("32", "인제"): "10", ("32", "정선"): "11", ("32", "철원"): "12",
+    ("32", "춘천"): "13", ("32", "태백"): "14", ("32", "평창"): "15",
+    ("32", "홍천"): "16", ("32", "화천"): "17", ("32", "횡성"): "18",
+    ("33", "괴산"): "1",  ("33", "단양"): "2",  ("33", "보은"): "3",
+    ("33", "영동"): "4",  ("33", "옥천"): "5",  ("33", "음성"): "6",
+    ("33", "제천"): "7",  ("33", "진천"): "8",  ("33", "청주"): "10",
+    ("33", "충주"): "11", ("33", "증평"): "12",
+    ("34", "공주"): "1",  ("34", "금산"): "2",  ("34", "논산"): "3",
+    ("34", "당진"): "4",  ("34", "보령"): "5",  ("34", "부여"): "6",
+    ("34", "서산"): "7",  ("34", "서천"): "8",  ("34", "아산"): "9",
+    ("34", "예산"): "11", ("34", "천안"): "12", ("34", "청양"): "13",
+    ("34", "태안"): "14", ("34", "홍성"): "15",
+    ("35", "경산"): "1",  ("35", "경주"): "2",  ("35", "고령"): "3",
+    ("35", "구미"): "4",  ("35", "김천"): "6",  ("35", "문경"): "7",
+    ("35", "봉화"): "8",  ("35", "상주"): "9",  ("35", "성주"): "10",
+    ("35", "안동"): "11", ("35", "영덕"): "12", ("35", "영양"): "13",
+    ("35", "영주"): "14", ("35", "영천"): "15", ("35", "예천"): "16",
+    ("35", "울릉"): "17", ("35", "울진"): "18", ("35", "의성"): "19",
+    ("35", "청도"): "20", ("35", "청송"): "21", ("35", "칠곡"): "22",
+    ("35", "포항"): "23",
+    ("36", "거제"): "1",  ("36", "거창"): "2",  ("36", "고성"): "3",
+    ("36", "김해"): "4",  ("36", "남해"): "5",  ("36", "밀양"): "7",
+    ("36", "사천"): "8",  ("36", "산청"): "9",  ("36", "양산"): "10",
+    ("36", "의령"): "12", ("36", "진주"): "13", ("36", "창녕"): "15",
+    ("36", "창원"): "16", ("36", "통영"): "17", ("36", "하동"): "18",
+    ("36", "함안"): "19", ("36", "함양"): "20", ("36", "합천"): "21",
+    ("37", "고창"): "1",  ("37", "군산"): "2",  ("37", "김제"): "3",
+    ("37", "남원"): "4",  ("37", "무주"): "5",  ("37", "부안"): "6",
+    ("37", "순창"): "7",  ("37", "완주"): "8",  ("37", "익산"): "9",
+    ("37", "임실"): "10", ("37", "장수"): "11", ("37", "전주"): "12",
+    ("37", "정읍"): "13", ("37", "진안"): "14",
+    ("38", "강진"): "1",  ("38", "고흥"): "2",  ("38", "곡성"): "3",
+    ("38", "광양"): "4",  ("38", "구례"): "5",  ("38", "나주"): "6",
+    ("38", "담양"): "7",  ("38", "목포"): "8",  ("38", "무안"): "9",
+    ("38", "보성"): "10", ("38", "순천"): "11", ("38", "신안"): "12",
+    ("38", "여수"): "13", ("38", "영광"): "16", ("38", "영암"): "17",
+    ("38", "완도"): "18", ("38", "장성"): "19", ("38", "장흥"): "20",
+    ("38", "진도"): "21", ("38", "함평"): "22", ("38", "해남"): "23",
+    ("38", "화순"): "24",
+    ("39", "서귀포"): "3", ("39", "제주"): "4",
+}
+
+
+def wizard_to_kto_codes(sido: str, sigungu: str) -> tuple[str, str]:
+    """위저드 sido/sigungu 문자열 → (area_code, sigungu_code)."""
+    area_code = WIZARD_SIDO_TO_AREA.get(sido.strip(), "")
+    if not area_code:
+        return "", ""
+    sigungu_code = ""
+    if sigungu and area_code:
+        for (ac, city_kw), sgu in _CITY_SIGUNGU.items():
+            if ac == area_code and city_kw in sigungu:
+                sigungu_code = sgu
+                break
+    return area_code, sigungu_code
 
 # TourAPI contentTypeId (JpnService2) — KorService2의 12/14와 다름
 CONTENT_TYPE_ATTRACTION = "76"  # 관광지·명소
@@ -575,6 +679,31 @@ class VisitKoreaClient:
             num_of_rows=num_of_rows,
         )
 
+    def search_keyword(
+        self,
+        keyword: str,
+        *,
+        area_code: str = "",
+        sigungu_code: str = "",
+        content_type_id: str = "80",  # 80 = 숙박 (JpnService2)
+        page_no: int = 1,
+        num_of_rows: int = 10,
+    ) -> tuple[list[TourApiItem], str, str, int]:
+        """searchKeyword2 — 키워드로 관광정보 검색."""
+        extra: dict[str, str] = {"keyword": keyword}
+        if content_type_id:
+            extra["contentTypeId"] = content_type_id
+        if area_code:
+            extra["areaCode"] = area_code
+        if sigungu_code:
+            extra["sigunguCode"] = sigungu_code
+        return self._list(
+            "searchKeyword2",
+            extra,
+            page_no=page_no,
+            num_of_rows=num_of_rows,
+        )
+
     def search_attractions(
         self,
         *,
@@ -587,18 +716,27 @@ class VisitKoreaClient:
         """areaBasedList2 — 지역별 관광지·문화시설."""
         if not area_code:
             return [], "", "", 0
+        cache_key = f"vk:abl2:{area_code}:{sigungu_code}:{content_type_id}:{num_of_rows}:{page_no}"
+        if _CACHE_AVAILABLE:
+            cached = _django_cache.get(cache_key)
+            if cached is not None:
+                logger.debug("VK cache hit: %s", cache_key)
+                return cached  # type: ignore[return-value]
         extra: dict[str, str] = {
             "areaCode": area_code,
             "contentTypeId": content_type_id,
         }
         if sigungu_code:
             extra["sigunguCode"] = sigungu_code
-        return self._list(
+        result = self._list(
             "areaBasedList2",
             extra,
             page_no=page_no,
             num_of_rows=num_of_rows,
         )
+        if _CACHE_AVAILABLE:
+            _django_cache.set(cache_key, result, _VK_CACHE_TTL)
+        return result
 
     def search_attractions_mixed(
         self,
@@ -639,6 +777,12 @@ class VisitKoreaClient:
             return [], "", "", 0
         if not self.service_key:
             raise ValueError("PUBLIC_API_KEY가 설정되지 않았습니다.")
+        cache_key = f"vk:green:{area_code}:{num_of_rows}"
+        if _CACHE_AVAILABLE:
+            cached = _django_cache.get(cache_key)
+            if cached is not None:
+                logger.debug("VK green cache hit: %s", cache_key)
+                return cached  # type: ignore[return-value]
         params: dict[str, str] = {
             "serviceKey": self.service_key,
             "MobileOS": MOBILE_OS,
@@ -665,7 +809,10 @@ class VisitKoreaClient:
         body = (raw.get("response") or {}).get("body") or {}
         total = int(body.get("totalCount") or 0)
         rows = _parse_items(raw)
-        return [_item_from_row(r) for r in rows], code, msg, total
+        result = [_item_from_row(r) for r in rows], code, msg, total
+        if _CACHE_AVAILABLE:
+            _django_cache.set(cache_key, result, _VK_CACHE_TTL)
+        return result
 
     def probe(self) -> dict[str, Any]:
         """searchFestival2 / searchStay2 연결·응답 요약 (디버그용)."""

@@ -1326,6 +1326,9 @@ a.btn {
 }
 .btn.wiz-btn-outline:hover { color: var(--text); border-color: var(--border-strong); background: var(--accent-soft); }
 
+#btnRetryPlan { background: #c0392b; color: #fff !important; border-color: #c0392b !important; font-weight: 600; }
+#btnRetryPlan:hover { background: #a93226; color: #fff !important; border-color: #a93226 !important; }
+
 /* Logged-in card */
 .logged-in-card {
   display: flex; align-items: center; gap: 1rem;
@@ -1947,6 +1950,13 @@ a.btn {
   font-size: 0.95rem;
   font-weight: 700;
   color: var(--text);
+}
+.plan-day-stop__name-ko {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #888;
+  margin-top: 0.1rem;
 }
 .plan-day-stop__lock {
   flex-shrink: 0;
@@ -3245,6 +3255,17 @@ a.place-card:hover .place-maps-hint {
   flex: 0 0 auto; width: auto !important; margin-top: 0 !important;
   white-space: nowrap; align-self: center;
   padding: .5rem .85rem; font-size: .8rem;
+  background: var(--accent) !important;
+  color: #fff !important;
+  border-color: var(--accent) !important;
+}
+.hotel-select-btn:hover {
+  background: var(--accent-dark, #1a3a6e) !important;
+  border-color: var(--accent-dark, #1a3a6e) !important;
+}
+.hotel-select-btn.selected {
+  background: #28a745 !important;
+  border-color: #28a745 !important;
 }
 @media (max-width: 560px) {
   .hotel-card {

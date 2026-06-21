@@ -149,9 +149,39 @@
 
   function _knownKoreanSearchName(name) {
     const compact = _compactText(name);
+    // 특수 케이스 (긴 정식명)
     if (/弘益.*現代美術館|홍익.*현대미술관/i.test(compact)) return "홍익대학교 현대미술관";
     if (/dynamicmaze|다이나믹메이즈/i.test(compact)) return "다이나믹메이즈 서울 인사동";
     if (/명동성당|명동대성당|myeongdong.*cathedral/i.test(compact)) return "천주교 서울대교구 주교좌명동대성당";
+    if (/명동.*메인|명동.*스트리트|meongdong.*main|meongdong.*street/i.test(compact)) return "명동거리";
+    if (/덕수궁.*돌담|徳寿宮.*石垣|石垣道/i.test(compact)) return "덕수궁 돌담길";
+    // 일본어 한자 → 한국어 (광범위 매핑)
+    if (/ソウルN?タワー|Nタワー|南山.*タワー|남산.*타워/.test(compact)) return "남산서울타워";
+    if (/仁寺洞通り|인사동통り/.test(compact)) return "인사동길";
+    if (/仁寺洞/.test(compact)) return "인사동길";
+    if (/サムジキル/.test(compact)) return "쌈지길";
+    if (/三清洞通り|三清洞/.test(compact)) return "삼청동 카페거리";
+    if (/北村韓屋村|北村/.test(compact)) return "북촌한옥마을";
+    if (/益善洞/.test(compact)) return "익선동 한옥거리";
+    if (/景福宮/.test(compact)) return "경복궁";
+    if (/昌徳宮|창덕궁/.test(compact)) return "창덕궁";
+    if (/徳寿宮/.test(compact)) return "덕수궁";
+    if (/明洞通り|明洞/.test(compact)) return "명동거리";
+    if (/光化門広場|光化門/.test(compact)) return "광화문광장";
+    if (/清渓川/.test(compact)) return "청계천";
+    if (/東大門.*デザイン|東大門.*Design|DDP/.test(compact)) return "동대문디자인플라자";
+    if (/東大門市場|東大門/.test(compact)) return "동대문시장";
+    if (/南大門市場|南大門/.test(compact)) return "남대문시장";
+    if (/南山公園|南山.*공원/.test(compact)) return "남산공원";
+    if (/弘大入口|弘大/.test(compact)) return "홍대입구역";
+    if (/梨泰院/.test(compact)) return "이태원";
+    if (/江南/.test(compact)) return "강남역";
+    if (/漢江.*公園|漢江/.test(compact)) return "한강공원";
+    if (/ロッテワールドタワー|롯데월드타워/.test(compact)) return "롯데월드타워";
+    if (/COEX|コエックス/.test(compact)) return "코엑스";
+    if (/東廟.*市場|東廟/.test(compact)) return "동묘 벼룩시장";
+    if (/ソウルランタン|ソウル灯籠|등불축제|연등/.test(compact)) return "서울빛초롱축제";
+    if (/ソウル旧ベルギー|旧ベルギー|서울시립미술관/.test(compact)) return "서울시립미술관";
     return "";
   }
 
@@ -185,15 +215,46 @@
     return `https://map.naver.com/p/search/${encodeURIComponent(canonical)}`;
   }
 
-  async function _prefetchNaverResolveForEl(containerEl) {
+  async function _prefetchNaverResolveForEl(containerEl, day) {
     const links = containerEl.querySelectorAll("a[data-raw-name]");
+    let mapNeedsRefresh = false;
+    const resolvePromises = [];
     for (const link of links) {
       const rawName = link.dataset.rawName;
       if (!rawName) continue;
-      _resolveNaverCanonical(rawName).then((resolved) => {
+      // 일본어 이름 → 한국어 변환 우선순위:
+      // 1) 괄호 안 한국어 "徳寿宮石垣道（덕수궁 돌담길）"
+      // 2) _knownKoreanSearchName 매핑 "仁寺洞通り" → "인사동길"
+      // 3) rawName 그대로 (이미 한국어거나 매핑 없음)
+      const parenKo = rawName.match(/[（(]([가-힣][가-힣\s·]{0,30})[）)]/);
+      const knownKo = !parenKo ? _knownKoreanSearchName(rawName) : "";
+      const resolveQuery = parenKo ? parenKo[1].trim() : (knownKo || rawName);
+      const p = _resolveNaverCanonical(resolveQuery).then((resolved) => {
         const url = _naverCanonicalUrl(resolved);
         if (url && link.dataset.rawName === rawName) {
           link.href = url;
+        }
+        // resolve 결과 좌표로 stop lat/lng 업데이트 (map pin 복원)
+        const lat = resolved?.lat;
+        const lng = resolved?.lng;
+        if (lat && lng && lat > 10 && lng > 100 && day?.stops) {
+          const article = link.closest("[data-stop-index]");
+          const stopIdx = article ? parseInt(article.dataset.stopIndex, 10) : -1;
+          const stop = stopIdx >= 0 ? day.stops[stopIdx] : null;
+          if (stop && stop.lat == null) {
+            stop.lat = lat;
+            stop.lng = lng;
+            mapNeedsRefresh = true;
+          }
+        }
+      });
+      resolvePromises.push(p);
+    }
+    // 모든 resolve 완료 후 한 번만 지도 재렌더링
+    if (resolvePromises.length) {
+      Promise.all(resolvePromises).then(() => {
+        if (mapNeedsRefresh && day && day.day === _activeDay) {
+          renderMapForDay(day);
         }
       });
     }
@@ -859,7 +920,7 @@
   }
 
   // 슬롯 레이블 판별 (wizard.js _PLAN_SLOT_RE와 동기화 유지)
-  const _SLOT_LABEL_LINE_RE = /^(?:\[(?:午前|午後|昼食|夕食|夜|朝食|朝|ランチ|ディナー|오전|오후|점심|저녁|밤|아침)\]|(?:午前|午後|昼食|夕食|夜|朝食|朝|ランチ|ディナー|モーニング|夜食|深夜|오전|오후|점심|저녁|밤|아침|야식|간식|브런치|런치|디너)(?=$|\s|[:：]))/u;
+  const _SLOT_LABEL_LINE_RE = /^(?:\[(?:午前|午後|昼食|夕食|夜|朝食|朝|ランチ|ディナー|カフェ|오전|오후|점심|저녁|밤|아침|카페)\]|(?:午前|午後|昼食|夕食|夜|朝食|朝|ランチ|ディナー|モーニング|カフェ|夜食|深夜|오전|오후|점심|저녁|밤|아침|카페|야식|간식|브런치|런치|디너)(?=$|\s|[:：]))/u;
 
   function _isSlotLabelLine(line) {
     return _SLOT_LABEL_LINE_RE.test(String(line || "").trim());
@@ -1137,6 +1198,7 @@
     return {
       key: stopLockKey(stop, dayNum),
       day: dayNum,
+      slot: stop?.slot || "",
       name: p.name || stop?.label || "",
       category: stop?.isAirport
         ? "空港"
@@ -1286,6 +1348,7 @@
     const days = [];
     let current = null;
     let orphanStops = [];
+    let _currentSlot = ""; // 현재 시간대 슬롯 (夜/午後/昼食 등) — lock payload에 포함
 
     const pushStop = (dayObj, url, lineIdx) => {
       const trimmed = lines[lineIdx].trim();
@@ -1304,11 +1367,30 @@
         const nk = _normStopText(label);
         if (nk) place = placeIndex.byName[nk] || null;
       }
+      // label이 일본어(漢字)라 byName 미스 → Naver search URL 쿼리 텀으로 재시도
+      // e.g. label="明洞聖堂", URL="/p/search/명동성당"
+      //   → "명동성당" 시도, 또 _knownKoreanSearchName("명동성당")="천주교서울대교구주교좌명동대성당" 시도
+      if (!place && placeIndex.byName) {
+        const searchMatch = urlOnly.match(/\/search\/([^?&/#]+)/);
+        if (searchMatch) {
+          const decoded = (() => { try { return decodeURIComponent(searchMatch[1]); } catch (_) { return searchMatch[1]; } })();
+          const qk = _normStopText(decoded);
+          if (qk) place = placeIndex.byName[qk] || null;
+          if (!place) {
+            const knownFull = _knownKoreanSearchName(decoded);
+            if (knownFull) {
+              const kk = _normStopText(knownFull);
+              if (kk) place = placeIndex.byName[kk] || null;
+            }
+          }
+        }
+      }
       const rec = {
         url: urlOnly,
         place,
         label,
         line: trimmed,
+        slot: _currentSlot,
         sourceLineIdx: lineIdx,
         sourceUrl: urlOnly,
         lat: place?.latitude != null ? Number(place.latitude) : null,
@@ -1327,7 +1409,13 @@
       if (dayNum !== null && isDayHeaderLine(t)) {
         const num = dayNum === -1 ? (fallbackDayCount || days.length + 1 || 99) : dayNum;
         current = { day: num, title: t.replace(/^#+\s*/, ""), stops: [] };
+        _currentSlot = "";
         days.push(current);
+        continue;
+      }
+      if (_SLOT_LABEL_LINE_RE.test(t)) {
+        const _sm = t.match(/(午前|午後|昼食|夕食|夜|朝食|ランチ|ディナー|カフェ|오전|오후|점심|저녁|밤|아침|카페)/u);
+        if (_sm) _currentSlot = _sm[1];
         continue;
       }
       const mapsUrl = _extractMapsUrl(t);
@@ -2064,9 +2152,15 @@
         // e.g. "ベーグル", "伝統工芸や雑貨ショップ" — 좌표도 없고, 매칭된 place도 없고, 한국어도 없으면 제외
         // 단, Maps URL에서 직접 생성된 stop(축제명 등)은 일본어라도 유지
         if (!hasCoords && !p.name && !stop.sourceUrl && !/[가-힣]/.test(rawLabel)) return null;
-        const name = esc(rawLabel || stop.label || p.name);
+        const _dispLabel = rawLabel || stop.label || p.name || "";
+        // 일본어로만 된 이름 → 한국어 이름 병기 (e.g. "仁寺洞通り" → "仁寺洞通り\n인사동길")
+        const _isJaOnly = /[぀-ヿ一-鿿]/.test(_dispLabel) && !/[가-힣]/.test(_dispLabel);
+        const _koSub = _isJaOnly ? _knownKoreanSearchName(_dispLabel) : "";
+        const name = _koSub
+          ? `${esc(_dispLabel)}<span class="plan-day-stop__name-ko">${esc(_koSub)}</span>`
+          : esc(_dispLabel);
         // 공항·숙박 외에 이름이 없는 stop은 빈 카드가 되므로 제거
-        if (!name && !stop.isAirport && !stop.isAccommodation) return null;
+        if (!_dispLabel && !stop.isAirport && !stop.isAccommodation) return null;
         const lockable = !stop.isAirport && !stop.isAccommodation;
         const lockKey = stopLockKey(stop, day.day);
         const isLocked = _lockedStops.has(lockKey);
@@ -2122,7 +2216,7 @@
       .filter(Boolean)
       .join("");
     el.innerHTML = `${renderAirportTransferCard(day)}${renderLongDistanceTransitCard(day)}${stopCards}`;
-    _prefetchNaverResolveForEl(el);
+    _prefetchNaverResolveForEl(el, day);
     el.querySelectorAll(".plan-day-stop__lock").forEach((btn) => {
       btn.addEventListener("click", () => {
         const key = btn.dataset.lockKey || "";

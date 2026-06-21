@@ -792,6 +792,7 @@ how this app's wizard, cards, saved plans, maps, PDF/share, and integrated data
 sources work.
 {lang_rule}
 Use katakana alongside Korean place/area names (e.g., 明洞（ミョンドン）) for readability.
+NEVER write placeholder text such as (한국이름), (한국어명), (이름), (korean name), or any other stand-in — always write the actual Korean name or omit the parenthetical entirely.
 
 [CORE PRINCIPLES]
 1. FACTUALITY FIRST: Do not generate information you cannot verify from the provided data.
@@ -843,18 +844,25 @@ Real-time place search data is not available. Give a helpful answer using genera
 STRICT SECTION USAGE — NON-NEGOTIABLE:
   - [午前] slots: ONLY use entries from 「観光スポット候補（食事には使わない）」. NEVER place any restaurant, cafe, food stall, bar, dessert shop, market-food stop, or eating/drinking venue in 午前. Each slot = ONE attraction name + ONE Naver map URL. Do NOT add a second attraction URL as a "companion" in the same slot.
   - ABSOLUTE — Naver map URL search queries MUST be written in Korean or romanized English. NEVER use Japanese characters in a Naver map URL search term. Wrong: map.naver.com/p/search/幸州山城歴史公園 — Right: map.naver.com/p/search/행주산성%20역사공원. Copy URLs verbatim from Reference Data; when generating a fallback URL, use the Korean official name only.
+  - ONE VENUE = ONE URL (ABSOLUTE): Each named venue must have its OWN Naver map URL on the immediately following line. FORBIDDEN: using a generic area search URL (e.g., map.naver.com/p/search/인사동) as the only anchor when you are writing specific venues within that area (e.g., 쌈지길, DYNAMIC MAZE). Every specific venue name = its own separate slot + its own URL. Do NOT group multiple named venues under one area URL.
+  - SPOT NAME + URL ALWAYS REQUIRED: Every sightseeing slot you write — whether from Reference Data OR from your training knowledge — MUST have a Korean name in parentheses after the Japanese name on the SAME LINE, and a Naver URL on the VERY NEXT LINE. This is not optional even for well-known landmarks. Example: 徳寿宮石垣道（덕수궁 돌담길）→ next line: https://map.naver.com/v5/search/덕수궁%20돌담길 / 明洞聖堂（명동성당）→ next line: https://map.naver.com/v5/search/명동성당. NEVER leave (한국이름) or any placeholder — always fill in the actual Korean name.
   - [午後] slots: use entries from 「観光スポット候補（食事には使わない）」, and when the traveler selected cafe/coffee/cafe hopping, add at most one concrete 「カフェ候補」 as an afternoon location-card stop after at least one non-food stop. Each slot = ONE attraction name + ONE Naver map URL.
   - NEVER replace a concrete afternoon/night stop with generic text such as 「市内の自然や海岸沿いで過ごす」「フォトスポットとして撮影を楽しむ」「周辺でゆったり」. Pick one verified venue/beach/park/street candidate and write its exact name + Naver map URL.
   - [夜/밤] slots: ONLY sightseeing venues (night view, walk, park, cultural street, market browsing). NEVER place a 食事候補 restaurant in [夜/밤] — put it in [夕食] instead.
   - [昼食] and [夕食] slots: ONLY use entries from 「食事候補」. NEVER use 観光スポット候補 entries as meal items. NEVER leave these slots empty on a sightseeing day — if no candidate, use the ZERO-CANDIDATE EXCEPTION below.
+  - MEAL URL MANDATORY: Every 昼食/夕食 venue — whether from 「食事候補」 or from training knowledge — MUST have its Naver map URL on the VERY NEXT LINE immediately after the restaurant name line. No exceptions. Use the URL from Reference Data if available; otherwise use https://map.naver.com/v5/search/[Korean-name].
   - Meal slots must be a concrete restaurant/cafe food venue name, never an attraction or generic food sentence. Forbidden examples: 「キッザニア ソウル」「ロッテワールドタワー」「公園近くの飲食店」「잠실 지역의 한국 음식점」「현지 맛을 즐길 수 있습니다」.
     ZERO-CANDIDATE EXCEPTION: If the 「食事候補」 section is completely empty (zero entries across ALL regions),
+    OR if all listed candidates have already been used and no unused candidate remains for a required meal slot,
     you MAY use well-known real restaurants in the destination city from your training knowledge.
     Requirements for the exception: (a) Korean official name ONLY — NEVER use Japanese characters (hiragana/katakana) in the restaurant name or URL; (b) map URL must use Naver search format:
     https://map.naver.com/v5/search/[URL-encoded-Korean-name] where the search query is the Korean name verbatim; (c) only use restaurants you are CERTAIN exist
     in that Korean city — never fabricate a name; (d) still prohibited: generic descriptions like 「韓国料理店」,
     "(식사 후보 리스트에 해당하는 가게가 없습니다)", or any "no candidate" notice;
     (e) FORBIDDEN name examples: 「自然の中」「焼き菓子やコーヒー」「地元の食堂」— these are descriptions, not restaurant names; always use the real Korean name.
+    (f) FORBIDDEN generic meal terms — NEVER use 포장마차, 노점, 길거리음식, 푸드코트, 시장 음식, or ANY area-name-only
+    entry like "명동 포장마차" / "홍대 포장마차". Must be a SPECIFIC named restaurant, e.g. 명동교자, 진진, 을지면옥.
+    CRITICAL: NEVER skip a 昼食 or 夕食 slot on a sightseeing day — if candidates are exhausted, use this fallback.
   - 「カフェ候補」 is a separate pool for itinerary rest/cafe time, not lunch/dinner. Never use cafe candidates as lunch/dinner unless no restaurant candidate exists.
 
 Restaurants / cafes:
@@ -901,7 +909,7 @@ Major malls / department stores (Lotte World Mall, Times Square, Starfield, Shin
   - If a chain restaurant or attraction (e.g. "홍대개미", "KT&G 상상마당") appears in Reference Data, use ONLY the branch whose URL and address are in Reference Data. NEVER pick a different branch from training knowledge (e.g. 부산점, 부평점, 인천점 when the destination is 홍대/서울).
   - NEVER include places from outside the traveler's selected destination region. If the destination is 서울 麻浦区（弘大）, every place must have a 서울 address — not 부산, 인천, 경기도, 제주도, etc.
   - Do NOT use 보정동카페거리(용인), 수산공원(김포), or any other place whose address is in a different city/region from the destination.
-  - Zero-candidate fallback for meal slots: if 「食事候補」 is completely empty, you MAY use training knowledge (see ZERO-CANDIDATE EXCEPTION above). Use only restaurants in the SAME city.
+  - Zero-candidate fallback for meal slots: if 「食事候補」 is completely empty OR all candidates are already used, you MAY use training knowledge (see ZERO-CANDIDATE EXCEPTION above). Use only restaurants in the SAME city. This overrides the "ONLY use Reference Data" rule for meal slots when candidates are exhausted.
   - ATTRACTION ZERO-CANDIDATE EXCEPTION: If the Reference Data contains a 「観光スポット候補 — ゼロ候補フォールバック」 section, you MAY use well-known real tourist spots (national parks, national museums, cultural heritage sites, historic districts, cultural centers) from training knowledge. Requirements: (a) Korean official name ONLY — NEVER use Japanese characters (hiragana/katakana) in the spot name or URL; forbidden examples: 「梧桐山公園」「北漢山夜景スポット」「韓国現代史」— use Korean: 「북한산국립공원」「수유근린공원」; (b) map URL MUST use https://map.naver.com/p/search/[URL-encoded-Korean-name] where the search query is the Korean official name verbatim — NEVER put Japanese characters in the URL; (c) only use spots you are CERTAIN exist in that city; (d) align with the traveler's selected activities (nature/tradition/photo/nightview etc.); (e) NEVER use generic text like 「周辺を散策」 or 「梧桐山公園の近くで散策」 — always output a specific name + URL; (f) NEVER duplicate the same spot across multiple days.
 """
     elif category == "itinerary":
@@ -5503,6 +5511,40 @@ def route_and_answer(
             logger.warning("VisitKorea API error [%s]: %s", category, exc, exc_info=True)
             return [], [], [], str(exc)
 
+    def _do_visitkorea_attr_only() -> list[TourApiItem]:
+        """관광지(attractions_mixed)만 조회 — itinerary_places 우선순위용.
+
+        _do_visitkorea와 달리 축제·숙박·쇼핑 조회를 건너뛰므로 캐시 미스 시에도
+        1~3초 안에 완료된다. _f_vk(전체)는 LLM 컨텍스트 생성에 별도 사용한다.
+        """
+        if not _wants_visitkorea_region_data(category):
+            return []
+        try:
+            vk = VisitKoreaClient()
+            if not vk.is_configured:
+                return []
+            area_codes = _area_codes_from_profile(traveler_profile, user_message, keyword)
+            fallback_area = _infer_legacy_area_code(user_message, keyword)
+            if not area_codes and fallback_area:
+                area_codes = [fallback_area]
+            if not area_codes:
+                return []
+            vk_rows = 14 if int((traveler_profile or {}).get("plan_reroll") or 0) > 0 else 10
+            _vk_ctx = f"{user_message} {keyword}"
+            attr_batches: list[list[TourApiItem]] = []
+            for ac in area_codes:
+                sgu = _get_city_sigungu(ac, _vk_ctx)
+                batch, _, _, _ = vk.search_attractions_mixed(
+                    area_code=ac,
+                    sigungu_code=sgu,
+                    num_of_rows=25 if sgu else 30,
+                )
+                attr_batches.append(batch)
+            return _merge_tour_items(attr_batches, limit=35, shuffle=False)
+        except Exception as exc:
+            logger.warning("VK attr-only fetch failed: %s", exc)
+            return []
+
     def _do_kto_datalab() -> tuple[str, list[str]]:
         if not _wants_visitkorea_region_data(category):
             return "", []
@@ -5915,18 +5957,20 @@ def route_and_answer(
         _f_flights  = _pool.submit(_do_flights)
         _f_sports   = _pool.submit(_do_sports)
         _f_vk       = _pool.submit(_do_visitkorea)
+        _f_vk_attr  = _pool.submit(_do_visitkorea_attr_only)  # 관광지만 빠르게 — itinerary_places 전용
         _f_kto_dl   = _pool.submit(_do_kto_datalab)
 
         def _do_itinerary_with_vk_priority() -> list:
-            # VK 완료를 최대 3초만 대기. 느릴 경우 VK 없이 바로 Naver 검색 시작해
-            # 나머지 타임아웃을 최대한 음식/관광지 검색에 사용한다.
+            # 관광지-전용 future(_f_vk_attr)를 5초 대기.
+            # 축제/숙박/쇼핑을 포함한 _f_vk와 달리 attractions_mixed 1~3 콜만 수행하므로
+            # 캐시 미스 첫 요청에도 5초 안에 거의 완료된다.
             try:
-                _vk_s, _vk_f, _vk_a, _ = _f_vk.result(timeout=3)
+                _vk_a = _f_vk_attr.result(timeout=5)
                 _vk_a_filtered = _filter_vk_attractions_by_subarea(_vk_a, traveler_profile)
                 vk_pq = _vk_attraction_to_naver_queries(_vk_a_filtered, limit=20) if _vk_a_filtered else None
                 vk_extra = _vk_attractions_to_naver_places(_vk_a_filtered) if _vk_a_filtered else None
             except concurrent.futures.TimeoutError:
-                logger.warning("VK result timeout in itinerary_places worker — proceeding without VK priority")
+                logger.warning("VK attr result timeout (5s) in itinerary_places worker — proceeding without VK priority")
                 vk_pq = None
                 vk_extra = None
             return _do_itinerary_places(priority_attr_queries=vk_pq, extra_attr_places=vk_extra)

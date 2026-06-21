@@ -2442,9 +2442,10 @@ function buildPrompt(isReroll = false) {
   }
   if (lockedItems.length) {
     lines.push(
-      "【固定スポット — 最優先】ユーザーが固定した以下の場所は必ず同じ日程内に残す。前回スポットの除外対象にしない。固定スポット以外だけ差し替えてよい。",
+      "【固定スポット — 最優先】ユーザーが固定した以下の場所は必ず同じ日程内・同じ時間帯に残す。前回スポットの除外対象にしない。固定スポット以外だけ差し替えてよい。",
       ...lockedItems.map((it, idx) => {
-        const parts = [`${idx + 1}. Day ${it.day || "?"}`, it.name];
+        const daySlot = `Day ${it.day || "?"}${it.slot ? ` [${it.slot}]` : ""}`;
+        const parts = [`${idx + 1}. ${daySlot}`, it.name];
         if (it.category) parts.push(`種別:${it.category}`);
         if (it.address) parts.push(`住所:${it.address}`);
         if (it.url) parts.push(`URL:${it.url}`);
@@ -2703,8 +2704,8 @@ function _buildHotelSearchContext() {
   return { sido, sigungu, label, query };
 }
 
-function _hotelSearchParams(ctx) {
-  const params = new URLSearchParams({ all: "1", type: "hotel" });
+function _hotelSearchParams(ctx, mode = "recommend") {
+  const params = new URLSearchParams({ all: "1", type: "hotel", mode });
   if (ctx.query) params.set("q", ctx.query);
   if (ctx.sido) params.set("sido", ctx.sido);
   if (ctx.sigungu) params.set("sigungu", ctx.sigungu);
@@ -2744,8 +2745,10 @@ async function _fetchHotelManualSearch() {
     return;
   }
 
+  // 영문 label 대신 한글 sido/sigungu로 쿼리 구성 (Naver 검색 정확도)
+  const koreaPrefix = [ctx.sido, ctx.sigungu].filter(Boolean).join(" ").trim();
   const query = q
-    ? (ctx.label ? `${ctx.label} ${q}` : q)
+    ? (koreaPrefix ? `${koreaPrefix} ${q}` : q)
     : ctx.query;
   const area = ctx.label || q;
 
@@ -2763,7 +2766,7 @@ async function _fetchHotelManualSearch() {
 
   try {
     const manualCtx = { ...ctx, query };
-    const res = await fetch(`/api/places/search/?${_hotelSearchParams(manualCtx)}`);
+    const res = await fetch(`/api/places/search/?${_hotelSearchParams(manualCtx, "search")}`);
     const data = await res.json();
     _allHotels = data.places || [];
     _hotelArea = area;
@@ -2873,8 +2876,11 @@ function _renderHotelPage(page) {
   el.innerHTML =
     `<p class="hotel-results-label">📍 ${escHtml(area)} — ${listLabel} 全${total}件（${page + 1}/${totalPages}ページ）</p>` +
     slice.map((p, i) => {
-      const photoHtml = p.photo_name
-        ? `<img class="hotel-photo" src="/api/photo/?name=${encodeURIComponent(p.photo_name)}" loading="lazy" alt="${escHtml(p.name)}" onerror="this.style.display='none'" />`
+      const photoSrc = p.photo_name
+        ? `/api/photo/?name=${encodeURIComponent(p.photo_name)}`
+        : (p.photo_url || "");
+      const photoHtml = photoSrc
+        ? `<img class="hotel-photo" src="${escHtml(photoSrc)}" loading="lazy" alt="${escHtml(p.name)}" onerror="this.style.display='none'" />`
         : "";
       const ratingHtml = p.rating
         ? `<span class="hotel-rating">⭐ ${Number(p.rating).toFixed(1)}<span class="hotel-rating-cnt">${p.user_rating_count ? ` (${p.user_rating_count.toLocaleString()}件)` : ""}</span></span>`
@@ -2902,7 +2908,15 @@ function _renderHotelPage(page) {
   el.style.display = "block";
 
   el.querySelectorAll(".hotel-select-btn").forEach((btn) => {
-    btn.addEventListener("click", () => _selectHotelFromList(_allHotels[+btn.dataset.idx]));
+    btn.addEventListener("click", () => {
+      el.querySelectorAll(".hotel-select-btn").forEach((b) => {
+        b.classList.remove("selected");
+        b.textContent = "このホテルを選択";
+      });
+      btn.classList.add("selected");
+      btn.textContent = "✅ 選択中";
+      _selectHotelFromList(_allHotels[+btn.dataset.idx]);
+    });
   });
 
   if (pagerEl) {
@@ -3414,21 +3428,29 @@ function _autoPlaceQueriesFromLine(line) {
     if (q && !out.includes(q)) out.push(q);
   };
 
-  if (/명동|myeongdong/.test(s)) {
+  if (/명동|明洞|myeongdong/i.test(s)) {
     add("명동거리");
     add("명동성당");
-    if (/카페|cafe|coffee/.test(s)) add("명동 카페");
+    if (/카페|cafe|coffee/i.test(s)) add("명동 카페");
   }
-  if (/경복궁|gyeongbok|景福/.test(s)) add("경복궁");
-  if (/북촌|bukchon|北村/.test(s)) add("북촌한옥마을");
-  if (/익선|익성|ikseon/.test(s)) add("익선동 한옥거리");
-  if (/인사동|insadong/.test(s)) {
+  if (/경복궁|gyeongbok|景福宮?/i.test(s)) add("경복궁");
+  if (/북촌|bukchon|北村/i.test(s)) add("북촌한옥마을");
+  if (/익선|익성|ikseon/i.test(s)) add("익선동 한옥거리");
+  if (/인사동|insadong|仁寺洞/i.test(s)) {
     add("쌈지길");
     add("인사동길");
   }
-  if (/삼청동|samcheong/.test(s)) add("삼청동 카페거리");
-  if (/광화문|gwanghwamun/.test(s)) add("광화문광장");
-  if (/청계천|cheonggye/.test(s)) add("청계천");
+  if (/삼청동|samcheong|三清洞/i.test(s)) add("삼청동 카페거리");
+  if (/광화문|gwanghwamun|光化門/i.test(s)) add("광화문광장");
+  if (/청계천|cheonggye|清渓川/i.test(s)) add("청계천");
+  if (/남산|namsan|南山/i.test(s)) add("남산공원");
+  if (/동대문|dongdaemun|東大門/i.test(s)) add("동대문디자인플라자");
+  if (/창덕궁|changdeok|昌徳宮/i.test(s)) add("창덕궁");
+  if (/덕수궁|deoksugung|徳寿宮/i.test(s)) add("덕수궁 돌담길");
+  if (/홍대|弘大|홍익|hongdae/i.test(s)) add("홍대입구역");
+  if (/이태원|itaewon|梨泰院/i.test(s)) add("이태원");
+  if (/강남|gangnam|江南/i.test(s)) add("강남역");
+  if (/쌈지길|サムジキル/i.test(s)) add("쌈지길");
   if (/전통.*(잡화|쇼핑|공예)|雑貨|工芸/.test(s)) {
     add("쌈지길");
     add("인사동 전통문화의 거리");
@@ -3456,6 +3478,9 @@ function _nameKeysFromLine(line) {
   const keys = [];
   const quoted = [...line.matchAll(/[『「']([^』」']+)[』」']|[「『]([^」』]+)[」』]/g)];
   for (const m of quoted) keys.push(_normalizePlaceName(m[1] || m[2]));
+  // 일본어명（한국어명） 형식 — 괄호 안 한국어도 직접 조회
+  const parenKo = line.match(/[（(]([가-힣][가-힣\s·]{0,30})[）)]/);
+  if (parenKo) keys.push(_normalizePlaceName(parenKo[1]));
   for (const q of _autoPlaceQueriesFromLine(line)) keys.push(_normalizePlaceName(q));
   const bare = line.match(    /([ㄱ-힝]{2,}(?:한우|마을|궁|거리|길|식당|카페|공원|역|몰|호텔|박물관|시장|맛집|레스토랑|정원|사|절|성당|성|산성|왕릉|능|고택|서원|향교|유적|기념관|전시관|전망대|온천|폭포|계곡|해변|해수욕장|수목원|식물원|항구|등대|미술관|테마파크|워터파크|놀이공원|경기장|수족관|restaurant|cafe|park|station))/i );
   if (bare) keys.push(_normalizePlaceName(bare[1]));
@@ -3620,9 +3645,18 @@ function _renderMapsUnresolvedFallback(url, queryLabel, slotKind = "") {
   const proseIsJapanese = _hasJapanesePlaceText(proseTerm || queryLabel || "");
   // URL path의 한국어를 prose 일본어보다 우선 (검색·카드명 모두)
   const searchTerm = (urlHasKorean && proseIsJapanese) ? urlTerm : (proseTerm || urlTerm || "");
-  const q = searchTerm;
+  // 일본어 한자로만 된 검색어 → 한국어 대응어로 변환 (Naver 검색 품질 향상)
+  let q = searchTerm;
+  if (q && _hasJapanesePlaceText(q) && !/[가-힣]/.test(q)) {
+    const koAlt = _autoPlaceQueriesFromLine(q)[0];
+    if (koAlt) q = koAlt;
+  }
   if (_isBadPlanPlaceQuery(q)) return "";
-  if (slotKind === "meal") return "";
+  // 식사 슬롯 미해결 URL: 한국어 장소명이 확실하면 앵커 카드 표시 (완전 공백 방지)
+  if (slotKind === "meal") {
+    if (q && /[가-힣]/.test(q)) return _renderAnchorPlaceCard(q, (urlHasKorean && proseIsJapanese) ? (proseTerm || "") : "");
+    return "";
+  }
   console.debug?.("Plan place link omitted: unresolved place detail", { url, query: q });
   if (q && /map\.naver\.com[^\s]*\/search\//i.test(url)) {
     const isCoordQuery = /^-?[\d.]+,-?[\d.]+$/.test(q.trim());
@@ -3638,6 +3672,9 @@ function _renderMapsUnresolvedFallback(url, queryLabel, slotKind = "") {
     const displayJa = (urlHasKorean && proseIsJapanese) ? (proseTerm || "") : "";
     return _renderAnchorPlaceCard(q, displayJa);
   }
+  // /p/place/ URL이지만 itinerary_places에 없는 경우:
+  // route map은 URL만 있으면 스톱을 만들기 때문에, 텍스트플랜도 anchor card로 일치시킴
+  if (q && /[가-힣]/.test(q)) return _renderAnchorPlaceCard(q, proseIsJapanese ? (proseTerm || "") : "");
   return "";
 }
 
@@ -3829,10 +3866,16 @@ function _renderInlinePlaceCard(p, proseHint) {
 function _renderAnchorPlaceCard(name, displayJa = "") {
   if (!name) return "";
   // displayJa: 일본어 표시명 (e.g. "香湖海辺"), name: 한국어 검색명 (e.g. "항호해변")
+  // 일본어 한자로만 된 이름은 한국어 대응어로 검색 (Naver 검색 품질)
+  let searchName = name;
+  if (_hasJapanesePlaceText(name) && !/[가-힣]/.test(name)) {
+    const koAlt = _autoPlaceQueriesFromLine(name)[0];
+    if (koAlt) searchName = koAlt;
+  }
   const displayName = displayJa ? `${displayJa} (${name})` : name;
   const eName = _escapeHtml(displayName);
-  const searchHref = _escapeHtml(`https://map.naver.com/p/search/${encodeURIComponent(name)}`);
-  const photoSrc = _escapeHtml(`/api/naver-photo/?q=${encodeURIComponent(name)}&image_fallback=1`);
+  const searchHref = _escapeHtml(`https://map.naver.com/p/search/${encodeURIComponent(searchName)}`);
+  const photoSrc = _escapeHtml(`/api/naver-photo/?q=${encodeURIComponent(searchName)}&image_fallback=1`);
   const fallbackSpan = `<span class="plan-place-card__img plan-place-card__img--fallback" aria-hidden="true">📍</span>`;
   const fallbackAttr = fallbackSpan.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   const thumb = `<img class="plan-place-card__img" src="${photoSrc}" alt="" loading="lazy" onerror="this.outerHTML='${fallbackAttr}'" />`;
@@ -3841,7 +3884,7 @@ function _renderAnchorPlaceCard(name, displayJa = "") {
 
 const _PLAN_CLOCK_RE = /\[[\d０-９]{1,2}\s*[:：]\s*[\d０-９]{2}[^\]]*\]/g;
 const _PLAN_DAY_HEAD_RE = /^(【\s*)?(\d+)\s*日目|^(【\s*)?最終日|帰国日|最終\s*日|^#{1,3}\s*\d+\s*日目/i;
-const _PLAN_SLOT_RE = /^(?:\[(午前|午後|昼食|夕食|夜|朝食|朝|ランチ|ディナー|오전|오후|점심|저녁|밤|아침)\]|(午前|午後|昼食|夕食|夜|朝食|朝|ランチ|ディナー|오전|오후|점심|저녁|밤|아침)(?=$|\s|[:：]))/;
+const _PLAN_SLOT_RE = /^(?:\[(午前|午後|昼食|夕食|夜|朝食|朝|ランチ|ディナー|カフェ|오전|오후|점심|저녁|밤|아침|카페)\]|(午前|午後|昼食|夕食|夜|朝食|朝|ランチ|ディナー|カフェ|오전|오후|점심|저녁|밤|아침|카페)(?=$|\s|[:：]))/;
 const _PLAN_STEP_RE = /^[①②③④⑤⑥⑦⑧⑨⑩]\s*/;
 
 function _stripPlanClocks(line) {
@@ -3864,6 +3907,7 @@ function _planSlotKind(line) {
   const match = String(line || "").trim().match(_PLAN_SLOT_RE);
   const label = match?.slice(1).find(Boolean) || "";
   if (/^(?:昼食|ランチ|점심|夕食|ディナー|저녁)$/.test(label)) return "meal";
+  if (/^(?:カフェ|카페)$/.test(label)) return "cafe";
   return label ? "activity" : "";
 }
 
@@ -3871,7 +3915,7 @@ function _formatPlanTextLine(line) {
   return _escapeHtml(_stripPlanClocks(line)).replace(/【(.*?)】/g, "<strong>【$1】</strong>");
 }
 
-function _tryRenderPlaceCard(indexes, rendered, url, renderedScope, slotKind = "", globalScope = null) {
+function _tryRenderPlaceCard(indexes, rendered, url, renderedScope, slotKind = "", globalScope = null, cafeGuard = null) {
   const key = _mapsUrlKey(url);
   if (rendered.has(key)) return false;
   if (renderedScope?.has(key)) return false;
@@ -3924,11 +3968,15 @@ function _tryRenderPlaceCard(indexes, rendered, url, renderedScope, slotKind = "
   // 카페·식당은 날짜 구분 없이 동일 장소 중복 표시 금지 (셀렉티드닉스가 2일, 3일 모두 나오는 문제 방지)
   if (_isFoodCard && pk && globalScope?.has(pk)) { rendered.add(key); return false; }
   if (_isFoodCard && globalScope?.has(key)) { rendered.add(key); return false; }
+  // 하루 카페 1개 상한 — cafeGuard 객체의 .used가 true면 두 번째 카페 차단
+  const isCafe = _isCafePlaceForRefs(place);
+  if (isCafe && cafeGuard?.used) { rendered.add(key); return false; }
   rendered.add(key);
   if (pk) rendered.add(pk);
   renderedScope?.add(key);
   if (pk) renderedScope?.add(pk);
   if (_isFoodCard && globalScope) { globalScope.add(key); if (pk) globalScope.add(pk); }
+  if (isCafe && cafeGuard) cafeGuard.used = true;
   return true;
 }
 
@@ -3988,9 +4036,15 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
   };
 
   let _pendingProse = null;
+  let renderedCardNames = new Set(); // 렌더된 카드명 → 이후 동일 텍스트 줄 억제
   const emitCard = (place) => {
     const prose = _pendingProse;
     _pendingProse = null;
+    // 카드 이름 키를 모두 등록해 이후 echo 줄 억제
+    const _cn = place?.name ? _normalizePlaceName(place.name) : "";
+    if (_cn) renderedCardNames.add(_cn);
+    const _cja = place?.name_ja ? _normalizePlaceName(place.name_ja) : "";
+    if (_cja) renderedCardNames.add(_cja);
     return _renderInlinePlaceCard(place, prose);
   };
 
@@ -3998,6 +4052,7 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
   const LP = window.LinkPreview;
   const renderedAllPlaces = new Set(); // 카페·식당 날짜 간 중복 방지 (플랜 전체 생애)
   let renderedDayPlaces = new Set();
+  let cafeGuard = { used: false }; // 하루 카페 1개 상한 (LLM이 여러 개 출력해도 첫 번째만 표시)
   let currentSlotKind = "";
 
   const _ticketCardsForUrls = (urls, eventLabel = "") => {
@@ -4062,6 +4117,9 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
       // LLM이 "장소A" 라고 쓰고 URL은 "장소B"를 가리킬 때
       // "장소A 설명 + 장소B 카드" 이중 출력을 막는다.
       if (place) return true;
+      // place가 itinerary_places에 없어도 유효한 Naver map URL이면 현재 줄을 장소 레이블로 캡처.
+      // 이래야 _pendingProse에 "교보문고 광화문점" 같은 이름이 저장되어 fallback anchor card에 쓰인다.
+      if (!place && /map\.naver\.com/i.test(url) && current.length >= 2) return true;
     }
     // 다음 줄이 티켓 URL이면 현재 줄을 이벤트 레이블로 캡처 (_pendingProse에 저장)
     if (_PLAN_TICKET_URL_RE.test((nextRawLine || "").trim())) return true;
@@ -4072,6 +4130,9 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
     const line = _stripPlanClocks(rawLine);
     const trimmed = line.trim();
     if (!trimmed || _isEchoCardLine(trimmed)) return;
+    // 이미 렌더된 카드와 동일한 장소명 텍스트 줄 억제 (카드 아래에 같은 이름 중복 방지)
+    const _trimmedKeys = [_normalizePlaceName(trimmed), ..._nameKeysFromLine(trimmed)];
+    if (_trimmedKeys.some(k => k && k.length >= 2 && renderedCardNames.has(k))) return;
     const rendered = new Set();
 
     const ticketUrls = LP ? LP.extractTicketUrls(line) : [];
@@ -4098,7 +4159,7 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
       const cardParts = [];
       for (const url of urls) {
         const place = _lookupPlace(placeIndexes, url);
-        if (place && _tryRenderPlaceCard(placeIndexes, rendered, url, renderedDayPlaces, currentSlotKind, renderedAllPlaces)) {
+        if (place && _tryRenderPlaceCard(placeIndexes, rendered, url, renderedDayPlaces, currentSlotKind, renderedAllPlaces, cafeGuard)) {
           cardParts.push(emitCard(place));
         } else if (place) {
           rendered.add(_mapsUrlKey(url));
@@ -4120,9 +4181,14 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
           _pendingProse = null;
         } else if (!rendered.has(_mapsUrlKey(url))) {
           rendered.add(_mapsUrlKey(url));
-          cardParts.push(
-            _renderMapsUnresolvedFallback(url, placeIndexes.unresolved?.[_mapsUrlKey(url)], currentSlotKind)
-          );
+          if (!(currentSlotKind === "cafe" && cafeGuard.used)) {
+            const _fbLabel1 = _pendingProse || line.replace(/https?:\/\/[^\s]+/g, "").trim() || placeIndexes.unresolved?.[_mapsUrlKey(url)];
+            const fbp = _renderMapsUnresolvedFallback(url, _fbLabel1, currentSlotKind);
+            if (fbp) {
+              if (currentSlotKind === "cafe") cafeGuard.used = true;
+              cardParts.push(fbp);
+            }
+          }
         }
         prose = prose.replace(url, "");
       }
@@ -4136,7 +4202,13 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
       }
       prose = prose.replace(/^\s*[^:：\n]{1,40}[:：]\s*$/u, "").trim();
       if (prose && !_isEchoCardLine(prose)) {
-        pushStep(`<p class="plan-line">${_formatPlanTextLine(prose)}</p>${cardParts.join("")}`);
+        // URL 제거 후 남은 prose가 방금 렌더된 카드명과 동일하면 중복 억제
+        const _proseKey = _normalizePlaceName(prose.replace(/^[-・*①②③④⑤⑥⑦⑧⑨⑩]\s*/, "").trim());
+        if (_proseKey && _proseKey.length >= 2 && renderedCardNames.has(_proseKey)) {
+          if (cardParts.length) pushStep(cardParts.join(""));
+        } else {
+          pushStep(`<p class="plan-line">${_formatPlanTextLine(prose)}</p>${cardParts.join("")}`);
+        }
       } else if (cardParts.length) {
         pushStep(cardParts.join(""));
       }
@@ -4149,7 +4221,12 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
         rendered.add(_mapsUrlKey(url));
         const fallback = _renderMapsUnresolvedFallback(url, placeIndexes.unresolved?.[_mapsUrlKey(url)], currentSlotKind);
         if (fallback) {
-          pushStep(fallback);
+          if (currentSlotKind === "cafe" && cafeGuard.used) {
+            // 하루 카페 1개 상한 초과 — 미해결 anchor 카드도 차단
+          } else {
+            if (currentSlotKind === "cafe") cafeGuard.used = true;
+            pushStep(fallback);
+          }
         } else if (_pendingProse !== null) {
           // フォールバックなし（食事スロット等）でもpendingProseがあれば場所名を表示する
           pushStep(`<p class="plan-line">${_formatPlanTextLine(_pendingProse)}</p>`);
@@ -4158,7 +4235,7 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
         return;
       }
       const place = _lookupPlace(placeIndexes, url);
-      if (place && _tryRenderPlaceCard(placeIndexes, rendered, url, renderedDayPlaces, currentSlotKind, renderedAllPlaces)) {
+      if (place && _tryRenderPlaceCard(placeIndexes, rendered, url, renderedDayPlaces, currentSlotKind, renderedAllPlaces, cafeGuard)) {
         pushStep(emitCard(place));
       } else if (place) {
         rendered.add(_mapsUrlKey(url));
@@ -4178,9 +4255,15 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
         _pendingProse = null;
       } else if (!rendered.has(_mapsUrlKey(url))) {
         rendered.add(_mapsUrlKey(url));
-        pushStep(
-          _renderMapsUnresolvedFallback(url, placeIndexes.unresolved?.[_mapsUrlKey(url)], currentSlotKind)
-        );
+        if (!(currentSlotKind === "cafe" && cafeGuard.used)) {
+          const _fbLabel3 = _pendingProse || placeIndexes.unresolved?.[_mapsUrlKey(url)];
+          const f3 = _renderMapsUnresolvedFallback(url, _fbLabel3, currentSlotKind);
+          if (f3) {
+            if (currentSlotKind === "cafe") cafeGuard.used = true;
+            _pendingProse = null;
+            pushStep(f3);
+          }
+        }
       }
       return;
     }
@@ -4189,7 +4272,7 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
       const place = placeIndexes.byName[nk];
       if (!place) continue;
       const uri = place.google_maps_uri || place.maps_url;
-      if (uri && _tryRenderPlaceCard(placeIndexes, rendered, uri, renderedDayPlaces, currentSlotKind, renderedAllPlaces)) {
+      if (uri && _tryRenderPlaceCard(placeIndexes, rendered, uri, renderedDayPlaces, currentSlotKind, renderedAllPlaces, cafeGuard)) {
         pushStep(emitCard(place));
         return;
       }
@@ -4204,7 +4287,7 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
         if (!p) return false;
         const u = p.google_maps_uri || p.maps_url;
         if (!u) return false;
-        if (_tryRenderPlaceCard(placeIndexes, rendered, u, renderedDayPlaces, currentSlotKind, renderedAllPlaces)) {
+        if (_tryRenderPlaceCard(placeIndexes, rendered, u, renderedDayPlaces, currentSlotKind, renderedAllPlaces, cafeGuard)) {
           pushStep(emitCard(p));
           return true;
         }
@@ -4286,6 +4369,8 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
     if (_isPlanDayHeader(trimmed)) {
       _pendingProse = null;
       renderedDayPlaces = new Set();
+      cafeGuard = { used: false };
+      renderedCardNames = new Set();
       currentSlotKind = "";
       openTimeline(`<h3 class="plan-day-heading">${_formatPlanTextLine(trimmed)}</h3>`);
       continue;
