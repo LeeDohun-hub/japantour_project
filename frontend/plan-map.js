@@ -759,6 +759,10 @@
     if (an && bn && (an === bn || (an.length >= 4 && bn.includes(an)) || (bn.length >= 4 && an.includes(bn)))) {
       return true;
     }
+    // label이 같으면 URL이 달라도 중복 — labelBeforeUrl이 설명줄에서 같은 장소명을 추출하는 경우
+    const aLbl = a.label ? _normStopText(a.label) : "";
+    const bLbl = b.label ? _normStopText(b.label) : "";
+    if (aLbl && bLbl && aLbl === bLbl && aLbl.length >= 5) return true;
     if (a.lat != null && a.lng != null && b.lat != null && b.lng != null) {
       return Math.abs(Number(a.lat) - Number(b.lat)) < 0.0005 &&
         Math.abs(Number(a.lng) - Number(b.lng)) < 0.0005;
@@ -956,6 +960,8 @@
     // Ticket event metadata lines — period/date/ticket-link lines are noise
     if (/^(?:기간|期間|회기|会期)\s*[:：]/.test(t)) return true;
     if (/^INTERPARK\s+TICKET/i.test(t)) return true;
+    if (DAY_HEADER_RE.test(t)) return true;
+    if (/^(?:観光\s*スポット|관광\s*스팟?)\s*[·・]/i.test(t)) return true;
     return false;
   }
 
@@ -1176,7 +1182,7 @@
     if (naverPlaceM) return `naver-place:${naverPlaceM[1]}`;
     if (/map\.naver\.com/i.test(s)) {
       const base = s.split("?")[0].replace(/\/$/, "");
-      try { return decodeURIComponent(base); } catch { return base; }
+      try { return decodeURIComponent(base.replace(/\+/g, " ")); } catch { return base; }
     }
     const m = s.match(/[?&]cid=(\d+)/);
     return m ? `cid:${m[1]}` : s.split("&g_mp=")[0].split("&")[0];
@@ -1237,6 +1243,8 @@
       if (_isPlanNoiseLine(t) || _isRecommendationLine(t)) continue;
       if (DAY_HEADER_RE.test(t)) return "";
       if (_isSlotLabelLine(t)) continue; // 슬롯 레이블(午前/점심 등)은 장소명 아님
+      // "観光スポット · 설명" 형식 설명줄은 장소명 아님
+      if (/^(?:観光\s*スポット|관광\s*스팟?)\s*[·・]/i.test(t)) continue;
       let label = t
         .replace(/^\[[\d:〜~\-]+\]\s*/, "")
         .replace(/^[-・*①②③④⑤⑥⑦⑧⑨⑩]\s*/, "")
