@@ -759,10 +759,6 @@
     if (an && bn && (an === bn || (an.length >= 4 && bn.includes(an)) || (bn.length >= 4 && an.includes(bn)))) {
       return true;
     }
-    // label이 같으면 URL이 달라도 중복 — labelBeforeUrl이 설명줄에서 같은 장소명을 추출하는 경우
-    const aLbl = a.label ? _normStopText(a.label) : "";
-    const bLbl = b.label ? _normStopText(b.label) : "";
-    if (aLbl && bLbl && aLbl === bLbl && aLbl.length >= 5) return true;
     if (a.lat != null && a.lng != null && b.lat != null && b.lng != null) {
       return Math.abs(Number(a.lat) - Number(b.lat)) < 0.0005 &&
         Math.abs(Number(a.lng) - Number(b.lng)) < 0.0005;
@@ -960,7 +956,8 @@
     // Ticket event metadata lines — period/date/ticket-link lines are noise
     if (/^(?:기간|期間|회기|会期)\s*[:：]/.test(t)) return true;
     if (/^INTERPARK\s+TICKET/i.test(t)) return true;
-    if (DAY_HEADER_RE.test(t)) return true;
+    // 순수 일자 헤더(뒤에 장소명 없음)만 noise — "2日目 (북한산)"처럼 뒤에 내용 있으면 noise 아님
+    if (/^(?:\d+\s*日目|第\s*\d+\s*日|Day\s*\d+|최종일|첫날|\d+\s*(?:일째|일차|일\s*차)|마지막\s*날)\s*$/.test(t)) return true;
     if (/^(?:観光\s*スポット|관광\s*스팟?)\s*[·・]/i.test(t)) return true;
     return false;
   }
@@ -1239,9 +1236,16 @@
     if (i <= 0) return "";
     for (let j = i - 1; j >= 0; j--) {
       const t = lines[j].trim();
-      if (!t || _isMapsUrlLine(t) || _isAnyUrlLine(t)) continue;
+      if (!t) continue;
+      // 다른 stop의 URL을 만나면 거기서 검색 중단 — continue로 넘으면 그 위 stop의 label을 잘못 가져옴
+      if (_isMapsUrlLine(t) || _isAnyUrlLine(t)) break;
       if (_isPlanNoiseLine(t) || _isRecommendationLine(t)) continue;
-      if (DAY_HEADER_RE.test(t)) return "";
+      if (DAY_HEADER_RE.test(t)) {
+        // "2日目 (북한산)" 형식 — 괄호 안 한국어 장소명 추출
+        const dayParen = t.match(/[（(]([가-힣][가-힣\s·]{1,25})[）)]/);
+        if (dayParen) return dayParen[1].trim();
+        return "";
+      }
       if (_isSlotLabelLine(t)) continue; // 슬롯 레이블(午前/점심 등)은 장소명 아님
       // "観光スポット · 설명" 형식 설명줄은 장소명 아님
       if (/^(?:観光\s*スポット|관광\s*스팟?)\s*[·・]/i.test(t)) continue;
@@ -1480,6 +1484,7 @@
           const t = lines[i].trim();
           if (!t || _isMapsUrlLine(t) || _isAnyUrlLine(t)) continue;
           if (_isSlotLabelLine(t) || _isPlanNoiseLine(t) || _isTransitOrAnchorLine(t) || _isRecommendationLine(t)) continue;
+          if (DAY_HEADER_RE.test(t)) continue; // "2日目 (북한산)" 같은 날짜 헤더 패턴 건너뜀
           const place = _explicitPlaceFromLine(t, placeIndex);
           if (!place) continue;
           const label = t
