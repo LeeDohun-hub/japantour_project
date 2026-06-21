@@ -216,6 +216,7 @@ from src.chain.itinerary_places import (
     _build_itinerary_attraction_queries as _build_itinerary_attraction_queries,
     _merge_itinerary_places as _merge_itinerary_places,
     _combine_itinerary_place_candidates as _combine_itinerary_place_candidates,
+    _REGION_FEATURED_SPOTS as _REGION_FEATURED_SPOTS,
 )
 
 from src.chain.live_context import (
@@ -6282,10 +6283,23 @@ def route_and_answer(
                 + "※ 昼食直後には置かず、必ず観光/体験/買い物/移動など非飲食スポットを1つ挟んでから入れる。\n"
                 + "※ チェーン店（スターバックス・투썸플레이스・이디야 等）より、ローカル・有名・雰囲気のあるカフェを優先。候補があるのに抽象的な「カフェ休憩」「カフェタイム」「周辺カフェで休憩」だけで済ませない。\n"
             )
-        if attr_places:
+        # 지역별 고정 추천 장소 — 관광스팟 후보에 직접 삽입 (Naver Search 결과와 무관하게 항상 포함)
+        _featured_lines: list[str] = []
+        if traveler_profile and category == "itinerary":
+            _cities_text = _region_cities_text(traveler_profile)
+            for _feat_kw, _feat_spots in _REGION_FEATURED_SPOTS.items():
+                if _feat_kw in _cities_text:
+                    for _feat_name, _feat_area in _feat_spots:
+                        _feat_query = f"{_feat_name} {_feat_area}" if _feat_area else _feat_name
+                        _feat_url = f"https://map.naver.com/p/search/{_feat_query}"
+                        _featured_lines.append(f"[観光専用] {_feat_name}\n{_feat_url}")
+        if attr_places or _featured_lines:
+            _attr_text = _fmt_places(attr_places, group_by_area=False, line_prefix="[観光専用] ") if attr_places else ""
+            _feat_text = "\n".join(_featured_lines)
             ctx_parts.append(
                 "=== 観光スポット候補（食事には使わない）===\n"
-                + _fmt_places(attr_places, group_by_area=False, line_prefix="[観光専用] ")
+                + (_attr_text + "\n" if _attr_text else "")
+                + (_feat_text + "\n" if _feat_text else "")
                 + "\n※ 【絶対禁止】[観光専用]アイテムを昼食・夕食ブロックに配置しない。観光・体験・散策・夜景のみに使用。\n"
                 + "※ 観光はこのリストの名称＋地図URL（map.naver.com）のみ。リスト外の創作禁止。\n"
             )
