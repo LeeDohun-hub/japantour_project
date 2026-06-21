@@ -4705,6 +4705,10 @@ function _looksLikeStandalonePlaceName(name) {
   if (/[。.!?！？]/.test(t)) return false;
   if (/\s/.test(t) && t.length > 18) return false;
   if (/^(?:\d+\s*日目|第\s*\d+\s*日|Day\s*\d+\b|최종일|첫날|\d+\s*(?:일째|일차))/i.test(t)) return false;
+  // 가성비/형용사 설명 텍스트 — "コスパ抜群", "ボリューム満点、伝統な韓国料理" 등
+  if (/^(?:コスパ抜群|コスパ|ボリューム満点|ボリューム\s*[満가-힣]|伝統な|香ばしい|絶品|格別|素晴らし|大人気|雰囲気)/.test(t)) return false;
+  // 장소명+일본어 설명 혼합 — "전망대からソウルの街並み" 등
+  if (/(?:から(?:ソウル|서울|釜山|부산|見渡)|を散策|の街並み|の夜景を|を楽しむ)/i.test(t)) return false;
   return true;
 }
 

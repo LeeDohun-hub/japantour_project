@@ -844,6 +844,8 @@ Real-time place search data is not available. Give a helpful answer using genera
 [ITINERARY PLACE RULE]
 STRICT SECTION USAGE — NON-NEGOTIABLE:
   - PLACE NAME FORMAT (ABSOLUTE): Within any slot (午前/午後/昼食/夕食/夜), ONLY write the actual venue/place name — NEVER write a day number (e.g. 「2日目」「2日目 (북한산)」「Day 2」) as a place name. Day numbers appear ONLY as section headers (e.g. 「## 2日目」). NEVER include 「外観写真」「写真」「地図」「経路」「観光スポット ·」 as standalone lines inside a slot — these are forbidden UI noise. Forbidden pattern: 「外観写真\n2日目\n観光スポット · 북서울꿈의숲 야경エリア」. Correct pattern: 「북서울꿈의숲\nhttps://map.naver.com/p/search/북서울꿈의숲」.
+  - DESCRIPTION TEXT AS PLACE NAME — ABSOLUTE FORBIDDEN: NEVER write a food/experience description as a standalone place-name line. The following are FORBIDDEN as place names: 「コスパ抜群」「ボリューム満点、伝統な韓国料理」「香ばしいエゴマスープのカルグクス」「絶品韓国料理」「伝統的な韓国料理」「大人気」「雰囲気抜群」or any similar adjective/adverb phrase. A slot line MUST be a specific named venue (restaurant name, attraction name, cafe name) — never a description. Wrong: 「コスパ抜群\nhttps://map.naver.com/...」. Right: 「수유리칼국수\nhttps://map.naver.com/p/search/수유리칼국수」.
+  - PLACE NAME SUFFIX FORBIDDEN (ABSOLUTE): A place name line MUST NOT have Japanese explanation appended after the name. Write ONLY the name, nothing else on the same line. Wrong: 「북서울꿈의숲 전망대からソウルの街並みを一望」. Right: 「북서울꿈의숲 전망대」. The name ends at the end of the Korean/English name — do NOT append 「から」「で」「の」「を」or any Japanese particles/clauses to a place name.
   - [午前] slots: ONLY use entries from 「観光スポット候補（食事には使わない）」. NEVER place any restaurant, cafe, food stall, bar, dessert shop, market-food stop, or eating/drinking venue in 午前. Each slot = ONE attraction name + ONE Naver map URL. Do NOT add a second attraction URL as a "companion" in the same slot.
   - ABSOLUTE — Naver map URL search queries MUST be written in Korean or romanized English. NEVER use Japanese characters in a Naver map URL search term. Wrong: map.naver.com/p/search/幸州山城歴史公園 — Right: map.naver.com/p/search/행주산성%20역사공원. Copy URLs verbatim from Reference Data; when generating a fallback URL, use the Korean official name only.
   - ONE VENUE = ONE URL (ABSOLUTE): Each named venue must have its OWN Naver map URL on the immediately following line. FORBIDDEN: using a generic area search URL (e.g., map.naver.com/p/search/인사동) as the only anchor when you are writing specific venues within that area (e.g., 쌈지길, DYNAMIC MAZE). Every specific venue name = its own separate slot + its own URL. Do NOT group multiple named venues under one area URL.
@@ -6290,8 +6292,9 @@ def route_and_answer(
             for _feat_kw, _feat_spots in _REGION_FEATURED_SPOTS.items():
                 if _feat_kw in _cities_text:
                     for _feat_name, _feat_area in _feat_spots:
+                        from urllib.parse import quote as _url_quote
                         _feat_query = f"{_feat_name} {_feat_area}" if _feat_area else _feat_name
-                        _feat_url = f"https://map.naver.com/p/search/{_feat_query}"
+                        _feat_url = f"https://map.naver.com/p/search/{_url_quote(_feat_query)}"
                         _featured_lines.append(f"[観光専用] {_feat_name}\n{_feat_url}")
         if attr_places or _featured_lines:
             _attr_text = _fmt_places(attr_places, group_by_area=False, line_prefix="[観光専用] ") if attr_places else ""
