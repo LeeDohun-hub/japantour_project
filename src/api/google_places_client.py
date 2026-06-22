@@ -115,6 +115,11 @@ _GLOBAL_FAST_FOOD_RE = re.compile(
     r"웬디스?|Wendy|버거\s*킹|Burger\s*King)",
     re.IGNORECASE,
 )
+# 여행 식사로 부적합한 패스트푸드 — Naver 카테고리 기준(예: "음식점>햄버거",
+# "패스트푸드"). 글로벌 체인은 위 이름 정규식으로, 로컬 버거 체인(예: 데일리픽스)은
+# 카테고리로 거른다. 치킨·분식 등 한국 대표 음식은 제외 대상이 아니다.
+# 식사 슬롯은 필수이지만 제로-후보 폴백이 있어 슬롯이 비지 않고 대표 식당으로 채워진다.
+_FAST_FOOD_CATEGORY_RE = re.compile(r"햄버거|패스트푸드|hamburger|fast\s*food", re.IGNORECASE)
 _MEAL_TYPE_EXCLUDE = frozenset({
     "wedding_venue",
     "event_venue",
@@ -190,6 +195,9 @@ def is_suitable_meal_place(place: NearbyPlace) -> bool:
         return False
 
     cat = (place.category or "").strip().lower()
+    # 햄버거·패스트푸드 카테고리(로컬 버거 체인 포함)는 여행 식사로 비대표 → 제외
+    if _FAST_FOOD_CATEGORY_RE.search(cat):
+        return False
     if cat in _MEAL_TYPE_EXCLUDE:
         return False
     if _NON_RESTAURANT_VENUE_RE.search(f"{name} {addr} {cat}") and cat not in _MEAL_TYPE_ALLOW:

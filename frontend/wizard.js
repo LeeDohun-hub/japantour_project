@@ -4467,6 +4467,13 @@ function _isCafePlaceForRefs(place) {
 function _isMealPlaceForRefs(place) {
   if (_isFortunePlaceForRefs(place)) return false;
   if (_isCafePlaceForRefs(place)) return false;
+  // Naver 최상위 음식 카테고리(예: "음식점>햄버거", "한식>육류,고기요리", "양식>스테이크")는
+  // 식당으로 간주. 키워드 열거(햄버거·피자 등) 누락으로 식사 슬롯 카드가 텍스트로
+  // 떨어지는 문제를 근본적으로 방지한다. 카페는 위에서 이미 제외됨.
+  const _cat = (place?.category || "").trim();
+  if (/^(?:음식점|한식|중식|일식|양식|분식|치킨|패스트푸드|뷔페|술집|요리주점|아시아음식|퓨전요리)(?:[>\s,]|$)/.test(_cat)) {
+    return true;
+  }
   const blob = `${place?.name || ""} ${place?.address || ""} ${place?.category || ""} ${place?.primary_type || ""}`.toLowerCase();
   return (
     // 일반 식당 키워드
