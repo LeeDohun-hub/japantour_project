@@ -1402,7 +1402,13 @@
       // 버려 앵커 리스트가 상세 플랜과 일치하도록 한다. 한국어명이 없는 일본어 전용
       // venue(예: "明洞聖堂")는 koVenue가 비어 가드를 통과하므로 영향 없음.
       const koVenueM = String(rawBefore || "").match(/[（(]([가-힣][가-힣\s·]{0,40})[）)]/);
-      const koVenue = koVenueM ? koVenueM[1].trim() : (/[가-힣]/.test(labelText) ? labelText : "");
+      let koVenue = koVenueM ? koVenueM[1].trim() : (/[가-힣]/.test(labelText) ? labelText : "");
+      // 한국어 괄호가 없는 일본어 전용 venue(예: "清渓川")도 알려진 매핑으로 한국어명을
+      // 유도해 가드를 적용 (清渓川→청계천이면 byUrl 교보문고와 불일치 → 드롭)
+      if (!koVenue && labelText) {
+        const knownKo = _knownKoreanSearchName(labelText);
+        if (knownKo) koVenue = knownKo;
+      }
       let venueMismatch = false;
       if (place?.name && koVenue && !_placeNameMatchesLabel(place.name, koVenue)) {
         place = null;

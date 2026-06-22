@@ -4042,6 +4042,14 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
     if (_cn) renderedCardNames.add(_cn);
     const _cja = place?.name_ja ? _normalizePlaceName(place.name_ja) : "";
     if (_cja) renderedCardNames.add(_cja);
+    // 카드를 만든 plan-text 라벨(prose)의 이름 키도 등록한다. Naver 공식명(예:
+    // 천주교…명동대성당)과 LLM 약식명(예: 明洞聖堂（명동성당）)이 달라도, 이후 빈
+    // 슬롯에 같은 약식명이 반복 출력되는 echo 줄을 억제하기 위함.
+    if (prose && !_isEchoCardLine(prose)) {
+      for (const k of [_normalizePlaceName(prose), ..._nameKeysFromLine(prose)]) {
+        if (k && k.length >= 2) renderedCardNames.add(k);
+      }
+    }
     return _renderInlinePlaceCard(place, prose);
   };
 
