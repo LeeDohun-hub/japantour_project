@@ -715,6 +715,29 @@ class RouterItineraryPlaceBalanceTests(unittest.TestCase):
         self.assertIn("대표 음식 맛집", joined)
 
 
+class RouterExplicitSubareaTests(unittest.TestCase):
+    def setUp(self) -> None:
+        if _expanded_tourism_areas_for_plan is None or _build_itinerary_attraction_queries is None:
+            self.skipTest(f"router dependencies unavailable: {_ROUTER_IMPORT_ERROR}")
+
+    def test_seoul_jung_selection_does_not_expand_to_insadong(self) -> None:
+        profile = {
+            "regions": ["seoul"],
+            "regionAreaKeys": ["seoul:jung"],
+            "regionCityIds": ["seoul:jung"],
+            "regionCities": "서울 중구",
+            "activities": ["must_see"],
+        }
+
+        areas = _expanded_tourism_areas_for_plan(profile)
+        queries = _build_itinerary_attraction_queries("", "", profile)
+        joined = " ".join(areas + queries)
+
+        self.assertIn("명동", areas)
+        self.assertNotIn("인사동", joined)
+        self.assertNotIn("쌈지길", joined)
+
+
 class RouterItineraryRepairTests(unittest.TestCase):
     def setUp(self) -> None:
         if _repair_wizard_itinerary_rules is None or NearbyPlace is None:

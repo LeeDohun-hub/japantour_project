@@ -3436,10 +3436,7 @@ function _autoPlaceQueriesFromLine(line) {
   if (/경복궁|gyeongbok|景福宮?/i.test(s)) add("경복궁");
   if (/북촌|bukchon|北村/i.test(s)) add("북촌한옥마을");
   if (/익선|익성|ikseon/i.test(s)) add("익선동 한옥거리");
-  if (/인사동|insadong|仁寺洞/i.test(s)) {
-    add("쌈지길");
-    add("인사동길");
-  }
+  if (/쌈지길|ssamjigil|サムジキル/i.test(s)) add("쌈지길");
   if (/삼청동|samcheong|三清洞/i.test(s)) add("삼청동 카페거리");
   if (/광화문|gwanghwamun|光化門/i.test(s)) add("광화문광장");
   if (/청계천|cheonggye|清渓川/i.test(s)) add("청계천");
@@ -3450,7 +3447,6 @@ function _autoPlaceQueriesFromLine(line) {
   if (/홍대|弘大|홍익|hongdae/i.test(s)) add("홍대입구역");
   if (/이태원|itaewon|梨泰院/i.test(s)) add("이태원");
   if (/강남|gangnam|江南/i.test(s)) add("강남역");
-  if (/쌈지길|サムジキル/i.test(s)) add("쌈지길");
   if (/전통.*(잡화|쇼핑|공예)|雑貨|工芸/.test(s)) {
     add("쌈지길");
     add("인사동 전통문화의 거리");
@@ -3937,8 +3933,8 @@ function _tryRenderPlaceCard(indexes, rendered, url, renderedScope, slotKind = "
     return false;
   }
   // Personal care businesses (hair salons, nail salons, etc.) are not tourist spots
-  const _catLow = (place.category || "").toLowerCase();
-  if (/미용실|헤어샵|헤어살롱|헤어숍|네일샵|네일아트|왁싱|속눈썹|반영구화장|세탁소|hair\s*salon|beauty\s*salon|nail\s*salon|barber\s*shop/i.test(_catLow)) {
+  const _placeBlobLow = `${place.name || ""} ${place.category || ""} ${place.address || ""}`.toLowerCase();
+  if (/미용실|헤어샵|헤어살롱|헤어숍|네일샵|네일아트|왁싱|속눈썹|반영구화장|세탁소|hair\s*salon|beauty\s*salon|nail\s*salon|barber\s*shop|컴퓨터\s*(?:수리|as|에이에스)|노트북\s*(?:수리|as|에이에스)|pc\s*(?:수리|as|에이에스)|출장\s*(?:컴퓨터|노트북|pc)|전자(?:제품)?\s*수리|수리센터|as센터|에이에스센터/i.test(_placeBlobLow)) {
     rendered.add(key);
     return false;
   }

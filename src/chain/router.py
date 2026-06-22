@@ -642,7 +642,7 @@ _REROLL_EXTRA_ATTR_QUERIES: dict[str, list[str]] = {
         "고양 관광", "일산 호수공원", "킨텍스 주변", "덕양구 관광",
         "행신 카페", "高陽 観光",
     ],
-    "seoul": ["北村 観光", "仁寺洞 散策", "汉江 公园"],
+    "seoul": ["北村 観光", "汉江 公园"],
 }
 
 # 위저드 regionChips → RAG area / Places 중심 (동적 일정용)
@@ -2166,6 +2166,12 @@ def _expanded_tourism_areas_for_plan(
         return areas
     regs = {str(r).lower() for r in (traveler_profile.get("regions") or [])}
     area_keys = set(_region_area_keys(traveler_profile))
+    explicit_subarea_keys = {
+        k for k in area_keys
+        if ":" in k and not k.endswith(":") and k.split(":", 1)[1]
+    }
+    if explicit_subarea_keys:
+        return areas[:max(1, _MAX_ITINERARY_AREAS)]
     if area_keys and not regs.intersection({"seoul", "gyeonggi", "incheon"}):
         return areas[:max(1, _MAX_ITINERARY_AREAS)]
     if "seoul" in regs and len(areas) < min_count:
@@ -3086,6 +3092,8 @@ _ATTRACTION_NAME_EXCLUDE_RE = re.compile(
     r"\bGS25\b|\bCU\b(?!\s*문화)|\b세븐일레븐\b|\b이마트24\b|\b미니스톱\b|"
     # 주유소·자동차
     r"주유소|카센터|자동차\s*(?:정비|수리)|타이어\s*(?:센터|샵)|"
+    r"컴퓨터\s*(?:수리|AS|에이에스)|노트북\s*(?:수리|AS|에이에스)|PC\s*(?:수리|AS|에이에스)|"
+    r"출장\s*(?:컴퓨터|노트북|PC)|전자(?:제품)?\s*수리|수리센터|AS센터|에이에스센터|"
     # 의료·동물
     r"치과|한의원|정형외과|내과\b|안과\b|피부과|이비인후과|산부인과|동물병원|수의사|"
     # 부동산·금융 보충
