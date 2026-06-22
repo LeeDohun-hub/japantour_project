@@ -12,6 +12,13 @@ if TYPE_CHECKING:
     from src.api.places_client import NearbyPlace
 
 
+# ─── 지역별 고정 추천 장소 ─────────────────────────────────────────────────────
+# region_cities_text 에 해당 키워드가 포함될 때 우선 검색에 추가됨
+# 형식: { "감지 키워드": [("장소명", "검색보조어"), ...] }
+_REGION_FEATURED_SPOTS: dict[str, list[tuple[str, str]]] = {
+    "강북": [("안토리조트", "강북")],
+}
+
 # ─── Place classifier ─────────────────────────────────────────────────────────
 
 def _is_cafe_candidate_place(place: NearbyPlace) -> bool:
@@ -320,6 +327,24 @@ def _build_itinerary_attraction_queries(
         for reg in traveler_profile.get("regions") or []:
             for q in _shuffled_copy(_REROLL_EXTRA_ATTR_QUERIES.get(str(reg).lower(), []), seed):
                 add(q)
+
+    # 지역별 고정 추천 장소 — region_cities 에 키워드가 포함될 때 우선 쿼리에 삽입
+    if traveler_profile:
+        from src.chain.router import _region_cities_text  # lazy import
+        cities_text = _region_cities_text(traveler_profile)
+        for keyword_key, spots in _REGION_FEATURED_SPOTS.items():
+            if keyword_key in cities_text:
+                featured_queries = []
+                for name, area in spots:
+                    if area:
+                        featured_queries.append(f"{name} {area}")
+                    featured_queries.append(name)
+                # 맨 앞에 삽입 (우선순위 최상위)
+                for q in reversed(featured_queries):
+                    q = q.strip()
+                    if q and q not in seen:
+                        seen.add(q)
+                        queries.insert(0, q)
 
     if has_shopping_interest:
         return queries[:24]

@@ -3491,6 +3491,7 @@ function _candidatePlaceNamesFromPlanLine(line) {
   if (
     /(?:入国|出国|チェックイン|ホテル|宿泊|空港|移動|休息|休憩|到着|出発|手荷物|審査|税関|AREX|乗換|下車|徒歩|タクシー|リムジン|コンビニ|軽食|間食|편의점|간식)/i.test(t)
   ) return [];
+  if (/^(?:\d+\s*日目|第\s*\d+\s*日|Day\s*\d+\b|최종일|첫날|\d+\s*(?:일째|일차))/i.test(t)) return [];
   const parts = t.split(/[、。・]|→|⇒/).map((p) => p.trim()).filter(Boolean);
   const out = [];
   for (const part of parts.length ? parts : [t]) {
@@ -3588,7 +3589,7 @@ function _hasJapanesePlaceText(text) {
 function _stripMixedCJK(str) {
   const s = String(str || "");
   if (/[가-힣]/.test(s) && /[㐀-鿿]/.test(s)) {
-    return s.replace(/[㐀-鿿]+s*/g, "").replace(/s{2,}/g, " ").trim();
+    return s.replace(/[㐀-鿿]+\s*/g, "").replace(/\s{2,}/g, " ").trim();
   }
   return s;
 }
@@ -4699,6 +4700,11 @@ function _looksLikeStandalonePlaceName(name) {
   if (_ATTR_FOOD_SKIP_RE.test(t) || _ATTR_PROSE_SKIP_RE.test(t)) return false;
   if (/[。.!?！？]/.test(t)) return false;
   if (/\s/.test(t) && t.length > 18) return false;
+  if (/^(?:\d+\s*日目|第\s*\d+\s*日|Day\s*\d+\b|최종일|첫날|\d+\s*(?:일째|일차))/i.test(t)) return false;
+  // 가성비/형용사 설명 텍스트 — "コスパ抜群", "ボリューム満点、伝統な韓国料理" 등
+  if (/^(?:コスパ抜群|コスパ|ボリューム満点|ボリューム\s*[満가-힣]|伝統な|香ばしい|絶品|格別|素晴らし|大人気|雰囲気)/.test(t)) return false;
+  // 장소명+일본어 설명 혼합 — "전망대からソウルの街並み" 등
+  if (/(?:から(?:ソウル|서울|釜山|부산|見渡)|を散策|の街並み|の夜景を|を楽しむ)/i.test(t)) return false;
   return true;
 }
 
@@ -4752,9 +4758,12 @@ function _extractUnlinkedAttrNames(text, placeIndexes) {
     results.set(name, nk);
   };
 
+  const _DAY_HEADER_SKIP_RE = /^(?:\d+\s*日目|第\s*\d+\s*日|Day\s*\d+\b|최종일|첫날|\d+\s*(?:일째|일차))/i;
   for (let i = 0; i < lines.length; i++) {
     if (urlLines.has(i)) continue;
     const line = lines[i];
+    const trimmed = line.trim();
+    if (!trimmed || _DAY_HEADER_SKIP_RE.test(trimmed)) continue;
     for (const q of _autoPlaceQueriesFromLine(line)) {
       tryAdd(q, true);
     }

@@ -956,6 +956,13 @@
     // Ticket event metadata lines — period/date/ticket-link lines are noise
     if (/^(?:기간|期間|회기|会期)\s*[:：]/.test(t)) return true;
     if (/^INTERPARK\s+TICKET/i.test(t)) return true;
+    // 순수 일자 헤더(뒤에 장소명 없음)만 noise — "2日目 (북한산)"처럼 뒤에 내용 있으면 noise 아님
+    if (/^(?:\d+\s*日目|第\s*\d+\s*日|Day\s*\d+|최종일|첫날|\d+\s*(?:일째|일차|일\s*차)|마지막\s*날)\s*$/.test(t)) return true;
+    if (/^(?:観光\s*スポット|관광\s*스팟?)\s*[·・]/i.test(t)) return true;
+    // 가성비/형용사 설명 텍스트 단독 라인 — "コスパ抜群", "ボリューム満点、伝統な韓国料理" 등
+    if (/^(?:コスパ抜群|コスパ|ボリューム満点|ボリューム\s*[満가-힣]|伝統な|香ばしい|絶品|格別|素晴らし|大人気|人気の|有名な|雰囲気|美味しい|おいしい)/.test(t)) return true;
+    // 장소명+일본어 설명 혼합 — "북서울꿈의숲 전망대からソウルの街並み" 등
+    if (/(?:から(?:ソウル|서울|釜山|부산|見渡)|を散策|の街並み|の夜景を|を楽しむ)/i.test(t)) return true;
     return false;
   }
 
@@ -1175,7 +1182,8 @@
     const naverPlaceM = /map\.naver\.com/i.test(s) && s.match(/\/place\/(\d{6,})/i);
     if (naverPlaceM) return `naver-place:${naverPlaceM[1]}`;
     if (/map\.naver\.com/i.test(s)) {
-      return s.split("?")[0].replace(/\/$/, "");
+      const base = s.split("?")[0].replace(/\/$/, "");
+      try { return decodeURIComponent(base.replace(/\+/g, " ")); } catch { return base; }
     }
     const m = s.match(/[?&]cid=(\d+)/);
     return m ? `cid:${m[1]}` : s.split("&g_mp=")[0].split("&")[0];
@@ -1232,10 +1240,19 @@
     if (i <= 0) return "";
     for (let j = i - 1; j >= 0; j--) {
       const t = lines[j].trim();
-      if (!t || _isMapsUrlLine(t) || _isAnyUrlLine(t)) continue;
+      if (!t) continue;
+      // 다른 stop의 URL을 만나면 거기서 검색 중단 — continue로 넘으면 그 위 stop의 label을 잘못 가져옴
+      if (_isMapsUrlLine(t) || _isAnyUrlLine(t)) break;
       if (_isPlanNoiseLine(t) || _isRecommendationLine(t)) continue;
-      if (DAY_HEADER_RE.test(t)) return "";
+      if (DAY_HEADER_RE.test(t)) {
+        // "2日目 (북한산)" 형식 — 괄호 안 한국어 장소명 추출
+        const dayParen = t.match(/[（(]([가-힣][가-힣\s·]{1,25})[）)]/);
+        if (dayParen) return dayParen[1].trim();
+        return "";
+      }
       if (_isSlotLabelLine(t)) continue; // 슬롯 레이블(午前/점심 등)은 장소명 아님
+      // "観光スポット · 설명" 형식 설명줄은 장소명 아님
+      if (/^(?:観光\s*スポット|관광\s*스팟?)\s*[·・]/i.test(t)) continue;
       let label = t
         .replace(/^\[[\d:〜~\-]+\]\s*/, "")
         .replace(/^[-・*①②③④⑤⑥⑦⑧⑨⑩]\s*/, "")
@@ -1471,6 +1488,7 @@
           const t = lines[i].trim();
           if (!t || _isMapsUrlLine(t) || _isAnyUrlLine(t)) continue;
           if (_isSlotLabelLine(t) || _isPlanNoiseLine(t) || _isTransitOrAnchorLine(t) || _isRecommendationLine(t)) continue;
+          if (DAY_HEADER_RE.test(t)) continue; // "2日目 (북한산)" 같은 날짜 헤더 패턴 건너뜀
           const place = _explicitPlaceFromLine(t, placeIndex);
           if (!place) continue;
           const label = t
@@ -2271,13 +2289,28 @@
       const aliasWithRegion = aliasQueries
         .map((q) => regionHint && !q.includes(regionHint) ? `${q} ${regionHint}` : q);
 
+      // URL search query 추출 — label이 한자/일본어인 경우 URL에서 한국어 이름 보완
+      // 예: label="北漢山国立公園", url=".../search/북한산국립공원" → urlKo="북한산국립공원"
+      const urlSearchQuery = (() => {
+        const m = (stop.url || "").match(/\/search\/([^?&/#\s]+)/);
+        if (!m) return "";
+        try { return decodeURIComponent(m[1].replace(/\+/g, " ")).trim(); } catch (_) { return ""; }
+      })();
+      const urlKo = urlSearchQuery && /[가-힣]/.test(urlSearchQuery) && urlSearchQuery !== base
+        ? urlSearchQuery : "";
+
       // ── 복합 지명 분해 쿼리 생성 ─────────────────────────────────────────
-      // 1) 공원 접미사 제거: "팔공산국립공원" → "팔공산"
+      // 1) 공원 접미사 제거: "팔공산국립공원" / "北漢山国立公園" → "팔공산" / "北漢山"
       //    Naver Places API는 국립공원을 직접 인덱싱 안 함 → 산 이름 단독으로 재시도
       const noParkSuffix = noParen
-        .replace(/\s*(?:국립|도립|군립|시립|자연|생태|광역시립)?\s*공원$/, "")
+        .replace(/\s*(?:국립|도립|군립|시립|자연|생태|광역시립|国立|道立|郡立|市立|自然|生態)?\s*(?:공원|公園)$/, "")
         .trim();
       const parkStripped = noParkSuffix !== noParen && noParkSuffix.length >= 2 ? noParkSuffix : "";
+      // URL 한국어에서도 공원 접미사 제거
+      const urlKoPark = urlKo
+        ? urlKo.replace(/\s*(?:국립|도립|군립|시립|자연|생태|광역시립)?\s*공원$/, "").trim()
+        : "";
+      const urlKoParkStripped = urlKoPark && urlKoPark !== urlKo && urlKoPark.length >= 2 ? urlKoPark : "";
 
       // 2) 2·3글자 접두어 제거: "동산청라언덕" → "청라언덕"
       //    한국어 복합 지명에서 동네명(2글자) + 실제 명소명 패턴
@@ -2295,7 +2328,15 @@
         strip3,
       ].filter(Boolean);
 
-      return [...aliasWithRegion, ...aliasQueries, withRegion, base, noParen, ...extras, spacedRoadQuery, `${noParen} South Korea`, `South Korea ${noParen}`]
+      // URL 한국어 검색어를 우선순위 높게 배치 (한자 label보다 Naver API 매칭률 높음)
+      const urlQueries = [
+        urlKo && regionHint && !urlKo.includes(regionHint) ? `${urlKo} ${regionHint}` : "",
+        urlKo,
+        urlKoParkStripped && regionHint ? `${urlKoParkStripped} ${regionHint}` : "",
+        urlKoParkStripped,
+      ].filter(Boolean);
+
+      return [...urlQueries, ...aliasWithRegion, ...aliasQueries, withRegion, base, noParen, ...extras, spacedRoadQuery, `${noParen} South Korea`, `South Korea ${noParen}`]
         .map((q) => q.trim())
         .filter((q, idx, arr) => q && arr.indexOf(q) === idx);
     }
@@ -2338,6 +2379,13 @@
       if (!/[가-힣]/.test(`${label} ${candidate}`)) return true;
       if (!name) return false;
       if (_placeNameMatchesLabel(name, candidate) || _placeNameMatchesLabel(name, label)) return true;
+      // URL search query로도 비교 — label이 한자인 경우 URL에서 한국어 이름 추출
+      const urlQ = (() => {
+        const m = (stop.url || "").match(/\/search\/([^?&/#\s]+)/);
+        if (!m) return "";
+        try { return decodeURIComponent(m[1].replace(/\+/g, " ")).trim(); } catch (_) { return ""; }
+      })();
+      if (urlQ && /[가-힣]/.test(urlQ) && _placeNameMatchesLabel(name, urlQ)) return true;
       for (const alias of _landmarkSearchAliases(label)) {
         if (_placeNameMatchesLabel(name, alias)) return true;
       }
@@ -2420,6 +2468,18 @@
           if (p.latitude != null && _resultMatchesStop(stop, p, candidate) && _foodPlaceMatchesTripArea(stop, p) && _applyCoords(stop, p)) return;
           if (!bestEffortPlace && _resultMatchesStop(stop, p, candidate)) bestEffortPlace = p;
         }
+        // 1.5차: Places 검색 이름 매칭됐지만 좌표 없음 → Naver Local Search로 좌표 보완
+        // 예: "강북구립미술관"이 Places API에선 name만 반환하고 좌표 없는 경우
+        if (bestEffortPlace && bestEffortPlace.latitude == null) {
+          const namesToTry = [bestEffortPlace.name, ...candidates.slice(0, 2)].filter((n, i, a) => n && n.length >= 2 && a.indexOf(n) === i);
+          for (const name of namesToTry) {
+            const resolved = await _resolveNaverCanonical(name);
+            if (resolved?.lat && resolved?.lng && _isKoreanCoords(resolved.lat, resolved.lng)) {
+              const merged = { ...bestEffortPlace, latitude: resolved.lat, longitude: resolved.lng };
+              if (_applyCoords(stop, merged)) return;
+            }
+          }
+        }
       }
       // 2차: 주소 geocoder (숙박은 여기가 첫 시도, 관광지는 fallback)
       for (const candidate of candidates) {
@@ -2436,7 +2496,45 @@
         stop.place = null;
         return;
       }
-      // 3차: 좌표 확보 실패 시 place 메타만 적용
+      // 3차: /api/naver-resolve/ fallback — Naver Local Search 미인덱싱 관광지(소규모 지역시설 등) 대응
+      // geocodeMissingStops가 await 완료 후 카드를 렌더링하므로 여기서 좌표를 채우면 번호까지 표시됨
+      if (!stop.isAccommodation) {
+        // URL search query에서 한국어 이름 추출 — label이 한자/일본어인 경우 Naver API 매칭 향상
+        const urlQ = (() => {
+          const m = (stop.url || "").match(/\/search\/([^?&/#\s]+)/);
+          if (!m) return "";
+          try { return decodeURIComponent(m[1].replace(/\+/g, " ")).trim(); } catch (_) { return ""; }
+        })();
+        const _rRegionHint = String(_mapMeta.regionCities || _mapMeta.region_cities || "")
+          .split(/[,·\/\s]+/).map((s) => s.trim()).filter((s) => s.length >= 2)[0] || "";
+        const _addWithRegion = (base) =>
+          _rRegionHint && base && !base.includes(_rRegionHint) ? `${base} ${_rRegionHint}` : "";
+        const resolveNames = [
+          urlQ && /[가-힣]/.test(urlQ) ? urlQ : "",
+          urlQ && /[가-힣]/.test(urlQ) ? _addWithRegion(urlQ) : "",
+          label,
+          _addWithRegion(label),
+        ].filter((n, i, a) => n && a.indexOf(n) === i);
+        for (const name of resolveNames) {
+          const resolved = await _resolveNaverCanonical(name);
+          if (resolved?.lat && resolved?.lng && _isKoreanCoords(resolved.lat, resolved.lng)) {
+            stop.lat = resolved.lat;
+            stop.lng = resolved.lng;
+            if (!stop.place) {
+              const canonical = resolved.canonical || name;
+              stop.place = {
+                name: canonical,
+                latitude: resolved.lat,
+                longitude: resolved.lng,
+                google_maps_uri: stop.url || `https://map.naver.com/p/search/${encodeURIComponent(canonical)}`,
+                maps_url: stop.url || `https://map.naver.com/p/search/${encodeURIComponent(canonical)}`,
+              };
+            }
+            return;
+          }
+        }
+      }
+      // 4차: 좌표 확보 실패 시 place 메타만 적용
       // 지도 핀은 없지만 Naver photo_url·naver_local_link를 이용한 카드/사진 렌더링 가능
       if (!stop.place && bestEffortPlace) {
         stop.place = {
