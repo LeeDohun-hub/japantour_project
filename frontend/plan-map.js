@@ -831,6 +831,14 @@
     return days;
   }
 
+  // 앵커(지도 스톱)에서 강제 제외할 장소. 관광 앵커로 부적절하거나 오매칭이 잦은 곳.
+  // 교보문고: 청계천/광화문 인근의 고(高)리뷰 서점이 관광지로 오매칭되어 반복 노출됨.
+  const _ANCHOR_STOP_BLOCK_RE = /교보문고|kyobo\s*book/i;
+  function _isBlockedAnchorStop(stop) {
+    const p = stop?.place || {};
+    return _ANCHOR_STOP_BLOCK_RE.test(`${p.name || ""} ${stop?.label || ""}`);
+  }
+
   // 스톱이 화면에 표시할 한국어 이름(place.name → 한국어 label → 알려진 매핑)을
   // 정규화해 반환. URL이 달라 _sameStop을 빠져나가도 같은 장소면 같은 키가 된다.
   function _stopKoName(stop) {
@@ -869,6 +877,8 @@
     out.forEach((day) => {
       const deduped = [];
       for (const stop of day.stops || []) {
+        // 강제 차단 장소(교보문고 등)는 앵커에서 제거
+        if (_isBlockedAnchorStop(stop)) continue;
         const dupIdx = deduped.findIndex((existing) => {
           if (_sameStop(existing, stop)) return true;
           // 같은 한국어 표시명이면 중복 (예: 명동대성당이 venue URL과 경로/설명줄에서
@@ -2192,7 +2202,18 @@
 
     const colors = markerColors();
     let mapNum = 0; // 지도 마커 번호 (좌표 있는 stop만 카운트, 맵 핀 번호용)
+    // 렌더 단계 안전망: 강제 차단(교보문고 등) + 표시명 중복 제거.
+    // normalizePlanDays에서 이미 처리하지만, 어떤 경로로든 남아도 여기서 확실히 거른다.
+    const _seenStopKo = new Set();
     const stopCards = (day.stops || [])
+      .filter((stop) => {
+        if (_isBlockedAnchorStop(stop)) return false;
+        if (stop.isAirport || stop.isAccommodation) return true;
+        const ko = _stopKoName(stop);
+        if (ko && _seenStopKo.has(ko)) return false;
+        if (ko) _seenStopKo.add(ko);
+        return true;
+      })
       .map((stop, stopIdx) => {
         const hasCoords = stop.lat != null && stop.lng != null;
         const p = stop.place || {};
