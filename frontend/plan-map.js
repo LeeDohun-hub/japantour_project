@@ -831,6 +831,18 @@
     return days;
   }
 
+  // 스톱이 화면에 표시할 한국어 이름(place.name → 한국어 label → 알려진 매핑)을
+  // 정규화해 반환. URL이 달라 _sameStop을 빠져나가도 같은 장소면 같은 키가 된다.
+  function _stopKoName(stop) {
+    const p = stop?.place || {};
+    const pName = String(p.name || "").trim();
+    if (pName && /[가-힣]/.test(pName)) return _normStopText(pName);
+    const label = String(stop?.label || "").trim();
+    if (label && /[가-힣]/.test(label)) return _normStopText(label);
+    const known = _knownKoreanSearchName(label || pName);
+    return known ? _normStopText(known) : "";
+  }
+
   function normalizePlanDays(days, fallbackDayCount) {
     const n = Number(fallbackDayCount || 0);
     const hasCap = Number.isFinite(n) && n > 0;
@@ -857,7 +869,15 @@
     out.forEach((day) => {
       const deduped = [];
       for (const stop of day.stops || []) {
-        const dupIdx = deduped.findIndex((existing) => _sameStop(existing, stop));
+        const dupIdx = deduped.findIndex((existing) => {
+          if (_sameStop(existing, stop)) return true;
+          // 같은 한국어 표시명이면 중복 (예: 명동대성당이 venue URL과 경로/설명줄에서
+          // 각각 매칭돼 두 번 들어온 경우). 공항·숙박은 제외.
+          if (stop.isAirport || stop.isAccommodation || existing.isAirport || existing.isAccommodation) return false;
+          const a = _stopKoName(existing);
+          const b = _stopKoName(stop);
+          return !!a && a === b;
+        });
         if (dupIdx === -1) {
           deduped.push(stop);
         } else if (stop.lat != null && deduped[dupIdx].lat == null) {
