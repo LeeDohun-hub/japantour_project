@@ -2599,14 +2599,18 @@ def api_naver_resolve(request):
     _root = _P(settings.BASE_DIR).parent
     if str(_root / "src") not in sys.path:
         sys.path.insert(0, str(_root / "src"))
-    from src.api.naver_search_client import NaverSearchClient, _clean_html
+    from src.api.naver_search_client import (
+        NaverSearchClient,
+        _clean_html,
+        _name_matches_query,
+    )
 
     q = (request.GET.get("q") or "").strip()
     if not q or len(q) > 100:
         return JsonResponse({"error": "q required"}, status=400)
 
     import hashlib
-    cache_key = f"naver_resolve_v1:{hashlib.md5(q.encode()).hexdigest()}"
+    cache_key = f"naver_resolve_v2:{hashlib.md5(q.encode()).hexdigest()}"
     cached = cache.get(cache_key)
     if cached is not None:
         return JsonResponse(cached)
@@ -2615,13 +2619,21 @@ def api_naver_resolve(request):
     if not client.is_configured:
         return JsonResponse({"canonical": None, "error": "not_configured"})
 
-    items = client.search_local(q, display=1)
-    if not items:
+    # search_local sorts by "comment" (review volume), so a specific landmark
+    # query (e.g. "청계천") can surface a high-review neighbor (e.g. "교보문고
+    # 광화문점") as the top result. Apply the same name-match guard used by
+    # search_places and pick the first candidate whose name matches the query;
+    # otherwise return no canonical so the frontend keeps its search-based URL.
+    items = client.search_local(q, display=5)
+    item = next(
+        (it for it in items if _name_matches_query(_clean_html(it.get("title")), q)),
+        None,
+    )
+    if item is None:
         result: dict = {"canonical": None}
         cache.set(cache_key, result, timeout=3600)
         return JsonResponse(result)
 
-    item = items[0]
     name = _clean_html(item.get("title"))
     lat = lng = None
     try:
