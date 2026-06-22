@@ -1374,19 +1374,34 @@
       // anchor: = real venue with no Naver coords (e.g. event hall) — allow, shown as grey pin
       const pid = place?.place_id || "";
       if (pid.startsWith("cafe-anchor:")) return;
-      let label = labelBeforeUrl(lines, urlOnly) || place?.name || "スポット";
-      const parenVenue = _placeMatchedParenthetical(rawLineBeforeUrl(lines, urlOnly) || label, place);
+      const rawBefore = rawLineBeforeUrl(lines, urlOnly);
+      const labelText = labelBeforeUrl(lines, urlOnly);
+      // 플랜 텍스트의 venue가 source of truth. venue가 명시적으로 한국어 장소를
+      // 가리키는데(예: "清渓川（청계천）") byUrl로 매칭된 place가 그와 전혀 다르면
+      // (LLM이 청계천 venue 아래에 교보문고 광화문점 URL을 잘못 붙인 경우), 그 place를
+      // 버려 앵커 리스트가 상세 플랜과 일치하도록 한다. 한국어명이 없는 일본어 전용
+      // venue(예: "明洞聖堂")는 koVenue가 비어 가드를 통과하므로 영향 없음.
+      const koVenueM = String(rawBefore || "").match(/[（(]([가-힣][가-힣\s·]{0,40})[）)]/);
+      const koVenue = koVenueM ? koVenueM[1].trim() : (/[가-힣]/.test(labelText) ? labelText : "");
+      let venueMismatch = false;
+      if (place?.name && koVenue && !_placeNameMatchesLabel(place.name, koVenue)) {
+        place = null;
+        venueMismatch = true;
+      }
+      let label = labelText || place?.name || "スポット";
+      const parenVenue = _placeMatchedParenthetical(rawBefore || label, place);
       if (parenVenue) label = place?.name || parenVenue;
       // byUrl 매칭 실패(LLM이 /p/search/ URL을 생성했지만 API 결과는 /p/place/ URL인 경우)
-      // → label 이름으로 byName 재시도하여 좌표를 복원
+      // 또는 venue 불일치로 place를 버린 경우 → venue 한국어명으로 byName 재시도
       if (!place && placeIndex.byName) {
-        const nk = _normStopText(label);
+        const nk = _normStopText(koVenue || label);
         if (nk) place = placeIndex.byName[nk] || null;
       }
       // label이 일본어(漢字)라 byName 미스 → Naver search URL 쿼리 텀으로 재시도
       // e.g. label="明洞聖堂", URL="/p/search/명동성당"
       //   → "명동성당" 시도, 또 _knownKoreanSearchName("명동성당")="천주교서울대교구주교좌명동대성당" 시도
-      if (!place && placeIndex.byName) {
+      // venue 불일치(venueMismatch)인 경우 URL 검색어는 잘못된 장소를 가리키므로 신뢰하지 않음
+      if (!place && !venueMismatch && placeIndex.byName) {
         const searchMatch = urlOnly.match(/\/search\/([^?&/#]+)/);
         if (searchMatch) {
           const decoded = (() => { try { return decodeURIComponent(searchMatch[1]); } catch (_) { return searchMatch[1]; } })();
