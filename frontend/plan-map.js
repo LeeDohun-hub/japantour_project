@@ -834,9 +834,30 @@
   // 앵커(지도 스톱)에서 강제 제외할 장소. 관광 앵커로 부적절하거나 오매칭이 잦은 곳.
   // 교보문고: 청계천/광화문 인근의 고(高)리뷰 서점이 관광지로 오매칭되어 반복 노출됨.
   const _ANCHOR_STOP_BLOCK_RE = /교보문고|kyobo\s*book/i;
+
+  // "서울 인사동점"처럼 지역명만으로 만들어진 가짜 "○○점" 카드를 차단.
+  // 실제 지점명은 브랜드명으로 시작하지만(예: 올리브영 명동점), 환각 카드는
+  // 광역시/관광 에리어 이름으로 시작하고 "점"으로 끝난다. 실존 장소가 아니다.
+  const _AREA_PREFIX_NAMES = [
+    "서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "제주",
+    "경기", "강원", "충청", "충북", "충남", "전라", "전북", "전남", "경상", "경북", "경남",
+    "인사동", "명동", "홍대", "강남", "성수", "이태원", "북촌", "삼청동", "익선동",
+    "서면", "해운대", "광안리", "여의도", "잠실", "동대문", "가로수길", "압구정",
+  ];
+  const _AREA_NAME_SET = new Set(_AREA_PREFIX_NAMES);
+  function _isFakeAreaBranch(name) {
+    const t = String(name || "").trim();
+    if (!/[가-힣]점$/.test(t)) return false;        // "…한글점"으로 끝나야
+    const first = t.split(/\s+/)[0];                 // 첫 토큰(=브랜드 자리)
+    // 첫 토큰이 지역명이거나, 첫 토큰 자체가 "에리어+점"이면 브랜드가 없는 가짜.
+    return _AREA_NAME_SET.has(first) || _AREA_NAME_SET.has(first.replace(/점$/, ""));
+  }
+
   function _isBlockedAnchorStop(stop) {
     const p = stop?.place || {};
-    return _ANCHOR_STOP_BLOCK_RE.test(`${p.name || ""} ${stop?.label || ""}`);
+    if (_ANCHOR_STOP_BLOCK_RE.test(`${p.name || ""} ${stop?.label || ""}`)) return true;
+    // place.name 또는 plan-text label 어느 쪽이 가짜 지역+점이어도 차단.
+    return _isFakeAreaBranch(p.name) || _isFakeAreaBranch(stop?.label);
   }
 
   // 스톱이 화면에 표시할 한국어 이름(place.name → 한국어 label → 알려진 매핑)을

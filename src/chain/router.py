@@ -883,6 +883,7 @@ STRICT SECTION USAGE — NON-NEGOTIABLE:
     in that Korean city — never fabricate a name; (d) still prohibited: generic descriptions like 「韓国料理店」,
     "(식사 후보 리스트에 해당하는 가게가 없습니다)", or any "no candidate" notice;
     (e) FORBIDDEN name examples: 「自然の中」「焼き菓子やコーヒー」「地元の食堂」— these are descriptions, not restaurant names; always use the real Korean name.
+    (e2) FORBIDDEN — a venue that is just a region/area name + 점, e.g. 「서울 인사동점」「인사동점」「부산 서면점」「대전 둔산점」. Area names are NOT shops or attractions. A 「…점」 must begin with a real brand name (e.g. 올리브영 명동점), never a city/area name. This applies to BOTH restaurants AND 観光スポット.
     (f) FORBIDDEN generic meal terms — NEVER use 포장마차, 노점, 길거리음식, 푸드코트, 시장 음식, or ANY area-name-only
     entry like "명동 포장마차" / "홍대 포장마차". Must be a SPECIFIC named restaurant, e.g. 명동교자, 진진, 을지면옥.
     CRITICAL: NEVER skip a 昼食 or 夕食 slot on a sightseeing day — if candidates are exhausted, use this fallback.
@@ -4826,6 +4827,8 @@ def _filter_festivals_by_area(
 _FESTIVAL_INTENT_KEYWORDS = (
     "축제", "フェス", "フェスティバル", "festival", "祭", "祭り",
     "공연", "コンサート", "concert", "イベント", "행사", "event",
+    "페스티벌", "콘서트", "티켓", "예매", "k-pop", "kpop", "케이팝",
+    "아이돌", "팬미팅", "ライブ", "アイドル", "チケット", "ファンミ", "idol",
 )
 
 
@@ -5071,8 +5074,29 @@ def _gocamping_vacation_stays(
         return []
 
 
-def _wants_visitkorea_region_data(category: str) -> bool:
-    return category in ("culture", "leisure", "itinerary")
+# 채팅(non-itinerary)의 VisitKorea 지역 카드는 사용자가 "관광지 추천" 또는
+# "축제·공연·K-pop"을 명시적으로 요청했을 때만 보여준다. 그렇지 않으면 "명동성당의
+# 특징" 같은 단일 장소 정보질문에 질문과 무관한 지역 카드가 붙는다.
+_SIGHTSEEING_INTENT_KEYWORDS = (
+    "관광", "명소", "가볼만", "가 볼 만", "볼거리", "볼 만", "코스", "추천",
+    "둘러", "주변", "근처", "놀거리", "나들이", "당일치기", "데이트", "핫플", "가볼",
+    "観光", "名所", "見どころ", "スポット", "おすすめ", "オススメ", "コース",
+    "巡り", "周辺", "近く", "遊び", "日帰り",
+)
+
+
+def _wants_visitkorea_region_data(
+    category: str, user_message: str = "", keyword: str = ""
+) -> bool:
+    if category == "itinerary":
+        return True
+    if category not in ("culture", "leisure"):
+        return False
+    # 관광지 추천 또는 축제·공연·K-pop 의도가 명시적일 때만 지역 카드를 붙인다.
+    text = f"{user_message} {keyword}".lower()
+    return any(k.lower() in text for k in _SIGHTSEEING_INTENT_KEYWORDS) or any(
+        k.lower() in text for k in _FESTIVAL_INTENT_KEYWORDS
+    )
 
 
 def _wants_festival_search(
@@ -5081,11 +5105,12 @@ def _wants_festival_search(
     keyword: str,
     traveler_profile: dict | None = None,
 ) -> bool:
-    if category in ("culture", "leisure", "itinerary"):
+    if category == "itinerary":
         return True
     acts = {str(a).lower() for a in (traveler_profile or {}).get("activities") or []}
     if "festival" in acts:
         return True
+    # 축제·공연·K-pop을 명시적으로 요청했을 때만 축제 검색.
     text = f"{user_message} {keyword}".lower()
     return any(k.lower() in text for k in _FESTIVAL_INTENT_KEYWORDS)
 
@@ -5591,7 +5616,7 @@ def route_and_answer(
                     limit=14,
                 )
 
-            if _wants_visitkorea_region_data(category):
+            if _wants_visitkorea_region_data(category, user_message, keyword):
                 vk_rows = 10
                 if int((traveler_profile or {}).get("plan_reroll") or 0) > 0:
                     vk_rows = 14
@@ -5699,7 +5724,7 @@ def route_and_answer(
         _do_visitkorea와 달리 축제·숙박·쇼핑 조회를 건너뛰므로 캐시 미스 시에도
         1~3초 안에 완료된다. _f_vk(전체)는 LLM 컨텍스트 생성에 별도 사용한다.
         """
-        if not _wants_visitkorea_region_data(category):
+        if not _wants_visitkorea_region_data(category, user_message, keyword):
             return []
         try:
             vk = VisitKoreaClient()
@@ -5728,7 +5753,7 @@ def route_and_answer(
             return []
 
     def _do_kto_datalab() -> tuple[str, list[str]]:
-        if not _wants_visitkorea_region_data(category):
+        if not _wants_visitkorea_region_data(category, user_message, keyword):
             return "", []
         if not _env_flag("ENABLE_KTO_DATALAB", "0"):
             logger.info("KTO DataLab enrichment disabled (set ENABLE_KTO_DATALAB=1 to enable)")
