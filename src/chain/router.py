@@ -2859,6 +2859,143 @@ def _food_queries_from_location_text(text: str) -> list[str]:
     return queries
 
 
+# ── 일본어/로마자 장소 표현 → 한국어 정규화 ─────────────────────────────────
+# Naver 장소 검색은 한국어 검색엔진이므로, 일본인 유저가 「食堂」「ホテル」「ショッピング」
+# 「busan」처럼 일본어·로마자로 입력하면 그대로는 0건이 된다. food/lodging/shopping/
+# leisure 검색 직전에 한국어로 정규화한다. (지역은 _areas_from_region_cities, 업종어는
+# 아래 카테고리별 표가 담당)
+# 주의: 부분일치 replace이므로 긴 키를 먼저 둔다(ショッピングモール 전에 ショッピング 금지).
+_JP_PLACE_TERM_MAPS: dict[str, dict[str, str]] = {
+    "food": {
+        "レストラン": "맛집", "グルメ": "맛집", "食堂": "식당", "ご飯": "맛집",
+        "ランチ": "점심 맛집", "ディナー": "저녁 맛집", "朝食": "아침식사",
+        "焼き肉": "고기 맛집", "焼肉": "고기 맛집", "海鮮": "해산물", "刺身": "회",
+        "寿司": "초밥", "居酒屋": "술집", "屋台": "포장마차",
+        "カフェ": "카페", "コーヒー": "커피", "スイーツ": "디저트",
+        "デザート": "디저트", "ベーカリー": "베이커리",
+    },
+    "lodging": {
+        "ゲストハウス": "게스트하우스", "ホステル": "게스트하우스", "ホテル": "호텔",
+        "旅館": "호텔", "民宿": "게스트하우스", "民泊": "게스트하우스",
+        "ペンション": "펜션", "リゾート": "리조트", "宿": "숙소",
+        "プール付き": "수영장", "プール": "수영장", "温泉付き": "온천", "温泉": "온천",
+        "サウナ": "사우나", "ジム": "헬스장", "スパ": "스파", "朝食付き": "조식",
+    },
+    "shopping": {
+        "ショッピングモール": "쇼핑몰", "ショッピング": "쇼핑", "免税店": "면세점",
+        "コスメ": "화장품", "化粧品": "화장품", "お土産": "기념품", "土産": "기념품",
+        "韓服レンタル": "한복대여", "韓服": "한복", "百貨店": "백화점", "デパート": "백화점",
+        "アウトレット": "아울렛", "市場": "시장", "雑貨": "소품샵", "薬局": "약국",
+    },
+    "leisure": {
+        "海水浴場": "해수욕장", "ビーチ": "해변", "テーマパーク": "테마파크",
+        "遊園地": "놀이공원", "展望台": "전망대", "公園": "공원", "庭園": "정원",
+        "登山": "등산", "ハイキング": "등산", "滝": "폭포", "美術館": "미술관",
+        "博物館": "박물관", "水族館": "아쿠아리움", "動物園": "동물원",
+    },
+}
+_ROMAJI_PLACE_TERM_RE = re.compile(
+    r"\b(restaurants?|gourmet|cafe|coffee|dessert|bakery|food|hotels?|hostel|"
+    r"guesthouse|motel|resort|shopping|cosmetics|market|souvenir|duty-free|"
+    r"beach|park|zoo|aquarium)\b",
+    re.I,
+)
+_ROMAJI_PLACE_MAP: dict[str, str] = {
+    "restaurant": "맛집", "restaurants": "맛집", "gourmet": "맛집", "food": "맛집",
+    "cafe": "카페", "coffee": "커피", "dessert": "디저트", "bakery": "베이커리",
+    "hotel": "호텔", "hotels": "호텔", "hostel": "게스트하우스",
+    "guesthouse": "게스트하우스", "motel": "모텔", "resort": "리조트",
+    "shopping": "쇼핑", "cosmetics": "화장품", "market": "시장",
+    "souvenir": "기념품", "duty-free": "면세점",
+    "beach": "해변", "park": "공원", "zoo": "동물원", "aquarium": "아쿠아리움",
+}
+
+
+def _koreanize_place_terms(category: str, text: str) -> str:
+    out = text
+    for jp, ko in _JP_PLACE_TERM_MAPS.get(category, {}).items():
+        if jp in out:
+            out = out.replace(jp, ko)
+    return _ROMAJI_PLACE_TERM_RE.sub(
+        lambda m: _ROMAJI_PLACE_MAP[m.group(1).lower()], out
+    )
+
+
+# 서울은 _ITINERARY_AREAS에 세부지역(명동·홍대 등)으로만 있고 「서울」자체 키가 없어
+# 별도 폴백으로 처리한다.
+_SEOUL_AREA_ALIASES: tuple[str, ...] = (
+    "서울", "서울특별시", "ソウル", "ソウル特別市", "seoul",
+)
+
+
+def _koreanize_area_hint(area_hint: str, user_message: str) -> str:
+    """area_hint(일본어·로마자 가능) → 한국어 대표 지역명. 못 찾으면 빈 문자열."""
+    # _areas_from_region_cities는 미매칭 시 원본 토큰을 그대로 돌려주므로 한글만 채택.
+    for src in (user_message, area_hint):
+        for a in _areas_from_region_cities(src or ""):
+            if re.search(r"[가-힣]", a):
+                return a
+    a = (area_hint or "").strip()
+    hit = (
+        _JPN_CITY_TO_KO.get(a)
+        or _ITINERARY_AREAS.get(a)
+        or _ITINERARY_AREAS.get(a.lower(), "")
+    )
+    if hit:
+        return hit
+    blob = f"{user_message} {area_hint}".lower()
+    if any(s.lower() in blob for s in _SEOUL_AREA_ALIASES):
+        return "서울"
+    return ""
+
+
+# 카테고리별 검색어 정책. suffix=기본 접미사(=0건 폴백어), append=장소형으로
+# 끝나지 않을 때 suffix를 붙일지, place_forms=이미 장소형이라 접미사 생략할 단어들.
+# (food·shopping은 접미사를 붙여야 Naver 결과가 잘 나오고, lodging·leisure는
+#  용어 자체가 장소형이거나 접미사가 어색해 0건 폴백에 맡긴다 — 모두 실측 기반)
+_PLACE_QUERY_POLICY: dict[str, dict[str, Any]] = {
+    "food": {
+        "suffix": "맛집", "append": True,
+        "place_forms": ("맛집", "카페", "식당", "음식점"),
+    },
+    "lodging": {
+        "suffix": "호텔", "append": False,
+        "place_forms": ("호텔", "게스트하우스", "숙소", "모텔", "펜션", "리조트"),
+    },
+    "shopping": {
+        "suffix": "쇼핑", "append": True,
+        "place_forms": ("쇼핑", "시장", "쇼핑몰", "백화점", "아울렛"),
+    },
+    "leisure": {
+        "suffix": "관광지", "append": False,
+        "place_forms": ("관광지", "공원", "명소"),
+    },
+}
+
+
+def _build_korean_place_query(
+    category: str, user_message: str, keyword: str, ko_area: str, raw_area_hint: str
+) -> str:
+    """일본어·로마자 장소 질문을 「<한국어 지역> <한국어 업종어>」 한국어 쿼리로 재구성.
+
+    keyword를 한국어 업종어로 치환한 뒤 **한글 토큰만** 남겨, 한자·가나·로마자
+    잔류(明洞·ソウルの·busan 등)를 제거한다. 카테고리 정책에 따라 장소형 접미사를
+    보장한다. (0건일 때의 폴백 재검색은 호출부 _do_places 가 담당)
+    """
+    pol = _PLACE_QUERY_POLICY.get(category, _PLACE_QUERY_POLICY["food"])
+    src = _koreanize_place_terms(category, (keyword or user_message or "").strip())
+    drop = {ko_area, raw_area_hint, ""}
+    body = " ".join(
+        t for t in re.findall(r"[가-힣]+", src) if t not in drop
+    ).strip()
+    suffix = pol["suffix"]
+    if not body:
+        body = suffix
+    elif pol["append"] and not (body.endswith(pol["place_forms"]) or suffix in body):
+        body = f"{body} {suffix}"
+    return " ".join(f"{ko_area} {body}".split()).strip()
+
+
 def _food_preferences_from_profile(
     traveler_profile: dict | None,
 ) -> tuple[list[str], list[str]]:
@@ -5265,11 +5402,15 @@ def route_and_answer(
         if category not in PLACES_TYPE_MAP:
             return [], ""
         destination_filter = _chat_destination_filter(user_message, keyword)
-        area_hint = str(destination_filter.get("area_hint") or "").strip()
-        base_query = (keyword or user_message or "").strip()
-        search_query = base_query
-        if area_hint and area_hint not in search_query:
-            search_query = f"{area_hint} {search_query}".strip()
+        area_hint_raw = str(destination_filter.get("area_hint") or "").strip()
+        # food/lodging/shopping/leisure는 Naver(한국어) 전용이므로 일본어·로마자
+        # 입력을 한국어 쿼리로 재구성한다. 한국어로 못 바꾼 area_hint(일본어·로마자)는
+        # Naver 보조필터를 오염시키므로 비운다.
+        ko_area = _koreanize_area_hint(area_hint_raw, user_message)
+        area_hint = ko_area
+        search_query = _build_korean_place_query(
+            category, user_message, keyword, ko_area, area_hint_raw
+        )
         if not _google_places_enabled():
             logger.info("Naver place mode active")
             try:
@@ -5282,6 +5423,14 @@ def route_and_answer(
                     display=12 if area_hint else 8,
                     area_hint=area_hint,
                 )
+                # 세부 의도(면세점·해변 등)는 Naver place에서 0건일 수 있어 지역+기본
+                # 접미사로 폴백 재검색해 최소한 그 지역 결과는 보장한다.
+                if not results and ko_area:
+                    fb_query = f"{ko_area} {_PLACE_QUERY_POLICY.get(category, {}).get('suffix', '맛집')}"
+                    if fb_query != search_query:
+                        results = nclient.search_places(
+                            fb_query, display=12, area_hint=ko_area
+                        )
                 return _filter_chat_places_by_destination(results, destination_filter), ""
             except Exception as exc:
                 logger.warning("Naver Search places error [%s/%s]: %s", category, keyword, exc)
