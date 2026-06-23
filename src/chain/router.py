@@ -5085,17 +5085,28 @@ _SIGHTSEEING_INTENT_KEYWORDS = (
 )
 
 
-def _wants_visitkorea_region_data(
+def _wants_sightseeing_attractions(
     category: str, user_message: str = "", keyword: str = ""
 ) -> bool:
+    """관광명소(attractions) 카드 게이트 — 관광지 추천 의도가 명시될 때만."""
     if category == "itinerary":
         return True
     if category not in ("culture", "leisure"):
         return False
-    # 관광지 추천 또는 축제·공연·K-pop 의도가 명시적일 때만 지역 카드를 붙인다.
     text = f"{user_message} {keyword}".lower()
-    return any(k.lower() in text for k in _SIGHTSEEING_INTENT_KEYWORDS) or any(
-        k.lower() in text for k in _FESTIVAL_INTENT_KEYWORDS
+    return any(k.lower() in text for k in _SIGHTSEEING_INTENT_KEYWORDS)
+
+
+def _wants_visitkorea_region_data(
+    category: str, user_message: str = "", keyword: str = ""
+) -> bool:
+    """VisitKorea 조회 진입 게이트 — 관광 추천 OR 축제·공연·K-pop 의도가 있으면 True."""
+    if category == "itinerary":
+        return True
+    if category not in ("culture", "leisure"):
+        return False
+    return _wants_sightseeing_attractions(category, user_message, keyword) or any(
+        k.lower() in f"{user_message} {keyword}".lower() for k in _FESTIVAL_INTENT_KEYWORDS
     )
 
 
@@ -5662,7 +5673,9 @@ def route_and_answer(
                                     enriched_undated.append(_fst)
                             if enriched_undated:
                                 fest_batches.append(enriched_undated)
-                if area_codes:
+                # 관광명소 카드는 관광지 추천 의도일 때만. (축제·공연·K-pop만 물었으면
+                # 같은 지역 관광명소를 딸려 보내지 않고 축제 카드만 노출)
+                if area_codes and _wants_sightseeing_attractions(category, user_message, keyword):
                     _vk_ctx = f"{user_message} {keyword}"
                     for ac in area_codes:
                         sgu = _get_city_sigungu(ac, _vk_ctx)
@@ -5724,7 +5737,8 @@ def route_and_answer(
         _do_visitkorea와 달리 축제·숙박·쇼핑 조회를 건너뛰므로 캐시 미스 시에도
         1~3초 안에 완료된다. _f_vk(전체)는 LLM 컨텍스트 생성에 별도 사용한다.
         """
-        if not _wants_visitkorea_region_data(category, user_message, keyword):
+        # attractions 전용이므로 관광지 추천 의도(또는 itinerary)일 때만 조회한다.
+        if not _wants_sightseeing_attractions(category, user_message, keyword):
             return []
         try:
             vk = VisitKoreaClient()
