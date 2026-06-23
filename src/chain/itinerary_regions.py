@@ -35,7 +35,7 @@ def _accommodation_food_areas(traveler_profile: dict | None) -> list[str]:
         areas.append("수원")
     if any(k in text for k in ("부천", "bucheon")):
         areas.append("부천")
-    if any(k in text for k in ("대전", "daejeon", "大田", "テジョン", "유성", "儒城", "yuseong")):
+    if any(k in text for k in ("대전", "daejeon", "大田", "テジョン", "デジョン", "유성", "儒城", "yuseong")):
         areas.append("대전")
     if any(k in text for k in ("충청", "忠清", "chungcheong")):
         areas.append("대전")
