@@ -748,6 +748,26 @@ def _repair_wizard_itinerary_rules(
                 return [p.name, p.google_maps_uri]
         return []
 
+    def skip_plain_cafe_tail(start_idx: int) -> int:
+        """Skip stale LLM cafe name/prose after the single chosen cafe card.
+
+        The repair pass may replace a bare "カフェ" slot with one verified cafe.
+        Any following plain lines before the next slot/day are the original,
+        unlinked cafe text and should not survive as a second cafe.
+        """
+        j = start_idx
+        while j < len(lines):
+            tail = lines[j].strip()
+            if (
+                not tail
+                or _ITINERARY_DAY_RE.match(tail)
+                or _itinerary_slot_from_line(tail)
+                or _MAPS_URL_IN_TEXT_RE.search(tail)
+            ):
+                break
+            j += 1
+        return j
+
     idx = 0
     while idx < len(lines):
         line = lines[idx]
@@ -777,10 +797,11 @@ def _repair_wizard_itinerary_rules(
             out.append(line)
             if new_slot == "afternoon" and _has_cafe_hopping_interest(traveler_profile, user_message):
                 lookahead = "\n".join(lines[idx + 1: idx + 5])
-                if _CAFE_SLOT_ONLY_RE.search(lookahead) and not _MAPS_URL_IN_TEXT_RE.search(lookahead):
+                if day_cafe_count < 1 and _CAFE_SLOT_ONLY_RE.search(lookahead) and not _MAPS_URL_IN_TEXT_RE.search(lookahead):
                     inserted = next_place_line("cafe")
                     if inserted:
                         out.extend(inserted)
+                        day_cafe_count += 1
             idx += 1
             continue
 
@@ -797,10 +818,14 @@ def _repair_wizard_itinerary_rules(
         if _CAFE_SLOT_ONLY_RE.match(stripped):
             if _has_cafe_hopping_interest(traveler_profile, user_message):
                 out.append(line)
-                inserted = next_place_line("cafe")
-                if inserted:
-                    out.extend(inserted)
-            idx += 1
+                if day_cafe_count < 1:
+                    inserted = next_place_line("cafe")
+                    if inserted:
+                        out.extend(inserted)
+                        day_cafe_count += 1
+                idx = skip_plain_cafe_tail(idx + 1)
+            else:
+                idx += 1
             continue
 
         next_line = lines[idx + 1] if idx + 1 < len(lines) else ""
