@@ -919,6 +919,7 @@ Major malls / department stores (Lotte World Mall, Times Square, Starfield, Shin
   - Use malls/department stores ONLY when they appear in 「観光スポット候補」.
   - If they are not in the candidate list, do not add shopping malls from general knowledge.
   - Major marts/supermarkets (이마트, 홈플러스, 롯데마트, 코스트코, 트레이더스, 노브랜드) are shopping-only stops: use them ONLY when the traveler selected shopping/shop_hard AND they appear in 「観光スポット候補」.
+  - Hard block: NEVER use 「이마트 청계천점」 as an itinerary stop or card.
   - When a listed mall is used, listing known brand tenants (Dior, Hermès, LV, Chanel, Olive Young, Aland, etc.) from training knowledge is ALLOWED.
 
 [KOREA-ONLY RULE — ABSOLUTE]
@@ -3264,6 +3265,7 @@ _ATTRACTION_NAME_EXCLUDE_RE = re.compile(
     r"노인회|대한노인회|노인복지|경로당|마을회관|복지관|"
     r"관광정보센터|관광정보센타|관광안내소|관광안내센터|관광안내센타|"
     r"여행자센터|여행자센타|방문자센터|방문자센타|"
+    r"이마트\s*청계천점|emart\s*cheonggyecheon|"
     r"협회|지부|연합회|재단|센터|지원센터|사무소|관리사무소|"
     r"특례시청|시청(?!역)|군청(?!역)|구청(?!역)|도청(?!역)|"
     r"시의회|도의회|군의회|구의회|의회청사|"

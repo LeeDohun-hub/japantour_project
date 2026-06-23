@@ -3941,6 +3941,10 @@ function _tryRenderPlaceCard(indexes, rendered, url, renderedScope, slotKind = "
   }
   const _hasShoppingIntent = (wizardData.activities || []).includes("shopping")
     || (wizardData.additional?.travelStyles || []).includes("shop_hard");
+  if (/이마트\s*청계천점|emart\s*cheonggyecheon/i.test(_placeBlobLow)) {
+    rendered.add(key);
+    return false;
+  }
   if (!_hasShoppingIntent && /이마트(?!\s*24)|e-?\s*mart|emart|홈플러스|home\s*plus|homeplus|롯데마트|lotte\s*mart|lottemart|코스트코|costco|트레이더스|traders|노브랜드(?!\s*버거)|no\s*brand(?!\s*burger)/i.test(_placeBlobLow)) {
     rendered.add(key);
     return false;

@@ -839,6 +839,7 @@
   // 실제 지점명은 브랜드명으로 시작하지만(예: 올리브영 명동점), 환각 카드는
   // 광역시/관광 에리어 이름으로 시작하고 "점"으로 끝난다. 실존 장소가 아니다.
   const _MAJOR_MART_STOP_RE = /이마트(?!\s*24)|e-?\s*mart|emart|홈플러스|home\s*plus|homeplus|롯데마트|lotte\s*mart|lottemart|코스트코|costco|트레이더스|traders|노브랜드(?!\s*버거)|no\s*brand(?!\s*burger)/i;
+  const _EMART_CHEONGGYECHEON_STOP_RE = /이마트\s*청계천점|emart\s*cheonggyecheon/i;
 
   function _mapHasShoppingIntent() {
     const acts = Array.isArray(_mapMeta?.activities) ? _mapMeta.activities : [];
@@ -866,6 +867,7 @@
   function _isBlockedAnchorStop(stop) {
     const p = stop?.place || {};
     if (_ANCHOR_STOP_BLOCK_RE.test(`${p.name || ""} ${stop?.label || ""}`)) return true;
+    if (_EMART_CHEONGGYECHEON_STOP_RE.test(`${p.name || ""} ${p.category || ""} ${p.address || ""} ${stop?.label || ""}`)) return true;
     if (!_mapHasShoppingIntent() && _MAJOR_MART_STOP_RE.test(`${p.name || ""} ${p.category || ""} ${p.address || ""} ${stop?.label || ""}`)) return true;
     // place.name 또는 plan-text label 어느 쪽이 가짜 지역+점이어도 차단.
     return _isFakeAreaBranch(p.name) || _isFakeAreaBranch(stop?.label);
