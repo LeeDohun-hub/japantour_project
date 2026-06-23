@@ -291,10 +291,8 @@ def _build_itinerary_attraction_queries(
             else:
                 add(f"{area} 예술의전당")
                 add(f"{area} 콘서트")
-        if "festival" in acts:
-            add(f"{area} 축제")
-            add(f"{area} 행사")
-            add(f"{area} 페스티벌")
+        # 축제·행사는 일정 본문에 카드로 넣지 않는다(VisitKorea 축제 섹션 전용).
+        # → Naver 축제 검색 쿼리를 생성하지 않아 본문에 축제 Naver 카드가 섞이지 않게 한다.
         if has_shopping_interest:
             add(f"{area} 쇼핑")
             add(f"{area} 쇼핑몰")

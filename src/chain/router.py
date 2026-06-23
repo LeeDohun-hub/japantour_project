@@ -4645,7 +4645,9 @@ def _build_retry_correction(failures: list[str], traveler_profile: dict | None) 
     return "直前のプランに問題がありました。以下を必ず修正してください：" + "".join(f"【{p}】" for p in parts)
 
 
-def _fmt_selected_activity_coverage_hint(traveler_profile: dict | None) -> str:
+def _fmt_selected_activity_coverage_hint(
+    traveler_profile: dict | None, is_wizard_plan: bool = False
+) -> str:
     """Wizard step 5 selections that must be visible in the generated plan."""
     profile = traveler_profile or {}
     additional = profile.get("additional") or {}
@@ -4668,17 +4670,34 @@ def _fmt_selected_activity_coverage_hint(traveler_profile: dict | None) -> str:
         ("スポーツ観戦", ("sports", "sport", "baseball", "soccer", "スポーツ", "스포츠"), "試合・会場候補を日別本文に1回以上入れる。"),
         ("バカンス", ("vacation", "resort", "poolvilla", "pension", "camping", "beach", "バカンス", "휴양"), "宿泊候補セクション、または海水浴場・ビーチ・プール・キャンプ系を必ず入れる。"),
     ]
+    # 위저드 플랜에서는 축제·공연·K-pop·스포츠를 일정 본문에 넣지 않고 전용 섹션
+    # (イベント・祭り / 公演日程 / 試合日程)에서만 노출 → 본문 삽입 지시 대상에서 제외.
+    section_only = {"祭り", "公演", "K-pop", "スポーツ観戦"} if is_wizard_plan else set()
     lines: list[str] = []
     for label, aliases, instruction in checks:
+        if label in section_only:
+            continue
         if any(alias.lower() in blob for alias in aliases):
             lines.append(f"- {label}: {instruction}")
     if not lines:
         return ""
+    footer = (
+        "\n※ 食事ルールは最優先: 食事は昼食・夕食のみ。カフェは食事回数に含めず、午後の休憩枠だけに使う。\n"
+    )
+    if is_wizard_plan:
+        footer += (
+            "※ 祭り・公演・K-pop・スポーツは日程本文に入れない。"
+            "専用セクション（イベント・祭り / 公演日程 / 試合日程）でのみ案内する。\n"
+        )
+    else:
+        footer += (
+            "※ 祭り・公演・K-pop・スポーツも下部カードだけに逃がさず、"
+            "Reference Dataの具体候補を日別本文の午前/午後/夜ブロックへ入れる。\n"
+        )
     return (
         "=== やりたいこと反映ルール（選択項目は必ず見える形で出力）===\n"
         + "\n".join(lines)
-        + "\n※ 食事ルールは最優先: 食事は昼食・夕食のみ。カフェは食事回数に含めず、午後の休憩枠だけに使う。\n"
-        + "※ 祭り・公演・K-pop・スポーツも下部カードだけに逃がさず、Reference Dataの具体候補を日別本文の午前/午後/夜ブロックへ入れる。\n"
+        + footer
     )
 
 # ─── Visit Korea (관광공사 API) ─────────────────────────────────────────
@@ -6359,7 +6378,9 @@ def route_and_answer(
                 "=== 食事方針 ===\n"
                 "グルメ希望なし: 昼食・夕食は必須。ただし食事説明は短く、移動導線に合う実在店を選び、観光・買い物・自然・K-pop等の選択済み目的を日程の主役にする。\n"
             )
-        activity_coverage_hint = _fmt_selected_activity_coverage_hint(traveler_profile)
+        activity_coverage_hint = _fmt_selected_activity_coverage_hint(
+            traveler_profile, is_wizard_plan
+        )
         if activity_coverage_hint:
             ctx_parts.append(activity_coverage_hint)
         budget_hint = _fmt_budget_hint(traveler_profile)
@@ -6584,7 +6605,10 @@ def route_and_answer(
                 "例: 강릉짬뽕순두부 동화가든 본점→カンヌン・チャンポン純豆腐 東和ガーデン本店\n"
                 "例: 웨일라잇→ウェイルライト\n"
             )
-    if sports_events:
+    # 위저드 플랜에서는 스포츠 경기를 일정 본문(日程)에 넣지 않는다.
+    # 試合日程은 프런트의 스포츠 섹션(試合日程/会場カード)에서만 노출하므로 LLM 본문 컨텍스트에서 제외.
+    # 단, 챗봇(비-위저드)에서는 그대로 답변에 활용한다.
+    if sports_events and not is_wizard_plan:
         ctx_parts.append(
             "=== Sports Schedule Results ===\n"
             + fmt_sports_matches(sports_events, lang)
@@ -6628,7 +6652,11 @@ def route_and_answer(
             else "=== Visit Korea Tourism API — 宿泊 (searchStay2) ===\n"
         )
         ctx_parts.append(_stay_header + _fmt_visitkorea_stays(visitkorea_stays))
-    if visitkorea_festivals:
+    # 위저드 플랜에서는 축제·행사·공연을 일정 본문(日程)에 넣지 않는다.
+    # 네이버 검색이 안 되는 축제·공연은 본문에 카드화하면 잘못된 주소가 붙을 수 있어,
+    # 프런트의 '公演日程' 섹션에서 티켓 예매 URL과 함께만 노출한다(티켓 URL 없으면 미출력).
+    # → LLM 본문 컨텍스트에서 제외. 단, 챗봇(비-위저드)에서는 그대로 답변에 활용한다.
+    if visitkorea_festivals and not is_wizard_plan:
         ctx_parts.append(
             "=== Visit Korea Tourism API — イベント・祭り (searchFestival2) ===\n"
             + _fmt_visitkorea_festivals(visitkorea_festivals)
@@ -6638,13 +6666,13 @@ def route_and_answer(
             "=== Visit Korea Tourism API — 観光スポット (areaBasedList2) ===\n"
             + _fmt_visitkorea_attractions(visitkorea_attractions)
         )
-    if gyeonggi_events:
+    if gyeonggi_events and not is_wizard_plan:
         ctx_parts.append(
             "=== 전국공연행사정보표준데이터 — 行事・フェスティバル ===\n"
             "※ 旅行期間に合う行事は、下部カードだけでなく日程本文の午前/午後/夕方夜ブロックにも組み込む。明示時刻がない場合、フェス・展示・地域行事は午後半日、音楽・公演系は夕方〜夜を優先。\n"
             + fmt_gyeonggi_events(gyeonggi_events, lang)
         )
-    if ticket_platform_events:
+    if ticket_platform_events and not is_wizard_plan:
         ctx_parts.append(
             "=== KOPIS 공연예술통합전산망 — 공연·전시·축제 메타 ===\n"
             "※ 日程本文に組み込み可: 旅行期間・目的地と合う公演は、夕方〜夜または半日ブロックとして使う。\n"
@@ -6747,11 +6775,14 @@ def route_and_answer(
     # hints only — they use search query strings as names and must not appear as frontend cards.
     _ANCHOR_PREFIXES = ("anchor:", "cafe-anchor:")
     if category == "itinerary":
-        _festival_places = _festival_items_to_places(visitkorea_festivals)
-        api_places = (
-            [p for p in itinerary_places if not str(p.place_id or "").startswith(_ANCHOR_PREFIXES)]
-            + _festival_places
-        )
+        api_places = [
+            p for p in itinerary_places
+            if not str(p.place_id or "").startswith(_ANCHOR_PREFIXES)
+        ]
+        # 위저드 플랜 본문에는 축제 카드를 주입하지 않는다(축제·공연은 '公演日程' 섹션 전용).
+        # 챗봇 성격의 itinerary 요청 등 비-위저드일 때만 본문 축제 카드를 허용.
+        if not is_wizard_plan:
+            api_places = api_places + _festival_items_to_places(visitkorea_festivals)
     else:
         api_places = places_results
     places_total = len(api_places)

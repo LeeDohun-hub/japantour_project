@@ -3498,7 +3498,7 @@ function _candidatePlaceNamesFromPlanLine(line) {
     let name = part.replace(/^(?:昼食|午後|午前|夕食|朝食|夜|ランチ|ディナー|朝|昼|食事)[:：\s]*/, "").trim();
     name = name.replace(/^(?:観光|散策|訪問|見学|ショッピング|カフェ|食事)\s*[:：-]?\s*/, "").trim();
     name = name.replace(/\s+(?:周辺|近く|エリア).*$/u, "").trim();
-    if (name.length >= 2 && name.length <= 36 && !_ATTR_FOOD_SKIP_RE.test(name) && !_isBadPlanPlaceQuery(name)) out.push(name);
+    if (name.length >= 2 && name.length <= 36 && !_isBadPlanPlaceQuery(name)) out.push(name);
   }
   return [...new Set(out)].slice(0, 3);
 }
@@ -4410,6 +4410,7 @@ function _renderVisitKoreaCards(stays, festivals, attractions) {
   if (attractions && attractions.length) {
     html += `<div class="plan-refs-section"><h3 class="plan-refs-title">🗺 観光スポット（韓国観光公社）</h3><div class="plan-vk-grid">${buildCards(attractions, "🗺", false)}</div></div>`;
   }
+  // 축제(VisitKorea festivals)는 본문(日程)에는 넣지 않고, 祭り 선택 시 이 별도 섹션에만 노출.
   if (festivals && festivals.length) {
     html += `<div class="plan-refs-section"><h3 class="plan-refs-title">🎭 イベント・祭り（韓国観光公社）</h3><div class="plan-vk-grid">${buildCards(festivals, "🎭", true)}</div></div>`;
   }
@@ -4774,7 +4775,8 @@ function _extractUnlinkedAttrNames(text, placeIndexes) {
 
   const tryAdd = (name, force = false) => {
     name = _cleanPlanPlaceLabel(name);
-    if (name.length < 3) return;
+    if (name.length < 2) return;
+    if (name.length === 2 && !/^[가-힣]{2}$/.test(name)) return;
     if (!_looksLikeStandalonePlaceName(name)) return;
     if (!force && (_ATTR_FOOD_SKIP_RE.test(name) || _ATTR_AREA_SKIP_RE.test(name))) return;
     const nk = _normalizePlaceName(name);
@@ -4838,7 +4840,7 @@ async function _enrichUnlinkedAttractions(names, placeIndexes) {
       // Only alias the query key when the result name is clearly related to the query.
       // Unconditional aliasing caused Naver's off-topic results (e.g., 칠암사계 returned
       // for "감천문화마을 부산") to be indexed under the query key, producing wrong stop labels.
-      if (queryKey && queryKey !== nk && (nk.startsWith(queryKey) || queryKey.startsWith(nk))) {
+      if (queryKey && queryKey !== nk && hasOverlap) {
         placeIndexes.byName[queryKey] = enriched;
       }
       if (p.maps_url) placeIndexes.byUrl[_mapsUrlKey(p.maps_url)] = enriched;
@@ -5164,20 +5166,26 @@ const _LEAGUE_LABELS = {
 
 function _renderTicketPlatformCards(events) {
   if (!events || !events.length || !window.LinkPreview) return "";
+  // 公演日程: 티켓 예매/상세 URL이 있는 공연만 노출. URL이 없으면 출력하지 않는다.
   const cards = events.slice(0, 8).map((ev) => {
     const url = LinkPreview.normalizeUrl(ev.ticket_url || "");
+    if (!url) return "";
     const venueCard = ev.venue_place ? _renderInlinePlaceCard(ev.venue_place) : "";
     return `<div class="plan-ticket-with-venue">${LinkPreview.renderCard(LinkPreview.eventToPreview(ev, url))}${venueCard}</div>`;
-  }).join("");
+  }).filter(Boolean).join("");
+  if (!cards) return "";
   return `<div class="plan-refs-section">
-    <h3 class="plan-refs-title">🎫 公演情報（KOPIS）</h3>
+    <h3 class="plan-refs-title">🎫 公演日程</h3>
     <div class="plan-ticket-grid">${cards}</div>
   </div>`;
 }
 
 function _renderPlanEventsCards(events) {
   if (!events || !events.length) return "";
-  const cards = events.slice(0, 8).map((ev) => {
+  // 公演・行事도 예매/상세 URL이 있는 항목만 노출. URL이 없으면 출력하지 않는다.
+  const linked = events.filter((ev) => ev && ev.url);
+  if (!linked.length) return "";
+  const cards = linked.slice(0, 8).map((ev) => {
     const name   = _escapeHtml(ev.name || "");
     const period = ev.start_date === ev.end_date
       ? _escapeHtml(ev.start_date || "")
