@@ -918,6 +918,7 @@ Evening / night:
 Major malls / department stores (Lotte World Mall, Times Square, Starfield, Shinsegae, Hyundai):
   - Use malls/department stores ONLY when they appear in 「観光スポット候補」.
   - If they are not in the candidate list, do not add shopping malls from general knowledge.
+  - Major marts/supermarkets (이마트, 홈플러스, 롯데마트, 코스트코, 트레이더스, 노브랜드) are shopping-only stops: use them ONLY when the traveler selected shopping/shop_hard AND they appear in 「観光スポット候補」.
   - When a listed mall is used, listing known brand tenants (Dior, Hermès, LV, Chanel, Olive Young, Aland, etc.) from training knowledge is ALLOWED.
 
 [KOREA-ONLY RULE — ABSOLUTE]
@@ -2472,6 +2473,17 @@ _SHOPPING_MALL_TEXT_RE = re.compile(
     re.IGNORECASE,
 )
 
+_MAJOR_MART_TEXT_RE = re.compile(
+    r"(?:"
+    r"이마트(?!\s*24)|e-?\s*mart|emart|"
+    r"홈플러스|home\s*plus|homeplus|"
+    r"롯데마트|lotte\s*mart|lottemart|"
+    r"코스트코|costco|트레이더스|traders|"
+    r"노브랜드(?!\s*버거)|no\s*brand(?!\s*burger)"
+    r")",
+    re.IGNORECASE,
+)
+
 _NON_RESTAURANT_VENUE_TEXT_RE = re.compile(
     r"(쇼핑몰|백화점|아울렛|패션몰|복합쇼핑몰|스퀘어|스트리트|트리플스트리트|"
     r"shopping\s*mall|department\s*store|outlet|square|street)",
@@ -2491,8 +2503,10 @@ def _is_chain_place(place: NearbyPlace) -> bool:
 def _is_shopping_mall_place(place: NearbyPlace) -> bool:
     cat = (place.category or "").lower().strip()
     blob = _place_blob(place)
-    return cat in {"shopping_mall", "department_store"} or bool(
-        _SHOPPING_MALL_TEXT_RE.search(blob)
+    return (
+        cat in {"shopping_mall", "department_store"}
+        or bool(_SHOPPING_MALL_TEXT_RE.search(blob))
+        or bool(_MAJOR_MART_TEXT_RE.search(blob))
     )
 
 

@@ -55,7 +55,7 @@
   let _mapMeta = {};
   let _originalReply = "";
   let _routeRenderSeq = 0;
-  let _routeDisplayMode = "car"; // "car" | "transit" | "walk"
+  let _routeDisplayMode = "shortest"; // "shortest" | "off"
   const _lockedStops = new Map();
   const _drivingRouteCache = new Map();
   const _transitRouteCache = new Map();
@@ -446,15 +446,15 @@
   }
 
   function _selectedTransportHasCarRoute() {
-    return _routeDisplayMode === "car";
+    return _routeDisplayMode === "shortest";
   }
 
   function _selectedTransportHasTransitRoute() {
-    return _routeDisplayMode === "transit";
+    return false;
   }
 
   function _selectedTransportIsWalk() {
-    return _routeDisplayMode === "walk";
+    return _routeDisplayMode === "off";
   }
 
 
@@ -838,6 +838,16 @@
   // "서울 인사동점"처럼 지역명만으로 만들어진 가짜 "○○점" 카드를 차단.
   // 실제 지점명은 브랜드명으로 시작하지만(예: 올리브영 명동점), 환각 카드는
   // 광역시/관광 에리어 이름으로 시작하고 "점"으로 끝난다. 실존 장소가 아니다.
+  const _MAJOR_MART_STOP_RE = /이마트(?!\s*24)|e-?\s*mart|emart|홈플러스|home\s*plus|homeplus|롯데마트|lotte\s*mart|lottemart|코스트코|costco|트레이더스|traders|노브랜드(?!\s*버거)|no\s*brand(?!\s*burger)/i;
+
+  function _mapHasShoppingIntent() {
+    const acts = Array.isArray(_mapMeta?.activities) ? _mapMeta.activities : [];
+    const styles = Array.isArray(_mapMeta?.travelStyles) ? _mapMeta.travelStyles : [];
+    return [...acts, ...styles].some((x) =>
+      /^(shopping|shop_hard|쇼핑|買い物|ショッピング)$/i.test(String(x || ""))
+    );
+  }
+
   const _AREA_PREFIX_NAMES = [
     "서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "제주",
     "경기", "강원", "충청", "충북", "충남", "전라", "전북", "전남", "경상", "경북", "경남",
@@ -856,6 +866,7 @@
   function _isBlockedAnchorStop(stop) {
     const p = stop?.place || {};
     if (_ANCHOR_STOP_BLOCK_RE.test(`${p.name || ""} ${stop?.label || ""}`)) return true;
+    if (!_mapHasShoppingIntent() && _MAJOR_MART_STOP_RE.test(`${p.name || ""} ${p.category || ""} ${p.address || ""} ${stop?.label || ""}`)) return true;
     // place.name 또는 plan-text label 어느 쪽이 가짜 지역+점이어도 차단.
     return _isFakeAreaBranch(p.name) || _isFakeAreaBranch(stop?.label);
   }
@@ -2742,10 +2753,14 @@
     if (titleEl && meta?.title) titleEl.textContent = meta.title;
     if (subEl) subEl.textContent = meta?.subtitle || "マップの番号順にスポットを巡るルートです。";
 
-    // Route mode toggle
-    _routeDisplayMode = "car";
+    // Shortest-route toggle. Public-transit routing is intentionally not exposed here.
+    _routeDisplayMode = "shortest";
     const toggleEl = document.getElementById("routeModeToggle");
     if (toggleEl) {
+      toggleEl.innerHTML = `
+        <button class="route-mode-btn active" data-mode="shortest" type="button">最短経路 ON</button>
+        <button class="route-mode-btn" data-mode="off" type="button">最短経路 OFF</button>
+      `;
       toggleEl.style.display = "flex";
       toggleEl.querySelectorAll(".route-mode-btn").forEach((btn) => {
         btn.classList.toggle("active", btn.dataset.mode === _routeDisplayMode);

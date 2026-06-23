@@ -866,7 +866,10 @@ def _repair_wizard_itinerary_rules(
                 or attr_place_by_name.get(name_only_key)
             )
             name_only_is_cafe = name_only_key in cafe_by_name
-            name_only_is_food = not name_only_is_cafe and name_only_key in food_names
+            name_only_is_food = (
+                not name_only_is_cafe
+                and (name_only_key in food_names or _itinerary_line_foodish(stripped))
+            )
             name_only_is_attr = name_only_key in attr_names
             name_only_wrong_area = (
                 current_day_focus

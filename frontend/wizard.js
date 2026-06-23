@@ -3939,6 +3939,12 @@ function _tryRenderPlaceCard(indexes, rendered, url, renderedScope, slotKind = "
     rendered.add(key);
     return false;
   }
+  const _hasShoppingIntent = (wizardData.activities || []).includes("shopping")
+    || (wizardData.additional?.travelStyles || []).includes("shop_hard");
+  if (!_hasShoppingIntent && /이마트(?!\s*24)|e-?\s*mart|emart|홈플러스|home\s*plus|homeplus|롯데마트|lotte\s*mart|lottemart|코스트코|costco|트레이더스|traders|노브랜드(?!\s*버거)|no\s*brand(?!\s*burger)/i.test(_placeBlobLow)) {
+    rendered.add(key);
+    return false;
+  }
   // 식사 슬롯에 관광 명소(비음식) 카드 차단
   if (slotKind === "meal" && !_isMealPlaceForRefs(place) && !_isCafePlaceForRefs(place)) {
     rendered.add(key);
@@ -5041,6 +5047,8 @@ async function _displayPlanOutput(data) {
       departureAirport: departureIata,
       accommodation: wizardData.accommodation || null,
       transport: wizardData.transport?.length ? wizardData.transport : _autoTransportForAirport(),
+      activities: wizardData.activities || [],
+      travelStyles: wizardData.additional?.travelStyles || [],
       regions: wizardData.regions || [],
       regionCities: wizardData.regionCities || wizardData.regionCitiesOther || "",
       regionCityIds: wizardData.regionCityIds || [],
