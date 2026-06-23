@@ -4704,7 +4704,12 @@ function _renderTravelChecklist(meta = {}) {
 
 // 플랜 텍스트에서 URL 없는 관광지 이름 추출 (괄호형 또는 **bold** 형식)
 // 식당/카페 키워드가 포함된 이름은 제외 (food 카드에서 이미 처리)
-const _ATTR_PAREN_RE = /([가-힣A-Za-z][가-힣A-Za-z0-9\s]{1,25})\(([가-힣A-Za-z][가-힣A-Za-z0-9\s]{1,25})\)/gu;
+// 「日本語/漢字/한글名（한국어 장소명）」형식에서 괄호 안 한국어명을 일반 추출한다.
+// 플랜 본문은 장소의 한국어 reading을 괄호로 적는 포맷이라, 괄호 내 한국어를 카드 후보로
+// 삼는다. 전각/반각 괄호 모두 지원하고, 앞에 어떤 문자(한자·가나·한글·라틴)가 와도 무방.
+// 비장소(설명어)는 _looksLikeStandalonePlaceName/_isBadPlanPlaceQuery + enrich 단계의
+// 이름-겹침·지역-일치 가드가 걸러낸다. (특정 지명·접미사 하드코딩 없음)
+const _ATTR_PAREN_RE = /[（(]\s*([가-힣][가-힣A-Za-z0-9\s·]{1,25})\s*[）)]/gu;
 const _ATTR_BOLD_RE = /\*{1,2}([가-힣][가-힣A-Za-z0-9\s·]{2,24})\*{1,2}/gu;
 const _ATTR_FOOD_SKIP_RE = /식당|레스토랑|맛집|카페|커피|치킨|갈비|국밥|냉면|삼겹|보쌈|보섬|족발|식사|음식|restaurant|cafe|lunch|dinner/i;
 const _MAPS_URL_LINE_RE = /https?:\/\/(?:maps\.google\.com|goo\.gl|map\.naver\.com)/;
@@ -4789,11 +4794,11 @@ function _extractUnlinkedAttrNames(text, placeIndexes) {
     for (const q of _candidatePlaceNamesFromPlanLine(line)) {
       tryAdd(q, true);
     }
-    // 괄호형: 더현대서울(더현대서울)
+    // 괄호 안 한국어명 추출: 八公山ケーブルカー（팔공산 케이블카）, 東城路（동성로） 등
     _ATTR_PAREN_RE.lastIndex = 0;
     let m;
     while ((m = _ATTR_PAREN_RE.exec(line)) !== null) {
-      tryAdd(m[2] || m[1]);
+      tryAdd(m[1].trim());
     }
     // 볼드형: **더현대서울**, *명동대성당*
     _ATTR_BOLD_RE.lastIndex = 0;

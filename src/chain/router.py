@@ -5116,12 +5116,12 @@ def _wants_festival_search(
     keyword: str,
     traveler_profile: dict | None = None,
 ) -> bool:
-    if category == "itinerary":
-        return True
     acts = {str(a).lower() for a in (traveler_profile or {}).get("activities") or []}
     if "festival" in acts:
         return True
-    # 축제·공연·K-pop을 명시적으로 요청했을 때만 축제 검색.
+    # 위저드 플랜(itinerary)도 やりたいこと에서 '祭り(festival)'를 선택했을 때만
+    # 축제·행사 카드를 노출. 선택하지 않았으면 본문에서 명시적으로 요청한 경우에만.
+    # (이전에는 itinerary면 무조건 축제를 주입해 미선택 사용자에게도 축제 카드가 떴음)
     text = f"{user_message} {keyword}".lower()
     return any(k.lower() in text for k in _FESTIVAL_INTENT_KEYWORDS)
 

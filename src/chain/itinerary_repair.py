@@ -118,6 +118,27 @@ def _apply_jp_names_to_places(
     return result
 
 
+def _fill_name_ja_transliteration(places: "list[NearbyPlace]") -> "list[NearbyPlace]":
+    """name_ja가 비어있는 장소에 한글명 가타카나 음역을 채운다(Naver 장소명 일본어 병기).
+
+    _apply_jp_names_to_places(LLM 본문 추출)로 못 채운 한국어 점포명에 적용한다.
+    """
+    import dataclasses as _dc
+    from src.chain.transliterate import hangul_to_katakana
+    result: list = []
+    for p in places:
+        name = str(getattr(p, "name", "") or "")
+        if not getattr(p, "name_ja", None) and any("가" <= c <= "힣" for c in name):
+            ja = hangul_to_katakana(name)
+            if ja and ja != name:
+                try:
+                    p = _dc.replace(p, name_ja=ja)
+                except Exception:
+                    pass
+        result.append(p)
+    return result
+
+
 def _repair_itinerary_place_urls(reply: str, places: "list[NearbyPlace]") -> str:
     """LLM이 장소명은 썼지만 maps URL을 누락한 경우, 검증된 후보 URL을 복구한다.
 
