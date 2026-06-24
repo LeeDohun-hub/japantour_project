@@ -731,6 +731,12 @@ RAG_CATEGORY_MAP: dict[str, str] = {
     "flight": "",
 }
 
+# /chat 코퍼스 폴백 임계값.
+# 분류기가 invalid로 판정해도 말뭉치(K-Culture)에 충분히 관련 높은 답이 있으면
+# 거절 대신 일반 지식 경로로 답한다. 보정 결과: 코퍼스 질문 0.64~0.86 vs
+# 무관 질문 0.33~0.47 의 분리 구간에서 선택.
+CHAT_CORPUS_ACCEPT_THRESHOLD = 0.55
+
 # ─── 분류기 시스템 프롬프트 — src/chain/prompts.py에서 import ──────────
 # (CLASSIFIER_SYSTEM은 파일 상단 import에서 _CLASSIFIER_SYSTEM으로 가져옴)
 
@@ -1636,6 +1642,22 @@ def search_rag(
         backend = "none"
 
     return RagSearchBundle(results=results, backend=backend, area_filter=area)
+
+
+def search_chat_corpus(
+    user_message: str,
+    top_k: int = RAG_TOP_K,
+) -> RagSearchBundle:
+    """일반 /chat 전용 말뭉치 검색.
+
+    플랜 생성용 질문 분류 결과를 지식 검색 필터로 사용하지 않는다.
+    사용자 원문을 전체 말뭉치에서 검색하여 원본 category/area 라벨이
+    라우터 분류 체계와 달라도 검색 후보에서 제외되지 않게 한다.
+    """
+    query = (user_message or "").strip()
+    if not query:
+        return RagSearchBundle(results=[], backend="none", area_filter="")
+    return search_rag(query, category="", area="", top_k=top_k)
 
 
 def _fmt_rag(results: list[dict]) -> str:
@@ -2926,6 +2948,76 @@ _ROMAJI_PLACE_MAP: dict[str, str] = {
     "beach": "해변", "park": "공원", "zoo": "동물원", "aquarium": "아쿠아리움",
 }
 
+# 일반 /chat에서 지원하는 분류 밖의 장소·업종 표현.
+# 플랜 생성용 카테고리에는 추가하지 않고 Naver 장소검색어로만 정규화한다.
+_CHAT_PLACE_TERM_MAP: dict[str, str] = {
+    "ライブハウス": "라이브하우스", "ナイトクラブ": "클럽", "ジャズバー": "재즈바",
+    "カラオケ": "노래방", "クラブ": "클럽", "ディスコ": "클럽",
+    "パブ": "펍", "バー": "바", "居酒屋": "술집",
+    "病院": "병원", "クリニック": "병원", "薬局": "약국",
+    "両替所": "환전소", "両替": "환전소", "ATM": "ATM",
+    "コンビニ": "편의점", "コインランドリー": "코인세탁소",
+    "美容室": "미용실", "美容院": "미용실", "ネイルサロン": "네일샵",
+    "マッサージ": "마사지", "フィットネス": "헬스장", "ジム": "헬스장",
+    "警察署": "경찰서", "交番": "파출소", "大使館": "대사관",
+    "レンタカー": "렌터카", "駐車場": "주차장",
+    "書店": "서점", "文房具店": "문구점", "花屋": "꽃집",
+}
+_CHAT_PLACE_ROMAJI_MAP: dict[str, str] = {
+    "live house": "라이브하우스", "nightclub": "클럽", "night club": "클럽",
+    "jazz bar": "재즈바", "karaoke": "노래방", "club": "클럽",
+    "disco": "클럽", "pub": "펍", "bar": "바",
+    "hospital": "병원", "clinic": "병원", "pharmacy": "약국",
+    "exchange": "환전소", "money exchange": "환전소", "atm": "ATM",
+    "convenience store": "편의점", "laundromat": "코인세탁소",
+    "hair salon": "미용실", "nail salon": "네일샵", "massage": "마사지",
+    "gym": "헬스장", "police station": "경찰서", "embassy": "대사관",
+    "rental car": "렌터카", "parking": "주차장", "bookstore": "서점",
+}
+_CHAT_PLACE_KO_TERMS: tuple[str, ...] = (
+    "클럽", "나이트클럽", "라이브하우스", "재즈바", "바", "펍", "술집", "노래방",
+    "병원", "의원", "클리닉", "약국", "환전소", "ATM", "편의점", "코인세탁소",
+    "미용실", "네일샵", "마사지", "헬스장", "경찰서", "파출소", "대사관",
+    "렌터카", "주차장", "서점", "문구점", "꽃집",
+)
+_CHAT_PLACE_RESULT_ALIASES: dict[str, tuple[str, ...]] = {
+    "클럽": ("클럽", "나이트", "디스코", "club"),
+    "라이브하우스": ("라이브", "공연장", "콘서트홀"),
+    "재즈바": ("재즈", "바", "라이브"),
+    "바": ("바", "bar", "칵테일", "와인", "주점"),
+    "펍": ("펍", "pub", "호프", "맥주", "주점"),
+    "술집": ("술집", "주점", "이자카야", "포차", "호프"),
+    "노래방": ("노래방", "코인노래", "가라오케"),
+    "병원": ("병원", "의원", "의료", "클리닉"),
+    "약국": ("약국",),
+    "환전소": ("환전", "외환"),
+    "편의점": ("편의점", "gs25", "cu", "세븐일레븐", "이마트24"),
+    "코인세탁소": ("세탁", "런드리", "빨래방"),
+    "미용실": ("미용실", "헤어", "살롱"),
+    "네일샵": ("네일",),
+    "마사지": ("마사지", "안마", "스파"),
+    "헬스장": ("헬스", "피트니스", "gym", "pt"),
+    "경찰서": ("경찰서", "지구대", "파출소"),
+    "파출소": ("경찰서", "지구대", "파출소"),
+    "대사관": ("대사관", "영사관"),
+    "렌터카": ("렌터카", "렌트카"),
+    "주차장": ("주차장", "주차"),
+    "서점": ("서점", "북스", "문고"),
+    "문구점": ("문구", "팬시"),
+    "꽃집": ("꽃집", "플라워", "화원"),
+}
+_CHAT_PLACE_SEARCH_HINT_RE = re.compile(
+    r"(?:어디|추천|찾아|근처|주변|가까운|있(?:나요|어요|습니까)|"
+    r"どこ|おすすめ|オススメ|近く|周辺|ありますか|探して|"
+    r"\bnear\b|\bnearby\b|\brecommend\b|\bwhere\b)",
+    re.I,
+)
+_CHAT_PLACE_FACT_QUESTION_RE = re.compile(
+    r"(?:歴史|由来|特徴|意味|情報|説明|教えて|どんな場所|"
+    r"역사|유래|특징|의미|정보|설명|어떤\s*곳)",
+    re.I,
+)
+
 
 def _koreanize_place_terms(category: str, text: str) -> str:
     out = text
@@ -2935,6 +3027,79 @@ def _koreanize_place_terms(category: str, text: str) -> str:
     return _ROMAJI_PLACE_TERM_RE.sub(
         lambda m: _ROMAJI_PLACE_MAP[m.group(1).lower()], out
     )
+
+
+def _replace_chat_place_terms(text: str) -> tuple[str, bool]:
+    out = text or ""
+    matched = False
+    for src, dst in sorted(_CHAT_PLACE_TERM_MAP.items(), key=lambda item: len(item[0]), reverse=True):
+        if src.lower() in out.lower():
+            out = re.sub(re.escape(src), dst, out, flags=re.I)
+            matched = True
+    for src, dst in sorted(_CHAT_PLACE_ROMAJI_MAP.items(), key=lambda item: len(item[0]), reverse=True):
+        pattern = rf"(?<![A-Za-z]){re.escape(src)}(?![A-Za-z])"
+        if re.search(pattern, out, re.I):
+            out = re.sub(pattern, dst, out, flags=re.I)
+            matched = True
+    if any(term.lower() in (text or "").lower() for term in _CHAT_PLACE_KO_TERMS):
+        matched = True
+    return out, matched
+
+
+def _chat_generic_place_query(user_message: str, keyword: str = "") -> str:
+    """분류 체계 밖의 /chat 장소질문을 Naver용 한국어 검색어로 변환."""
+    source = f"{user_message} {keyword}".strip()
+    normalized, has_place_term = _replace_chat_place_terms(source)
+    area = _koreanize_area_hint("", user_message)
+    has_area = bool(area)
+    has_search_hint = bool(_CHAT_PLACE_SEARCH_HINT_RE.search(source))
+    if not has_place_term and not (has_area and has_search_hint):
+        return ""
+    if _CHAT_PLACE_FACT_QUESTION_RE.search(source) and not has_search_hint:
+        return ""
+
+    # 영문·일문 지역명과 조사/질문 표현은 버리고, 변환된 한국어 업종어만 유지한다.
+    body_tokens = [
+        token for token in re.findall(r"[가-힣]+|ATM", normalized, re.I)
+        if token not in {area, "추천", "근처", "주변", "어디", "찾아", "있나요", "있어요"}
+    ]
+    body = " ".join(dict.fromkeys(body_tokens)).strip()
+    if not body:
+        return ""
+    return " ".join(f"{area} {body}".split()).strip()
+
+
+def _filter_generic_chat_places(places: list, search_query: str) -> list:
+    """Naver Local의 업종 불일치 결과를 일반 장소검색 카드에서 제거."""
+    requested_terms = [
+        term for term in _CHAT_PLACE_RESULT_ALIASES if term.lower() in search_query.lower()
+    ]
+    if not requested_terms:
+        return places
+    filtered = []
+    for place in places:
+        name = str(getattr(place, "name", "") or "").lower()
+        category = str(getattr(place, "category", "") or "").lower()
+        blob = f"{name} {category}"
+
+        def matches(term: str) -> bool:
+            if term == "클럽":
+                if any(bad in blob for bad in ("헬스", "피트니스", "미용", "마트", "쇼핑")):
+                    return False
+                return bool(
+                    re.search(r"(?:^|[\s·/_-])클럽(?:$|[\s·/_-])", name, re.I)
+                    or "나이트클럽" in blob
+                    or "댄스클럽" in blob
+                    or "디스코" in blob
+                    or re.search(r"(?:^|[\s·/_-])club(?:$|[\s·/_-])", name, re.I)
+                )
+            return any(
+                alias.lower() in blob for alias in _CHAT_PLACE_RESULT_ALIASES[term]
+            )
+
+        if any(matches(term) for term in requested_terms):
+            filtered.append(place)
+    return filtered
 
 
 # 서울은 _ITINERARY_AREAS에 세부지역(명동·홍대 등)으로만 있고 「서울」자체 키가 없어
@@ -5405,16 +5570,33 @@ def route_and_answer(
         if direct_lookup is not None:
             return direct_lookup
 
-    # invalid → 즉시 안내 반환
+    # invalid → 코퍼스 폴백 후, 그래도 근거 없으면 안내 반환
     if category == "invalid":
-        msg = (
-            "申し訳ありませんが、韓国旅行またはこの旅行プランナーの機能に関する質問に回答できます。"
-            "観光・交通・グルメ・マナー・日程・保存済みプラン・PDF共有などについてお聞きください。"
-            if reply_language == "日本語"
-            else "죄송합니다. 한국 여행 또는 이 여행 플래너 기능과 관련된 질문에 답변드릴 수 있습니다. "
-            "관광, 교통, 맛집, 예절, 일정, 저장된 플랜, PDF/공유 기능 등에 대해 질문해 주세요."
+        corpus_bundle = (
+            search_chat_corpus(user_message)
+            if not is_wizard_plan
+            else RagSearchBundle(results=[], backend="none", area_filter="")
         )
-        return RouteResult(reply=msg, category=category, keyword=keyword)
+        _top = corpus_bundle.results[0] if corpus_bundle.results else None
+        _top_score = float(_top.get("_score") or 0.0) if _top else 0.0
+        if _top is not None and _top_score >= CHAT_CORPUS_ACCEPT_THRESHOLD:
+            # 말뭉치에 충분히 관련 높은 답이 존재 → 거절하지 않고 일반 지식 답변 경로로 재라우팅.
+            category = "general"
+            if not keyword or keyword in (SAFE_FALLBACK_KEYWORD, "none"):
+                keyword = (user_message or "")[:100]
+            logger.info(
+                "invalid → corpus fallback accept (score=%.3f id=%s) → category=general",
+                _top_score, _top.get("id"),
+            )
+        else:
+            msg = (
+                "申し訳ありませんが、韓国旅行またはこの旅行プランナーの機能に関する質問に回答できます。"
+                "観光・交通・グルメ・マナー・日程・保存済みプラン・PDF共有などについてお聞きください。"
+                if reply_language == "日本語"
+                else "죄송합니다. 한국 여행 또는 이 여행 플래너 기능과 관련된 질문에 답변드릴 수 있습니다. "
+                "관광, 교통, 맛집, 예절, 일정, 저장된 플랜, PDF/공유 기능 등에 대해 질문해 주세요."
+            )
+            return RouteResult(reply=msg, category=category, keyword=keyword)
 
     if not is_wizard_plan and _is_arex_next_train_question(user_message, keyword):
         category = "transport"
@@ -5457,7 +5639,7 @@ def route_and_answer(
     # ── 2–3d단계: RAG / Places / Aviation / itinerary Places / Sports 병렬 수집 ──
     lang = "ja" if reply_language == "日本語" else "ko"
     rag_category = RAG_CATEGORY_MAP.get(category, "")
-    rag_area = _infer_area_filter(user_message, keyword)
+    rag_area = _infer_area_filter(user_message, keyword) if is_wizard_plan else ""
 
     def _do_rag() -> RagSearchBundle:
         if category == "itinerary":
@@ -5467,14 +5649,16 @@ def route_and_answer(
                 traveler_profile,
                 user_message,
             )
-        # 검색어는 사용자 원문(보통 일본어)+keyword 결합.
-        # keyword만 쓰면 분류기가 만든 한국어 keyword로 일본어 인덱스를 검색하게 되어
-        # 교차언어 미스매치가 발생한다(예: '수원 화성 옛 지명'으로는 정답 미검색).
-        rag_query = f"{user_message} {keyword}".strip()
-        return search_rag(rag_query, category=rag_category, area=rag_area)
+        # 일반 /chat은 플랜용 category/keyword/area에 종속시키지 않는다.
+        return search_chat_corpus(user_message)
 
     def _do_places() -> tuple[list, str]:
-        if category not in PLACES_TYPE_MAP:
+        generic_place_query = (
+            _chat_generic_place_query(user_message, keyword)
+            if not is_wizard_plan
+            else ""
+        )
+        if category not in PLACES_TYPE_MAP and not generic_place_query:
             return [], ""
         destination_filter = _chat_destination_filter(user_message, keyword)
         area_hint_raw = str(destination_filter.get("area_hint") or "").strip()
@@ -5483,10 +5667,11 @@ def route_and_answer(
         # Naver 보조필터를 오염시키므로 비운다.
         ko_area = _koreanize_area_hint(area_hint_raw, user_message)
         area_hint = ko_area
-        search_query = _build_korean_place_query(
+        search_query = generic_place_query or _build_korean_place_query(
             category, user_message, keyword, ko_area, area_hint_raw
         )
-        if not _google_places_enabled():
+        # 분류 밖의 일반 장소질문은 설정과 무관하게 Naver Local로 보낸다.
+        if generic_place_query or not _google_places_enabled():
             logger.info("Naver place mode active")
             try:
                 from src.api.naver_search_client import NaverSearchClient
@@ -5498,9 +5683,11 @@ def route_and_answer(
                     display=12 if area_hint else 8,
                     area_hint=area_hint,
                 )
+                if generic_place_query:
+                    results = _filter_generic_chat_places(results, search_query)
                 # 세부 의도(면세점·해변 등)는 Naver place에서 0건일 수 있어 지역+기본
                 # 접미사로 폴백 재검색해 최소한 그 지역 결과는 보장한다.
-                if not results and ko_area:
+                if not generic_place_query and not results and ko_area:
                     fb_query = f"{ko_area} {_PLACE_QUERY_POLICY.get(category, {}).get('suffix', '맛집')}"
                     if fb_query != search_query:
                         results = nclient.search_places(

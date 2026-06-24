@@ -100,6 +100,16 @@ python backend\manage.py import_tour_knowledge --batch-size 200
 
 `VECTOR_BACKEND=pgvector`를 사용하는 경우 Docker Desktop과 PostgreSQL/pgvector 컨테이너가 필요합니다.
 
+### 5.5 `/chat` 말뭉치 검색
+
+`/chat/`의 일반 질문은 플랜 생성용 질문 분류의 category/area 제약을 사용하지 않습니다.
+사용자 질문 원문으로 `data/processed/tour_knowledge.jsonl` 전체를 FAISS+BM25 검색하며,
+위저드 플랜 생성만 기존 분류 기반 검색을 유지합니다.
+
+말뭉치·맛집·숙박·쇼핑·관광지·전용 API 범위 밖이라도 장소/업종 검색 의도가 명확하면
+클럽, 바, 약국, 병원, 환전소, 편의점 등의 검색어를 한국어로 정규화해 Naver Local로
+조회합니다. 한국 여행이나 프로젝트 기능과 무관한 질문은 답변하지 않습니다.
+
 ## 6. 주요 API
 
 | API | 설명 |
