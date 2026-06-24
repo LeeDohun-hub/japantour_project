@@ -121,7 +121,7 @@ Recall 1.0 및 검색 적중률 100%로 확인됐습니다.
   단일턴 검색의 데이터 한계이지 폴백 회귀가 아니다. → 멀티턴 평가셋이 별도 과제.
 - 결과 파일: `evaluation/reports/chat_corpus_ragas_120_20260624_140738.json`
 
-### RAGAS 안정화 시도 (진행 중)
+### RAGAS 안정화 (해결)
 
 결측이던 Faithfulness·Context Precision을 살리기 위해 처음에는 `RunConfig`의 timeout을
 크게 늘리고(60→180) 재시도를 키웠으나(1→3), 12건 표본이 **20분 이상** 평가 단계에서
@@ -145,13 +145,68 @@ NaN이었다.)
 | route_rag_used_rate | — | 1.0000 |
 
 - **Answer Relevancy 0.51→0.68** 상승: `invalid` 폴백으로 쇼핑 질문 거절문(0점)이 사라진 효과.
-- **Faithfulness·Context Precision은 fail-fast에서도 전부 `TimeoutError`**(로그상 거의 모든 Job 타임아웃).
-  이 두 지표는 건당 LLM 호출이 많아 90초로도 안정 산출이 불가함이 **실측으로 확정**됐다.
-  → 설정 튜닝의 한계가 명확하므로 구조 개선(아래) 없이는 두 지표를 신뢰할 수 없다.
-- 결과 파일: `evaluation/reports/chat_corpus_ragas_6_20260624_143702.json`
+- 단, fail-fast(90초)에서는 **Faithfulness·Context Precision이 여전히 전부 `TimeoutError`**였다.
+  컨텍스트를 3개로 줄여도(아래) 90초로는 부족 → **잡당 시간 자체가 부족한 것**이 원인으로 좁혀졌다.
 
-- **결론**: RAGAS 4지표를 *모두* 안정적으로 얻는 것은 설정 튜닝이 아니라 구조 개선이
-  필요한 별도 과제다. 후보: (a) 평가 모델 경량화, (b) 건별 결과 캐싱 + 재개 가능한
-  체크포인트, (c) 지표 분리 실행(우선 Faithfulness만), (d) 비동기 큐·백오프.
-- 핵심 품질 개선(수락률 65→100%)은 로컬 지표로 이미 확정됐으므로 RAGAS 점수는
-  보조 지표로 분리해 다룬다.
+#### 원인 규명 → 해결
+
+faithfulness/context_precision는 건당 LLM 호출이 많은 지표다.
+
+- **faithfulness**: 답변을 문장 단위로 분해(1회) → 각 문장을 컨텍스트로 검증(N회). 답변 길이에 비례.
+- **context_precision**: 검색 컨텍스트 개수만큼(top_k=8 → 최대 8회) 관련성 판정.
+
+따라서 한 잡이 90초를 넘겨 None이 됐다. 두 가지를 함께 적용해 해결했다.
+
+1. **잡당 작업량 축소** — RAGAS 판정에 넘기는 컨텍스트를 상위 3개 + 각 600자로 제한
+   (`RAGAS_MAX_CONTEXTS=3`, `RAGAS_CONTEXT_CHAR_LIMIT=600`). 검색 지표(hit/MRR)는 전체 컨텍스트 그대로.
+2. **잡당 타임아웃 상향(재시도 폭주 없이)** — `timeout=240, max_retries=1, max_workers=2`.
+   (과거 180초×3회는 재시도 누적으로 24분 정체 → 재시도는 1회로 고정해 폭주를 막고 시간만 늘림)
+
+**최종 결과 (3건, `timeout=240` + 컨텍스트 축소)** — 4지표 전부 산출.
+
+| 지표 | fail-fast(90s) | 해결(240s+컨텍스트 축소) |
+| --- | ---: | ---: |
+| Faithfulness | 결측 | **0.6667** |
+| Answer Relevancy | 0.6815 | 0.6394 |
+| Context Precision | 결측 | **0.6667** |
+| Context Recall | 1.0000 | 1.0000 |
+
+- 결과 파일: `evaluation/reports/chat_corpus_ragas_3_t240.json`
+
+#### 결론 및 운영 권장
+
+- **RAGAS 4지표는 산출 가능**하다: (컨텍스트 축소) + (잡당 timeout 240s, 재시도 1회)가 핵심.
+- 다만 faithfulness/context_precision는 **여전히 비싸다** — 3건에 약 10분. 전체 120건 RAGAS는
+  비현실적이므로 다음 운용을 권장한다.
+  - 일상 평가: 라우팅 지표 + Answer Relevancy/Context Recall (`--skip-ragas` 또는 fail-fast)
+  - faithfulness/context_precision: **소표본(3~6건)에서만 주기적으로** 측정
+  - 더 대규모가 필요하면 구조 개선(평가 모델 경량화, 건별 캐싱·재개, 지표 분리, 비동기 큐)
+- 핵심 품질 개선(수락률 65→100%, Answer Relevancy 0.51→0.68)은 이미 확정됐고,
+  faithfulness 0.67 / context_precision 0.67로 **환각·검색 정밀도도 양호** 수준을 확인했다.
+
+---
+
+## 공식 베이스라인 (2026-06-24, n=24 카테고리 균형)
+
+소표본(n=3)의 출렁임을 제거하기 위해 **24건(6 카테고리 × 4)** 으로 베이스라인을 고정 측정했다.
+(설정: `timeout=240, max_retries=1, max_workers=2` + 컨텍스트 축소, grounding 미적용 = 현재 코드)
+
+| 지표 | n=3 (참고) | **n=24 (베이스라인)** | 목표 | 평가 |
+| --- | ---: | ---: | ---: | --- |
+| Faithfulness | 0.667 | **0.733** | 0.80 | 양호 |
+| Answer Relevancy | 0.639 | **0.593** | 0.80 | ⚠️ 최약점 |
+| Context Precision | 0.667 | **0.896** | 0.75 | ✅ 우수 |
+| Context Recall | 1.000 | **0.917** | 0.85 | ✅ 우수 |
+| retrieval_hit_rate | — | 0.958 | — | ✅ |
+| retrieval_mrr | — | 0.865 | — | ✅ |
+| route_accept_rate | — | 1.000 | — | ✅ |
+
+**핵심 발견 — n=3은 노이즈였다.**
+- n=3에서 "약점"으로 보였던 Context Precision은 n=24에서 **0.896으로 우수**다.
+- 진짜 약점은 **Answer Relevancy 0.593**(목표 0.80 대비 큰 격차)이다 — 답변이 질문에
+  직접·충분히 대응하지 못함. 검색(precision/recall)·환각(faithfulness)은 이미 양호.
+- 따라서 다음 개선의 **1순위는 Answer Relevancy**다. (앞선 grounding 실험은 faithfulness를
+  노렸으나 AR을 더 낮췄으므로, AR을 직접 겨냥하는 방향이 맞다.)
+
+- 결과 파일: `evaluation/reports/chat_corpus_ragas_baseline24.json`
+- 이후 모든 개선안은 이 n=24 베이스라인 대비 동일 표본 짝비교로 검증한다.

@@ -826,6 +826,7 @@ NEVER write placeholder text such as (한국이름), (한국어명), (이름), (
 3. NO DEFLECTION: Do not tell the user to "check booking sites", "search Naver", or "confirm yourself" as the main answer — provide what you can from the data; omit unverified prices rather than redirecting.
 4. DATA BOUNDARIES: For current schedules, exact venues, prices, hours, or ticket availability, only state details present in Reference Data. If the project data source returns no match, say which source had no matching result and ask for the smallest useful detail.
 5. CONCISENESS: Be practical and friendly. Avoid padding.
+6. DIRECT & COMPLETE: Open with a sentence that directly and specifically answers the exact question asked, and cover every part of it. Do not drift into tangential facts, and do not append generic closings that do not answer the question (e.g. "choose from the cards below", "feel free to ask anything", "下のカードから選んでください"). Every sentence should serve the user's specific question.
 """
 
     has_verified_venues = has_places or has_visitkorea

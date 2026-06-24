@@ -31,6 +31,14 @@ DEFAULT_DATASET = PROJECT_ROOT / "evaluation" / "data" / "chat_corpus_eval.json"
 REPORTS_DIR = PROJECT_ROOT / "evaluation" / "reports"
 DEFAULT_TOP_K = 8
 
+# RAGAS 판정 시 사용할 최대 컨텍스트 수.
+# Faithfulness/Context Precision은 컨텍스트 개수·길이에 비례해 LLM 호출이 늘어 타임아웃의
+# 주원인이 된다. 검색 지표(hit/MRR)는 전체 컨텍스트로 계산하고, RAGAS 판정에 넘기는
+# 컨텍스트만 상위 N개로 줄여 호출량을 낮춘다.
+RAGAS_MAX_CONTEXTS = 3
+# 각 컨텍스트 텍스트도 과도하게 길면 프롬프트가 커지므로 상한을 둔다.
+RAGAS_CONTEXT_CHAR_LIMIT = 600
+
 
 def load_cases(path: Path, limit: int) -> list[dict]:
     cases = json.loads(path.read_text(encoding="utf-8"))
@@ -130,7 +138,11 @@ def run_ragas(records: list[dict]) -> tuple[dict[str, float | None], list[dict]]
             {
                 "question": record["question"],
                 "answer": record["answer"],
-                "contexts": record["contexts"],
+                # 판정 호출량을 줄이기 위해 상위 N개 컨텍스트만, 길이도 제한해 전달.
+                "contexts": [
+                    ctx[:RAGAS_CONTEXT_CHAR_LIMIT]
+                    for ctx in record["contexts"][:RAGAS_MAX_CONTEXTS]
+                ] or [""],
                 "ground_truth": record["ground_truth"],
             }
             for record in records
@@ -148,14 +160,14 @@ def run_ragas(records: list[dict]) -> tuple[dict[str, float | None], list[dict]]
         llm=ChatOpenAI(model="gpt-4o-mini", temperature=0),
         embeddings=OpenAIEmbeddings(model="text-embedding-3-small"),
         run_config=RunConfig(
-            # fail-fast: 짧은 타임아웃으로 시간 내 '완료'를 보장한다.
-            # 긴 timeout+다중 retries는 느린 metric(faithfulness/context_precision)에서
-            # 재시도가 누적돼 평가가 사실상 멈추는 문제가 있었다. 느린 지표는 NaN으로
-            # 빠르게 처리하고 전체 실행이 끝나도록 한다.
-            timeout=90,
+            # faithfulness/context_precision는 건당 LLM 호출이 많아 90초로는 한 잡을
+            # 끝내지 못해 None이 됐다. 잡당 시간을 충분히(240s) 주되, 재시도는 1회로
+            # 묶어 누적 폭주(과거 180s×3 → 24분 정체)는 막는다. 컨텍스트 축소
+            # (RAGAS_MAX_CONTEXTS/CHAR_LIMIT)와 함께 적용해 잡당 작업량도 낮춘다.
+            timeout=240,
             max_retries=1,
             max_wait=10,
-            max_workers=3,
+            max_workers=2,
         ),
         raise_exceptions=False,
     )
