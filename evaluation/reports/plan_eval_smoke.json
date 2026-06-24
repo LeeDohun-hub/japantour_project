@@ -1,0 +1,75 @@
+{
+  "metadata": {
+    "timestamp": "2026-06-24T21:48:04.620976",
+    "dataset": "C:\\Workspaces\\japantour_project\\evaluation\\data\\plan_eval_cases.json",
+    "total_cases": 2
+  },
+  "summary": {
+    "total_cases": 2,
+    "avg_latency_ms": 18493.0,
+    "slot_fill_rate": 1.0,
+    "lunch_fill_rate": 1.0,
+    "dinner_fill_rate": 1.0,
+    "format_compliance": 1.0,
+    "meal_url_rate": 0.0,
+    "day_count_accuracy": 0.0
+  },
+  "cases": [
+    {
+      "id": "P_SEOUL_2N3D_COUPLE",
+      "description": "ソウル 2泊3日 カップル",
+      "nights": 2,
+      "route_category": "itinerary",
+      "latency_ms": 27888,
+      "reply_length": 940,
+      "metrics": {
+        "day_count_expected": 3,
+        "day_count_found": 0,
+        "day_count_ok": false,
+        "eligible_meal_days": 0,
+        "days_with_lunch": 0,
+        "days_with_dinner": 0,
+        "days_with_both_meals": 0,
+        "slot_fill_rate": 1.0,
+        "lunch_fill_rate": 1.0,
+        "dinner_fill_rate": 1.0,
+        "days_with_slot_labels": 0,
+        "days_numbered_only": 0,
+        "format_compliance": 1.0,
+        "total_meal_slots_found": 0,
+        "meal_slots_with_url": 0,
+        "meal_url_rate": 0.0,
+        "arrival_uses_numbers": false
+      },
+      "reply": "1日目\n\n① 仁川国際空港（ICN）到着・入国審査・手荷物受取  \n② 空港リムジン6002番（T1: 6A, T2: 30、主な経由地：弘大入口・明洞・東大門など、運賃目安17,000ウォン）またはAREX一般で宿泊エリアへ。タクシー利用時はソウル方面乗り場（T1: 5C,6C,6D／T2: 5C）・待機目安も確認。  \n③ 宿泊先チェックイン・休息\n\n2日目\n\n午前  \n경복궁（キョンボックン）  \nhttps://map.naver.com/p/search/경복궁  \n朝鮮王朝の歴史を感じられる壮大な宮殿で、韓服レンタルで写真撮影も人気です。\n\n昼食  \n명동교자 본점（ミョンドンギョジャ 本店）  \nhttps://map.naver.com/p/search/%EB%AA%85%EB%8F%99%EA%B5%90%EC%9E%90%20%EB%B3%B8%EC%A0%90  \n名物カルグクス（手打ち麺）が有名な明洞の人気店で、行列必至の味を楽しめます。\n\n午後  \n쌈지길（サムジキル）  \nhttps://map.naver.com/p/search/37.5740757072,126.9849118900?c=126.9849118900,37.5740757072,16,0,0,0,dh  \n韓国らしい雑貨やアートショップが集まる仁寺洞のランドマークで、SNS映えスポットも豊富です。\n\n夕食  \n남산산채집（ナムサンサンチェチプ）  \nhttps://map.naver.com/p/search/%EB%82%A8%EC%82%B0%EC%82%B0%EC%B1%84%EC%A7%91?c=126.985393,37.5567733,16,0,0,0,dh  \n南山のふもとで韓国の山菜料理や家庭的な味が楽しめる、落ち着いた雰囲気の人気店です。\n\n最終日\n\n① 宿泊先で荷物整理・出発準備  \n② 宿泊先→空港（空港リムジン6002番またはAREX一般で約60〜80分。タクシー利用時はソウル方面乗り場・待機目安も参考に）  \n③ チェックイン・保安検査・出国審査・搭乗  \n④ 仁川国際空港（ICN）出発（便名・出発時刻はご確認ください）"
+    },
+    {
+      "id": "P_SEOUL_3N4D_SOLO",
+      "description": "ソウル 3泊4日 ひとり旅",
+      "nights": 3,
+      "route_category": "itinerary",
+      "latency_ms": 9098,
+      "reply_length": 841,
+      "metrics": {
+        "day_count_expected": 4,
+        "day_count_found": 0,
+        "day_count_ok": false,
+        "eligible_meal_days": 0,
+        "days_with_lunch": 0,
+        "days_with_dinner": 0,
+        "days_with_both_meals": 0,
+        "slot_fill_rate": 1.0,
+        "lunch_fill_rate": 1.0,
+        "dinner_fill_rate": 1.0,
+        "days_with_slot_labels": 0,
+        "days_numbered_only": 0,
+        "format_compliance": 1.0,
+        "total_meal_slots_found": 0,
+        "meal_slots_with_url": 0,
+        "meal_url_rate": 0.0,
+        "arrival_uses_numbers": false
+      },
+      "reply": "1日目\n\n① 仁川国際空港（ICN）到着・入国審査・手荷物受取  \n② 空港リムジン6002番（T1: 6A/T2: 30、主な経由地: 弘大入口・明洞・東大門・清凉里、運賃目安: 17,000ウォン）またはAREX一般で宿泊エリアへ。タクシー利用時はソウル方面乗り場（T1: 5C,6C,6D/T2: 5C）・待機目安も確認。  \n③ 宿泊先チェックイン・休息\n\n2日目\n\n午前  \n景福宮（경복궁）  \nhttps://map.naver.com/p/search/경복궁  \n朝鮮王朝の歴史と美しい建築を体感できるソウル屈指の伝統スポットです。\n\n昼食  \n명동교자 본점  \nhttps://map.naver.com/p/search/%EB%AA%85%EB%8F%99%EA%B5%90%EC%9E%90%20%EB%B3%B8%EC%A0%90  \n名物カルグクス（手打ち麺）で有名な老舗。ひとりでも入りやすく、韓国らしい味を楽しめます。\n\n午後  \n国立中央博物館（국립중앙박물관）  \nhttps://map.naver.com/p/search/국립중앙박물관  \n韓国の歴史・文化を深く学べる大規模な博物館で、展示も充実しています。\n\n夕食  \n란주칼면  \nhttps://map.naver.com/p/search/%EB%9E%80%EC%A3%BC%EC%B9%BC%EB%A9%B4  \nコシのある刀削麺が人気。量も多く、ひとり旅でも気軽に利用できます。\n\n最終日\n\n① 宿泊先で荷物整理・出発準備  \n② 空港リムジン6002番（T1: 6A/T2: 30、主な経由地: 弘大入口・明洞・東大門・清凉里、運賃目安: 17,000ウォン）またはAREX一般で仁川空港へ。タクシー利用時はソウル方面乗り場（T1: 5C,6C,6D/T2: 5C）・待機目安も確認。  \n③ チェックイン・保安検査・出国審査・搭乗  \n④ 仁川国際空港（ICN）出発"
+    }
+  ]
+}
