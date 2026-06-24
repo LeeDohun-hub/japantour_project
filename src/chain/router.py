@@ -267,6 +267,7 @@ def _is_reasoning_model(model: str) -> bool:
     """o1/o3/o4 계열 추론 모델 여부 — temperature 파라미터 미지원."""
     return bool(re.match(r"o[1-9][\w-]*", model.lower()))
 RAG_TOP_K = 8              # 5 → 8: 멀티 에리어 병합 시 area당 결과 수 확보
+CHAT_CORPUS_TOP_K = 4     # /chat 말뭉치 전용: 8→4로 줄여 LLM 컨텍스트 합성 범위 제한 → AR 향상
 HISTORY_WINDOW = 6         # 최근 N턴만 컨텍스트에 포함
 
 _PROJECT_CHAT_CONTEXT = """\
@@ -826,6 +827,8 @@ NEVER write placeholder text such as (한국이름), (한국어명), (이름), (
 3. NO DEFLECTION: Do not tell the user to "check booking sites", "search Naver", or "confirm yourself" as the main answer — provide what you can from the data; omit unverified prices rather than redirecting.
 4. DATA BOUNDARIES: For current schedules, exact venues, prices, hours, or ticket availability, only state details present in Reference Data. If the project data source returns no match, say which source had no matching result and ask for the smallest useful detail.
 5. CONCISENESS: Be practical and friendly. Avoid padding.
+6. DIRECT & COMPLETE: Open with a sentence that directly and specifically answers the exact question asked, and cover every part of it. Do not drift into tangential facts, and do not append generic closings that do not answer the question (e.g. "choose from the cards below", "feel free to ask anything", "下のカードから選んでください"). Every sentence should serve the user's specific question.
+7. SCOPE MATCH: Answer only within the scope of the question. For a specific question (what time, who, why, how many), answer with that specific fact only. Do not synthesize all available context into a comprehensive overview unless the question explicitly asks for a general description.
 """
 
     has_verified_venues = has_places or has_visitkorea
@@ -4786,10 +4789,37 @@ def _build_retry_correction(failures: list[str], traveler_profile: dict | None) 
             "出発地・帰国ルート沿いの場所は絶対に旅行中の観光日に使わないでください。"
             "すべての観光スポット・食事店は旅行先エリアの場所のみ使用してください。"
         )
-    if any(("dinner_invalid" in f or "lunch_invalid" in f) for f in failures):
+    meal_failures = [
+        f for f in failures
+        if any(
+            marker in f
+            for marker in (
+                "_dinner_invalid",
+                "_lunch_invalid",
+                "_dinner_missing",
+                "_lunch_missing",
+            )
+        )
+    ]
+    if meal_failures:
+        failed_slots = "・".join(f.split("(", 1)[0] for f in meal_failures)
         parts.append(
-            "昼食・夕食スロットに観光スポットが使われています。"
-            "食事スロットには必ず飲食店名と地図URLを記入してください。"
+            f"食事スロットが未記入または無効です（{failed_slots}）。"
+            "該当日の昼食・夕食には必ず具体的な飲食店名と地図URLを記入してください。"
+            "候補が少なければ検証済み店の別日再利用を優先し、空欄のままにしないでください。"
+        )
+    missing_days = sorted(
+        {
+            int(match.group(1))
+            for failure in failures
+            if (match := re.match(r"day(\d+)_entirely_missing", failure))
+        }
+    )
+    if missing_days:
+        day_labels = "・".join(f"{day}日目" for day in missing_days)
+        parts.append(
+            f"旅行日が丸ごと欠落しています（{day_labels}）。"
+            "指定された全日程の見出しを省略せず、欠落日の午前・昼食・午後・夕食を補ってください。"
         )
     if any("generic_activity" in f for f in failures):
         parts.append(
@@ -5574,7 +5604,7 @@ def route_and_answer(
     # invalid → 코퍼스 폴백 후, 그래도 근거 없으면 안내 반환
     if category == "invalid":
         corpus_bundle = (
-            search_chat_corpus(user_message)
+            search_chat_corpus(user_message, top_k=CHAT_CORPUS_TOP_K)
             if not is_wizard_plan
             else RagSearchBundle(results=[], backend="none", area_filter="")
         )
@@ -5651,7 +5681,7 @@ def route_and_answer(
                 user_message,
             )
         # 일반 /chat은 플랜용 category/keyword/area에 종속시키지 않는다.
-        return search_chat_corpus(user_message)
+        return search_chat_corpus(user_message, top_k=CHAT_CORPUS_TOP_K)
 
     def _do_places() -> tuple[list, str]:
         generic_place_query = (

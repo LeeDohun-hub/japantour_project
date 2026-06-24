@@ -244,6 +244,7 @@ def _score_wizard_plan_quality(
     slot_name_keys: list[str] = []
     # {day_num: {"lunch": ok_bool, "dinner": ok_bool}}
     day_slots: dict[int, dict[str, bool]] = {}
+    seen_days: set[int] = set()
     # 각 Day에 지도 URL이 1개 이상 있는지 (식사 슬롯 포함 전체)
     day_has_any_url: dict[int, bool] = {}
     # 중복 관광지 감지용: mapsUrlKey → 처음 등장한 day
@@ -291,6 +292,8 @@ def _score_wizard_plan_quality(
         if _ITINERARY_DAY_RE.match(s):
             _flush()
             current_day = _itinerary_day_number(s, total_days)
+            if current_day is not None:
+                seen_days.add(current_day)
             current_slot = ""
             # 규칙 8: 헤더에 추가 텍스트가 있으면 bad_header 기록
             if current_day is not None and _DAY_HEADER_EXTRA_RE.match(s):
@@ -413,15 +416,17 @@ def _score_wizard_plan_quality(
     for dup_day in duplicate_attr_days:
         failures.append(f"day{dup_day}_duplicate_attr")
 
-    # D: Day 수 일치 (item 7) — anchor day(마지막날) 제외
-    plan_max_day = max(day_slots.keys(), default=0) if day_slots else 0
+    # D: Day 수 일치 (item 7) — 도착일·최종일을 포함한 모든 헤더가 있어야 함
     day_count_ok = True
-    if total_days and plan_max_day < total_days:
-        day_count_ok = False
-        for missing_day in range(plan_max_day + 1, total_days + 1):
-            if _meals_blocked(missing_day):
-                continue  # 입출국 anchor day는 entirely_missing 페널티 제외
+    if total_days:
+        expected_days = set(range(1, total_days + 1))
+        missing_days = sorted(expected_days - seen_days)
+        unexpected_days = sorted(seen_days - expected_days)
+        day_count_ok = not missing_days and not unexpected_days
+        for missing_day in missing_days:
             failures.append(f"day{missing_day}_entirely_missing")
+        for unexpected_day in unexpected_days:
+            failures.append(f"day{unexpected_day}_unexpected")
 
     # E: 일자 헤더 형식 위반 (규칙 8 — 감점 페널티)
     for bad_day in bad_header_days:

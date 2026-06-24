@@ -1,10 +1,23 @@
 {
   "metadata": {
-    "timestamp": "2026-06-24T19:59:16.867954",
+    "timestamp": "2026-06-24T21:13:52.164145",
     "dataset": "C:\\Workspaces\\japantour_project\\evaluation\\data\\chat_corpus_eval.json",
     "pipeline": "search_chat_corpus + route_and_answer",
     "top_k": 8,
-    "status": "answers_generated_before_ragas"
+    "ragas_version_target": "0.4.x",
+    "ground_truth_usage": "RAGAS reference only; never passed to answer generation"
+  },
+  "summary": {
+    "total_cases": 24,
+    "retrieval_hit_rate": 0.9583333333333334,
+    "retrieval_mrr": 0.8854166666666666,
+    "route_accept_rate": 1.0,
+    "route_rag_used_rate": 1.0,
+    "avg_latency_ms": 4000.25,
+    "faithfulness": 0.7946924603174604,
+    "answer_relevancy": 0.6333084095336475,
+    "context_precision": 0.9097222221378468,
+    "context_recall": 0.9166666666666666
   },
   "cases": [
     {
@@ -47,7 +60,13 @@
       ],
       "rag_count": 8,
       "places_count": 4,
-      "latency_ms": 8515
+      "latency_ms": 8515,
+      "ragas": {
+        "faithfulness": 0.625,
+        "answer_relevancy": 0.4240459465071444,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_HIS_000002_q5",
@@ -88,7 +107,13 @@
       ],
       "rag_count": 8,
       "places_count": 0,
-      "latency_ms": 3248
+      "latency_ms": 3248,
+      "ragas": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.35050131318715366,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_LEI_000001_q1",
@@ -130,7 +155,13 @@
       ],
       "rag_count": 8,
       "places_count": 2,
-      "latency_ms": 3480
+      "latency_ms": 3480,
+      "ragas": {
+        "faithfulness": 0.5,
+        "answer_relevancy": 0.663100680502356,
+        "context_precision": 0.49999999995,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_FOOD_000002_q6",
@@ -171,7 +202,13 @@
       ],
       "rag_count": 8,
       "places_count": 0,
-      "latency_ms": 3046
+      "latency_ms": 3046,
+      "ragas": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.7280874923490773,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_SHOP_000001_q1",
@@ -212,7 +249,13 @@
       ],
       "rag_count": 8,
       "places_count": 0,
-      "latency_ms": 2931
+      "latency_ms": 2931,
+      "ragas": {
+        "faithfulness": 0.5,
+        "answer_relevancy": 0.6463997765023817,
+        "context_precision": 0.9999999999666667,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_STAY_000001_q3",
@@ -253,7 +296,13 @@
       ],
       "rag_count": 8,
       "places_count": 0,
-      "latency_ms": 2892
+      "latency_ms": 2892,
+      "ragas": {
+        "faithfulness": 0.75,
+        "answer_relevancy": 0.5750078431657856,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_NAT_000001_q2",
@@ -295,7 +344,13 @@
       ],
       "rag_count": 8,
       "places_count": 5,
-      "latency_ms": 4238
+      "latency_ms": 4238,
+      "ragas": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.8225781310102812,
+        "context_precision": 0.49999999995,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_HIS_000003_q3",
@@ -337,7 +392,13 @@
       ],
       "rag_count": 8,
       "places_count": 1,
-      "latency_ms": 4157
+      "latency_ms": 4157,
+      "ragas": {
+        "faithfulness": 0.75,
+        "answer_relevancy": 0.7452240193451662,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_LEI_000001_q4",
@@ -378,7 +439,13 @@
       ],
       "rag_count": 8,
       "places_count": 0,
-      "latency_ms": 5381
+      "latency_ms": 5381,
+      "ragas": {
+        "faithfulness": 0.7142857142857143,
+        "answer_relevancy": 0.7041029222382985,
+        "context_precision": 0.8333333332916666,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_FOOD_000007_q3",
@@ -419,7 +486,13 @@
       ],
       "rag_count": 8,
       "places_count": 0,
-      "latency_ms": 2956
+      "latency_ms": 2956,
+      "ragas": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.6036658747826601,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_SHOP_000016_q1",
@@ -460,7 +533,13 @@
       ],
       "rag_count": 8,
       "places_count": 0,
-      "latency_ms": 3852
+      "latency_ms": 3852,
+      "ragas": {
+        "faithfulness": 0.8,
+        "answer_relevancy": 0.6428820343067504,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_STAY_000001_q4",
@@ -501,7 +580,13 @@
       ],
       "rag_count": 8,
       "places_count": 0,
-      "latency_ms": 3435
+      "latency_ms": 3435,
+      "ragas": {
+        "faithfulness": 0.6,
+        "answer_relevancy": 0.9315620583965879,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_NAT_000001_q3",
@@ -542,7 +627,13 @@
       ],
       "rag_count": 8,
       "places_count": 0,
-      "latency_ms": 3246
+      "latency_ms": 3246,
+      "ragas": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.8360307507354365,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_HIS_000004_q3",
@@ -583,7 +674,13 @@
       ],
       "rag_count": 8,
       "places_count": 0,
-      "latency_ms": 8725
+      "latency_ms": 8725,
+      "ragas": {
+        "faithfulness": 0.0,
+        "answer_relevancy": 0.5757165213722536,
+        "context_precision": 0.9999999999,
+        "context_recall": 0.0
+      }
     },
     {
       "id": "J_LEI_000001_q6",
@@ -624,7 +721,13 @@
       ],
       "rag_count": 8,
       "places_count": 0,
-      "latency_ms": 3228
+      "latency_ms": 3228,
+      "ragas": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.6706540018648627,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_FOOD_000012_q2",
@@ -666,7 +769,13 @@
       ],
       "rag_count": 8,
       "places_count": 5,
-      "latency_ms": 4523
+      "latency_ms": 4523,
+      "ragas": {
+        "faithfulness": 0.6666666666666666,
+        "answer_relevancy": 0.6101328877743112,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_SHOP_000048_q1",
@@ -707,7 +816,13 @@
       ],
       "rag_count": 8,
       "places_count": 0,
-      "latency_ms": 4595
+      "latency_ms": 4595,
+      "ragas": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.7277824487245154,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_STAY_000001_q5",
@@ -748,7 +863,13 @@
       ],
       "rag_count": 8,
       "places_count": 0,
-      "latency_ms": 3118
+      "latency_ms": 3118,
+      "ragas": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.45354943514186774,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_NAT_000002_q3",
@@ -789,7 +910,13 @@
       ],
       "rag_count": 8,
       "places_count": 0,
-      "latency_ms": 3871
+      "latency_ms": 3871,
+      "ragas": {
+        "faithfulness": 0.8333333333333334,
+        "answer_relevancy": 0.9313877510919975,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_HIS_000004_q5",
@@ -831,7 +958,13 @@
       ],
       "rag_count": 8,
       "places_count": 1,
-      "latency_ms": 2721
+      "latency_ms": 2721,
+      "ragas": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.6518952911903229,
+        "context_precision": 0.99999999995,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_LEI_000003_q2",
@@ -872,7 +1005,13 @@
       ],
       "rag_count": 8,
       "places_count": 0,
-      "latency_ms": 2840
+      "latency_ms": 2840,
+      "ragas": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.5166878536094747,
+        "context_precision": 0.0,
+        "context_recall": 0.0
+      }
     },
     {
       "id": "J_FOOD_000013_q1",
@@ -913,7 +1052,13 @@
       ],
       "rag_count": 8,
       "places_count": 0,
-      "latency_ms": 3419
+      "latency_ms": 3419,
+      "ragas": {
+        "faithfulness": 0.6666666666666666,
+        "answer_relevancy": 0.7510069822168505,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_SHOP_000068_q6",
@@ -954,7 +1099,13 @@
       ],
       "rag_count": 8,
       "places_count": 0,
-      "latency_ms": 3585
+      "latency_ms": 3585,
+      "ragas": {
+        "faithfulness": 0.6666666666666666,
+        "answer_relevancy": 0.6373998127920023,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
     },
     {
       "id": "J_STAY_000002_q3",
@@ -996,7 +1147,13 @@
       ],
       "rag_count": 8,
       "places_count": 0,
-      "latency_ms": 4004
+      "latency_ms": 4004,
+      "ragas": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.0,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
     }
   ]
 }

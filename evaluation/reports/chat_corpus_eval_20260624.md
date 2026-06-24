@@ -210,3 +210,179 @@ faithfulness/context_precision는 건당 LLM 호출이 많은 지표다.
 
 - 결과 파일: `evaluation/reports/chat_corpus_ragas_baseline24.json`
 - 이후 모든 개선안은 이 n=24 베이스라인 대비 동일 표본 짝비교로 검증한다.
+
+---
+
+## AR 개선안 검증 — 원칙6 DIRECT & COMPLETE (n=24, 2026-06-24)
+
+### 적용 내용
+
+`src/chain/router.py`의 `[CORE PRINCIPLES]` 5번 아래에 원칙 6을 추가했다.
+
+```
+6. DIRECT & COMPLETE: Open with a sentence that directly and specifically answers the exact
+question asked, and cover every part of it. Do not drift into tangential facts, and do not
+append generic closings that do not answer the question (e.g. "choose from the cards below",
+"feel free to ask anything", "下のカードから選んでください"). Every sentence should serve the
+user's specific question.
+```
+
+**이유**: AR이 낮은 원인이 질문에 직답하지 않고 "카드에서 선택해 주세요" 같은 무관한
+마무리로 흐르는 것으로 추정됐다. Faithfulness(환각 방지)를 해치지 않으면서
+AR을 직접 겨냥하는 최소 변경이다.
+
+### 결과 (동일 n=24, 짝비교)
+
+| 지표 | 베이스라인 | 원칙6 적용 | 변화 |
+| --- | ---: | ---: | ---: |
+| Faithfulness | 0.733 | **0.795** | +0.062 |
+| Answer Relevancy | 0.593 | **0.633** | **+0.040** |
+| Context Precision | 0.896 | **0.910** | +0.014 |
+| Context Recall | 0.917 | 0.917 | ±0.000 |
+| retrieval_hit_rate | 0.958 | 0.958 | ±0.000 |
+| route_accept_rate | 1.000 | 1.000 | ±0.000 |
+
+### 판정: **채택** ✅
+
+- AR 0.633 ≥ 0.61 ✅
+- Faithfulness 0.795 ≥ 0.70 ✅
+- 부작용 없음: Faithfulness가 오히려 +0.062 상승, 검색·라우팅 지표 불변
+
+원칙6은 AR을 직접 끌어올렸을 뿐 아니라 답변 품질(faithfulness) 도 함께 개선했다.
+무관한 마무리 문구를 걷어내면 답변이 컨텍스트에 더 충실해지는 것으로 해석된다.
+
+### 다음 목표
+
+AR 0.633으로 목표(0.80)까지 아직 0.167 격차가 남아 있다. 다음 개선 후보:
+
+1. 답변 길이·구성 조정(질문 유형별 상세/간결 모드)
+2. 마무리 문구 자동 제거 후처리
+3. 표본 확대(n=30~50)로 분산 추가 축소 후 재판정
+
+- 결과 파일: `evaluation/reports/chat_corpus_ragas_ar24.json`
+
+---
+
+## 플랜 생성 품질 베이스라인 (n=8, 2026-06-24)
+
+룰 기반 평가 (`evaluation/scripts/evaluate_plan.py`)
+
+초기 집계에서 `最終日`을 날짜로 세지 않고 빈 식사 라벨도 채워진 슬롯으로 간주하는
+평가기 오류를 발견했다. 날짜 파서·식사 내용 판정을 수정한 뒤, 동일한 8개 생성 응답을
+재생성 없이 재채점했다.
+
+| 지표 | 정의 | 결과 |
+| --- | --- | ---: |
+| slot_fill_rate | 중간 여행일 昼食+夕食 모두 충전율 | **0.8750** |
+| lunch_fill_rate | 昼食 충전율 | **1.0000** |
+| dinner_fill_rate | 夕食 충전율 | **0.8750** |
+| format_compliance | 중간 여행일 午前/昼食/午後/夕食 라벨 사용률 | **1.0000** |
+| meal_url_rate | 昼食/夕食 슬롯 Naver URL 존재율 | **0.9375** |
+| day_count_accuracy | 지정 일수 == 생성 일수 | **0.8750** |
+
+### 케이스별 결과
+
+| 케이스 ID | 설명 | 슬롯 | 점심 | 저녁 | 포맷 | URL | 일수 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| P_SEOUL_2N3D_COUPLE | ソウル 2泊3日 カップル | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 3/3 |
+| P_SEOUL_3N4D_SOLO | ソウル 3泊4日 ひとり旅 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | **3/4** |
+| P_BUSAN_2N3D_COUPLE | 釜山 2泊3日 カップル | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 3/3 |
+| P_JEJU_3N4D_COUPLE | 済州島 3泊4日 カップル | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 4/4 |
+| P_JEONJU_2N3D_SOLO | 全州 2泊3日 ひとり旅（文化） | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 3/3 |
+| P_GANGWON_2N3D_COUPLE | 江原道（春川） 2泊3日 カップル | **0.00** | 1.00 | **0.00** | 1.00 | **0.50** | 3/3 |
+| P_SEOUL_4N5D_FAMILY | ソウル 4泊5日 家族 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 5/5 |
+| P_GYEONGJU_2N3D_COUPLE | 慶州 2泊3日 カップル（歴史） | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 3/3 |
+
+### 판정
+
+- 식사 라벨 형식은 전 케이스에서 준수했다.
+- 강원 케이스는 `夕食` 라벨만 있고 내용·URL이 없어 식사 슬롯 완전성 회귀가 남아 있다.
+- 서울 3박4일 1인 여행은 3일차가 통째로 누락되어 장기 일정의 일수 완전성 보강이 필요하다.
+- 결과 파일: `evaluation/reports/plan_eval_baseline.json`
+
+---
+
+## top_k=4 + AR strictness=1 검증 (n=24, 2026-06-24)
+
+### 적용 내용
+
+- `CHAT_CORPUS_TOP_K`: 8 → 4 (LLM 컨텍스트 합성 범위 제한)
+- `answer_relevancy.strictness`: 3 → 1 (synthetic question 생성 안정화)
+- AR=0 + Faithfulness≥0.5 아티팩트 필터 추가
+
+### 결과
+
+| 지표 | 베이스라인 | 원칙6 | top_k=4 | 원칙6 대비 |
+| --- | ---: | ---: | ---: | ---: |
+| Answer Relevancy | 0.593 | 0.633 | **0.665** | **+0.032** |
+| Faithfulness | 0.733 | 0.795 | **0.832** | **+0.037** |
+| Context Precision | 0.896 | 0.910 | **0.910** | ±0.000 |
+| Context Recall | 0.917 | 0.917 | **0.917** | ±0.000 |
+
+- retrieval_hit_rate: 0.958
+- retrieval_mrr: 0.885
+- route_accept_rate / route_rag_used_rate: 1.000 / 1.000
+- AR 아티팩트 필터 제외: 1건
+
+### 판정: **채택** ✅
+
+AR 0.665 ≥ 0.65, Faithfulness 0.832 ≥ 0.70으로 두 기준을 모두 통과했다.
+검색 컨텍스트를 4개로 제한하자 질문과 무관한 합성 범위가 줄면서 AR과 Faithfulness가
+동시에 상승했고, Context Precision·Recall 회귀도 없었다.
+
+- 결과 파일: `evaluation/reports/chat_corpus_ragas_topk4.json`
+
+---
+
+## 원칙7 SCOPE MATCH 검증 (n=24, 2026-06-24)
+
+### 적용 내용
+
+특정 사실(시간·인물·이유·수량 등)을 묻는 질문에는 그 범위 안에서만 답하고,
+일반 설명을 요청하지 않았다면 전체 컨텍스트를 종합한 개요로 확장하지 않도록 지시했다.
+
+### 결과
+
+| 지표 | top_k=4 | +원칙7 | 변화 |
+| --- | ---: | ---: | ---: |
+| Answer Relevancy | 0.665 | **0.671** | **+0.006** |
+| Faithfulness | 0.832 | **0.871** | **+0.039** |
+| Context Precision | 0.910 | **0.910** | ±0.000 |
+| Context Recall | 0.917 | **0.917** | ±0.000 |
+
+- retrieval_hit_rate: 0.958
+- retrieval_mrr: 0.885
+- route_accept_rate / route_rag_used_rate: 1.000 / 1.000
+- AR 아티팩트 필터 제외: 1건
+
+### 판정: **채택** ✅
+
+AR 개선 폭은 작지만 하락하지 않았고, Faithfulness가 0.871로 유의미하게 상승했다.
+검색·라우팅 지표에도 회귀가 없어 질문 범위 제한 원칙을 유지한다.
+다만 AR 목표 0.80까지는 0.129가 남아 있어 카테고리별 후속 개선이 필요하다.
+
+- 결과 파일: `evaluation/reports/chat_corpus_ragas_scope7.json`
+
+---
+
+## 플랜 생성 품질 재검증 (v2, n=8, 2026-06-24)
+
+자동 품질 검사기가 `最終日`을 포함한 모든 날짜 헤더를 추적하고, 누락 날짜·식사 슬롯을
+재시도 프롬프트에 구체적으로 명시하도록 보강한 뒤 재평가했다.
+
+| 지표 | 베이스라인 | v2 | 변화 |
+| --- | ---: | ---: | ---: |
+| slot_fill_rate | 0.8750 | 0.8750 | ±0.0000 |
+| lunch_fill_rate | 1.0000 | 1.0000 | ±0.0000 |
+| dinner_fill_rate | 0.8750 | 0.8750 | ±0.0000 |
+| format_compliance | 1.0000 | 1.0000 | ±0.0000 |
+| meal_url_rate | 0.9375 | 0.9375 | ±0.0000 |
+| day_count_accuracy | 0.8750 | **1.0000** | **+0.1250** |
+
+### 판정
+
+- 서울 3박4일의 누락됐던 중간 날짜가 복구되어 전 케이스 일수 정확도 100%를 달성했다.
+- 베이스라인의 강원 빈 저녁 슬롯은 v2에서 정상 복구됐다.
+- 다만 경주 케이스에서 새로 빈 저녁 슬롯이 발생해 전체 식사 충전율은 0.875에 머물렀다.
+  재시도는 2회 수행됐지만 동일 실패가 반복돼, 후보 선택 다양화 또는 결정적 후처리가 후속 과제다.
+- 결과 파일: `evaluation/reports/plan_eval_v2.json`

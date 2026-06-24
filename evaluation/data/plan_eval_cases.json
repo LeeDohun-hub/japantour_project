@@ -1,0 +1,146 @@
+[
+  {
+    "id": "P_SEOUL_2N3D_COUPLE",
+    "description": "ソウル 2泊3日 カップル",
+    "nights": 2,
+    "traveler_profile": {
+      "regions": ["seoul"],
+      "nights": 2,
+      "plan_mode": true,
+      "plan_reroll": 0,
+      "additional": {
+        "companion": "couple",
+        "travelStyles": ["must_see", "sns_hot"],
+        "pace": "moderate",
+        "foodPreferences": ["korean", "local"]
+      }
+    },
+    "user_message_extra": "【旅行先】ソウル（서울）\n【同行者】夫婦・カップル\n【旅行スタイル】有名観光地は必須・SNS人気スポット"
+  },
+  {
+    "id": "P_SEOUL_3N4D_SOLO",
+    "description": "ソウル 3泊4日 ひとり旅",
+    "nights": 3,
+    "traveler_profile": {
+      "regions": ["seoul"],
+      "nights": 3,
+      "plan_mode": true,
+      "plan_reroll": 0,
+      "additional": {
+        "companion": "solo",
+        "travelStyles": ["culture", "local_vibe"],
+        "pace": "relaxed",
+        "foodPreferences": ["korean", "street_food"]
+      }
+    },
+    "user_message_extra": "【旅行先】ソウル（서울）\n【同行者】ひとり旅\n【旅行スタイル】文化・芸術・歴史・旅行地の雰囲気たっぷり"
+  },
+  {
+    "id": "P_BUSAN_2N3D_COUPLE",
+    "description": "釜山 2泊3日 カップル",
+    "nights": 2,
+    "traveler_profile": {
+      "regions": ["gyeongsang"],
+      "nights": 2,
+      "plan_mode": true,
+      "plan_reroll": 0,
+      "additional": {
+        "companion": "couple",
+        "travelStyles": ["healing", "nature"],
+        "pace": "moderate",
+        "foodPreferences": ["seafood", "local"]
+      }
+    },
+    "user_message_extra": "【旅行先】釜山（부산）\n【同行者】夫婦・カップル\n【旅行スタイル】ゆったり癒し・自然と一緒に"
+  },
+  {
+    "id": "P_JEJU_3N4D_COUPLE",
+    "description": "済州島 3泊4日 カップル",
+    "nights": 3,
+    "traveler_profile": {
+      "regions": ["jeju"],
+      "nights": 3,
+      "plan_mode": true,
+      "plan_reroll": 0,
+      "additional": {
+        "companion": "couple",
+        "travelStyles": ["nature", "healing"],
+        "pace": "relaxed",
+        "foodPreferences": ["seafood", "local"]
+      }
+    },
+    "user_message_extra": "【旅行先】済州島（제주）\n【同行者】夫婦・カップル\n【旅行スタイル】自然と一緒に・ゆったり癒し"
+  },
+  {
+    "id": "P_JEONJU_2N3D_SOLO",
+    "description": "全州 2泊3日 ひとり旅（文化）",
+    "nights": 2,
+    "traveler_profile": {
+      "regions": ["jeolla"],
+      "nights": 2,
+      "plan_mode": true,
+      "plan_reroll": 0,
+      "additional": {
+        "companion": "solo",
+        "travelStyles": ["culture", "must_see"],
+        "pace": "moderate",
+        "foodPreferences": ["korean", "local"]
+      }
+    },
+    "user_message_extra": "【旅行先】全州（전주）\n【同行者】ひとり旅\n【旅行スタイル】文化・芸術・歴史・有名観光地は必須"
+  },
+  {
+    "id": "P_GANGWON_2N3D_COUPLE",
+    "description": "江原道（春川） 2泊3日 カップル",
+    "nights": 2,
+    "traveler_profile": {
+      "regions": ["gangwon"],
+      "nights": 2,
+      "plan_mode": true,
+      "plan_reroll": 0,
+      "additional": {
+        "companion": "couple",
+        "travelStyles": ["nature", "healing"],
+        "pace": "relaxed",
+        "foodPreferences": ["korean", "local"]
+      }
+    },
+    "user_message_extra": "【旅行先】春川・江原道（춘천）\n【同行者】夫婦・カップル\n【旅行スタイル】自然と一緒に・ゆったり癒し"
+  },
+  {
+    "id": "P_SEOUL_4N5D_FAMILY",
+    "description": "ソウル 4泊5日 家族",
+    "nights": 4,
+    "traveler_profile": {
+      "regions": ["seoul"],
+      "nights": 4,
+      "plan_mode": true,
+      "plan_reroll": 0,
+      "additional": {
+        "companion": "family",
+        "travelStyles": ["must_see", "experience"],
+        "pace": "moderate",
+        "foodPreferences": ["korean", "local"]
+      }
+    },
+    "user_message_extra": "【旅行先】ソウル（서울）\n【同行者】家族\n【旅行スタイル】有名観光地は必須・体験・アクティビティ"
+  },
+  {
+    "id": "P_GYEONGJU_2N3D_COUPLE",
+    "description": "慶州 2泊3日 カップル（歴史）",
+    "nights": 2,
+    "traveler_profile": {
+      "regions": ["gyeongsang"],
+      "nights": 2,
+      "plan_mode": true,
+      "plan_reroll": 0,
+      "additional": {
+        "companion": "couple",
+        "travelStyles": ["culture", "must_see"],
+        "pace": "moderate",
+        "foodPreferences": ["korean", "local"]
+      }
+    },
+    "user_message_extra": "【旅行先】慶州（경주）\n【同行者】夫婦・カップル\n【旅行スタイル】文化・芸術・歴史・有名観光地は必須"
+  }
+]

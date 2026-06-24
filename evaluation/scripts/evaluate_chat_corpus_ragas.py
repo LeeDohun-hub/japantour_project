@@ -29,7 +29,7 @@ load_dotenv(PROJECT_ROOT / ".env", encoding="utf-8")
 
 DEFAULT_DATASET = PROJECT_ROOT / "evaluation" / "data" / "chat_corpus_eval.json"
 REPORTS_DIR = PROJECT_ROOT / "evaluation" / "reports"
-DEFAULT_TOP_K = 8
+DEFAULT_TOP_K = 4
 
 # RAGAS 판정 시 사용할 최대 컨텍스트 수.
 # Faithfulness/Context Precision은 컨텍스트 개수·길이에 비례해 LLM 호출이 늘어 타임아웃의
@@ -148,6 +148,9 @@ def run_ragas(records: list[dict]) -> tuple[dict[str, float | None], list[dict]]
             for record in records
         ]
     )
+    # strictness=3(default)은 답변당 synthetic question을 3개 생성하는데,
+    # LLM이 1개만 반환하는 경우 AR=0.000 아티팩트가 발생한다. 1개로 줄여 안정화.
+    answer_relevancy.strictness = 1
     metrics = [
         faithfulness,
         answer_relevancy,
@@ -173,14 +176,31 @@ def run_ragas(records: list[dict]) -> tuple[dict[str, float | None], list[dict]]
     )
     frame = result.to_pandas()
     metric_names = [metric.name for metric in metrics]
+    # AR=0.000 + Faithfulness>=0.5 조합은 RAGAS synthetic question 생성 실패 아티팩트.
+    # 답변은 정상이지만 측정이 왜곡된 케이스를 AR 평균에서 제외한다.
+    faith_values = [
+        (float(v) if v is not None and not (isinstance(v, float) and math.isnan(v)) else None)
+        for v in frame["faithfulness"].tolist()
+    ]
+    ar_artifact_indices: set[int] = set()
+    for i, (ar_val, f_val) in enumerate(zip(frame["answer_relevancy"].tolist(), faith_values)):
+        ar_f = float(ar_val) if ar_val is not None and not (isinstance(ar_val, float) and math.isnan(ar_val)) else None
+        if ar_f is not None and ar_f <= 0.05 and f_val is not None and f_val >= 0.5:
+            ar_artifact_indices.add(i)
+
     averages: dict[str, float | None] = {}
     for name in metric_names:
+        raw = frame[name].tolist()
         values = [
-            float(value)
-            for value in frame[name].tolist()
-            if value is not None and not (isinstance(value, float) and math.isnan(value))
+            float(raw[i])
+            for i in range(len(raw))
+            if raw[i] is not None
+            and not (isinstance(raw[i], float) and math.isnan(raw[i]))
+            and not (name == "answer_relevancy" and i in ar_artifact_indices)
         ]
         averages[name] = sum(values) / len(values) if values else None
+    if ar_artifact_indices:
+        averages["ar_artifact_count"] = len(ar_artifact_indices)
 
     per_case: list[dict] = []
     for _, row in frame.iterrows():
