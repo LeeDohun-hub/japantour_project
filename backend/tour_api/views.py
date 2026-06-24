@@ -182,18 +182,19 @@ def api_places_search(request):
             vk = VisitKoreaClient()
             if vk.is_configured:
                 area_code, sigungu_code = wizard_to_kto_codes(sido, sigungu)
-                if area_code:
+                # A selected district must never degrade into a province-wide
+                # recommendation. If its TourAPI code is unknown, continue to
+                # the Naver/Google providers, which can search by area text.
+                # TourAPI exposes composite areas such as 성남시 분당구 only
+                # at city level. Let text-search providers handle those so the
+                # final address filter can enforce the selected district.
+                is_composite_district = bool(sigungu and " " in sigungu)
+                if area_code and (not sigungu or sigungu_code) and not is_composite_district:
                     items, _, _, total = vk.search_stay(
                         area_code=area_code,
                         sigungu_code=sigungu_code,
                         num_of_rows=20,
                     )
-                    if not items and sigungu_code:
-                        # 시군구 코드가 있어도 결과 없으면 시·도 전체로 재시도
-                        items, _, _, total = vk.search_stay(
-                            area_code=area_code,
-                            num_of_rows=20,
-                        )
                     if items:
                         places = [
                             {
@@ -270,40 +271,32 @@ def api_places_search(request):
                     }
                     for p in scored
                 ]
-                if not any(p.get("latitude") is not None and p.get("longitude") is not None for p in places):
+                raw_count = len(places)
+                if (sido or sigungu) and search_mode != "search":
+                    places, filtered_out = filter_hotel_places(
+                        places, sido=sido, sigungu=sigungu
+                    )
+                else:
+                    filtered_out = 0
+                if places and not any(
+                    p.get("latitude") is not None and p.get("longitude") is not None
+                    for p in places
+                ):
                     nclient = NaverMapsClient()
-                    geo_query = query
-                    if places and places[0].get("address"):
-                        geo_query = str(places[0]["address"])
+                    geo_query = str(places[0].get("address") or query)
                     geocoded = nclient.geocode(geo_query, limit=1)
                     if geocoded:
                         g = geocoded[0]
-                        if places:
-                            places[0]["latitude"] = g.latitude
-                            places[0]["longitude"] = g.longitude
-                            places[0]["maps_url"] = places[0].get("maps_url") or g.maps_url
-                            places[0]["google_maps_uri"] = places[0].get("google_maps_uri") or g.maps_url
-                            places[0]["source"] = places[0].get("source") or "naver_search_geocoded"
-                        else:
-                            places = [{
-                                "name": query,
-                                "address": g.address or "",
-                                "maps_url": g.maps_url,
-                                "google_maps_uri": g.maps_url,
-                                "rating": None,
-                                "user_rating_count": None,
-                                "price_level": None,
-                                "photo_name": None,
-                                "latitude": g.latitude,
-                                "longitude": g.longitude,
-                                "source": "naver_maps_geocode",
-                                "photo_url": f"/api/naver-photo/?url={urllib.parse.quote(g.maps_url)}&q={urllib.parse.quote(query)}&image_fallback=1",
-                            }]
+                        places[0]["latitude"] = g.latitude
+                        places[0]["longitude"] = g.longitude
+                        places[0]["maps_url"] = places[0].get("maps_url") or g.maps_url
+                        places[0]["google_maps_uri"] = places[0].get("google_maps_uri") or g.maps_url
+                        places[0]["source"] = places[0].get("source") or "naver_search_geocoded"
                 return JsonResponse({
                     "places": places,
                     "total": len(places),
-                    "total_before_filter": len(places),
-                    "filtered_out": 0,
+                    "total_before_filter": raw_count,
+                    "filtered_out": filtered_out,
                     "provider": "naver_search",
                     "note": "Naver quality score uses official Local and Blog Search signals.",
                 })
