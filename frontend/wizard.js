@@ -2347,9 +2347,12 @@ function buildPrompt(isReroll = false) {
   const actFiltered = actMerged.filter((a) => a !== "sports");
   const activityParts = actFiltered.map((a) => aMap[a] || a);
   const sportParts = (d.sports || []).map((s) => spMap[s] || s);
+  const actSet = new Set(actMerged);
+  lines.push(
+    `【内部方針 meal_policy】lunch_required=true / dinner_required=true / gourmet_selected=${actSet.has("food")} / meal_detail_level=normal / cafe_as_afternoon_stop=${hasCafePlan}`
+  );
   if (activityParts.length) {
     lines.push(`【やりたいこと】${activityParts.join("・")}`);
-    const actSet = new Set(actMerged);
     const activityIntents = [
       actSet.has("shopping") && "shopping",
       actSet.has("nightview") && "nightview",
@@ -2363,9 +2366,7 @@ function buildPrompt(isReroll = false) {
       (actSet.has("sports") || (d.sports || []).length > 0) && "sports",
       actSet.has("vacation") && "vacation",
     ].filter(Boolean);
-    const mealDetailLevel = actSet.has("food") ? "high" : "normal";
     lines.push(
-      `【内部方針 meal_policy】lunch_required=true / dinner_required=true / gourmet_selected=${actSet.has("food")} / meal_detail_level=${mealDetailLevel} / cafe_as_afternoon_stop=${hasCafePlan}`,
       `【内部方針 activity_intents】${activityIntents.length ? activityIntents.join(", ") : "none"}`,
       `【内部方針 timed_event_intents】${timedEventIntents.length ? timedEventIntents.join(", ") : "none"}`
     );
@@ -2457,7 +2458,7 @@ function buildPrompt(isReroll = false) {
   lines.push(
     "\n地図アプリへの検索依頼は禁止。",
     "【言語】本文は必ず日本語。韓国語の説明文（■1일째、한식점で 等）は禁止。店名の韓国語表記のみ可。",
-    "【表示形式】時刻レンジ（例:[10:00〜11:00]）は書かない。各日は「1日目」「2日目」見出し＋「①②③」または「午前」「昼食」「午後」「夕食」。",
+    "【表示形式】時刻レンジ（例:[10:00〜11:00]）は書かない。各日は「1日目」「2日目」見出し＋「午前」「昼食」「午後」「夕食」の順序ラベル（1日目の到着動線のみ①②③可）。飲食店は必ず「昼食」「夕食」スロットにのみ配置し、「午前」「午後」スロットへの飲食店記載は絶対禁止。",
     "【日程密度】観光可能な旅行日は、観光/体験2〜3件＋昼食1件＋夕食1件を基本上限にする。食事は昼食・夕食の2回だけ。車移動でも同一市内という理由だけで観光地・イベント・食事を詰め込みすぎない。イベント/スポーツ観戦日は観光を1〜2件に減らす。",
     "【夜スロット絶対禁止】[夜]スロットには飲食店・カフェ・バー・屋台・食事場所を一切置かない。[夜]は夜景・散歩・公園・文化エリア・宿泊休憩のみ。夕食は[夕食]スロットで済ませる。夕食後の追加飲食は禁止。",
     "【カード表示用ノイズ禁止】本文に「外観写真」「評価」「営業中」「住所」「地図」「経路」「지도」「통로」「この日の動線上の候補」「予算の目安」を場所名の直前直後に書かない。場所名の直後はReference Dataの地図URL（map.naver.com）だけを書く。",

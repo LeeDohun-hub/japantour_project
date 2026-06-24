@@ -772,12 +772,12 @@ def _itinerary_place_limits(traveler_profile: dict | None) -> dict[str, int]:
             "max_total": 50,
         }
     return {
-        "max_areas": _MAX_ITINERARY_AREAS,
-        "max_food_per_area": _MAX_FOOD_PER_AREA,
-        "max_attr_per_area": _MAX_ATTR_PER_AREA,
-        "max_nearby_food": _MAX_NEARBY_FOOD,
-        "max_nearby_attr": _MAX_NEARBY_ATTRACTIONS,
-        "max_total": _MAX_ITINERARY_PLACES_TOTAL,
+        "max_areas": 5,
+        "max_food_per_area": 10,
+        "max_attr_per_area": 6,
+        "max_nearby_food": 24,
+        "max_nearby_attr": 12,
+        "max_total": 50,
     }
 
 
@@ -1045,7 +1045,7 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "【表示フォーマット — 時刻レンジ禁止・厳守】\n"
             "- 本文に [HH:MM〜HH:MM] や [10:00] のような**時刻レンジ・時刻ブロックは一切書かない**。\n"
             "  （ユーザーに詰め込みすぎた日程に見えるため。移動の「約○分」は可）\n"
-            "- 2日目以降は **① ② ③** の番号、または **午前 / 昼食 / 午後 / 夕食** の順序ラベルで構成。\n"
+            "- 2日目以降は **午前 / 昼食 / 午後 / 夕食** の順序ラベルで構成（1日目の到着動線のみ①②③可）。飲食店は必ず「昼食」「夕食」スロットにのみ記載し、「午前」「午後」スロットへの飲食店記載は絶対禁止。\n"
             "- 各スポットは1行で名称＋（あれば）Reference Dataの地図URL。評価・住所・地図ボタン文言は書かない。\n"
             "\n"
             "【1日目 到着動線 — 必須フォーマット】\n"
@@ -1146,7 +1146,7 @@ Do NOT invent any flight numbers, times, gate numbers, or delay information.
             "  ただし place ID 形式（/p/place/12345 など）は一切禁止。必ず /p/search/ 形式で。**\n"
             "\n"
             "【2日目以降 — 構成ルール】\n"
-            "- ①②③ または 午前・昼食・午後・夕食 の順序ラベル。各日末尾に【予算の目安】【旅行のポイント】を付記。\n"
+            "- 午前・昼食・午後・夕食 の順序ラベル（1日目の到着動線のみ①②③可）。各日末尾に【予算の目安】【旅行のポイント】を付記。飲食店は「昼食」「夕食」スロット以外への記載絶対禁止。\n"
             "- 通常観光日は、観光/体験2〜3件＋昼食＋夕食を基本上限にする。\n"
             "  同一市内・車移動でも、駐車・待ち時間・食事時間を考慮し、4件以上の観光/イベントを詰め込まない。\n"
             "  イベント/スポーツ観戦日は観光を1〜2件に減らす。\n"
@@ -6714,9 +6714,12 @@ def route_and_answer(
                 )
         else:
             ctx_parts.append(
-                "=== 食事候補 — 取得不可 ===\n"
-                "Naver場所検索で検証済みの飲食店リストがありません。\n"
-                "【厳守】店名創作は禁止。本文では候補不足・取得不可・再検索必要・現地確認などの事情を説明しない。\n"
+                "=== 食事候補 — 候補なし（ZERO-CANDIDATE EXCEPTION 適用）===\n"
+                "Naver場所検索で検証済み飲食店が見つかりませんでした。\n"
+                "【必須】昼食・夕食スロットは必ず埋めること（省略・スキップ絶対禁止）。"
+                "その都市に確実に実在する飲食店名（韓国語正式表記のみ）を使用し、"
+                "地図URLは https://map.naver.com/v5/search/[韓国語店名] 形式で生成。"
+                "候補不足・取得不可の事情を本文に書かない。架空名・想像名は禁止。\n"
             )
         if cafe_places and _has_cafe_hopping_interest(traveler_profile, user_message):
             ctx_parts.append(
