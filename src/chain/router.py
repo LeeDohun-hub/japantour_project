@@ -5467,7 +5467,11 @@ def route_and_answer(
                 traveler_profile,
                 user_message,
             )
-        return search_rag(keyword, category=rag_category, area=rag_area)
+        # 검색어는 사용자 원문(보통 일본어)+keyword 결합.
+        # keyword만 쓰면 분류기가 만든 한국어 keyword로 일본어 인덱스를 검색하게 되어
+        # 교차언어 미스매치가 발생한다(예: '수원 화성 옛 지명'으로는 정답 미검색).
+        rag_query = f"{user_message} {keyword}".strip()
+        return search_rag(rag_query, category=rag_category, area=rag_area)
 
     def _do_places() -> tuple[list, str]:
         if category not in PLACES_TYPE_MAP:
@@ -6971,12 +6975,12 @@ def route_and_answer(
 
     # ── non-streaming (기본) ──────────────────────────────────────────────
     try:
+        _reasoning = _is_reasoning_model(_model)
         if is_wizard_plan:
             # 품질 채점 + 자동 재시도
             _best_reply: str | None = None
             _best_score = -1
             _best_failures: list[str] = []
-            _reasoning = _is_reasoning_model(_model)
             _ns_failures: list[str] = []
             _ns_best_candidate: str = ""
             for _attempt in range(_effective_max_retries + 1):

@@ -3649,6 +3649,10 @@ function _renderMapsUnresolvedFallback(url, queryLabel, slotKind = "") {
     if (koAlt) q = koAlt;
   }
   if (_isBadPlanPlaceQuery(q)) return "";
+  // カフェ枠は実在する候補カードを作れた場合だけ表示する。
+  // 未解決URLから検索リンクや仮カードを作ると「カフェ休憩」だけが残るため、
+  // カフェではフォールバックを一切出さない。
+  if (slotKind === "cafe") return "";
   // 식사 슬롯 미해결 URL: 한국어 장소명이 확실하면 앵커 카드 표시 (완전 공백 방지)
   if (slotKind === "meal") {
     if (q && /[가-힣]/.test(q)) return _renderAnchorPlaceCard(q, (urlHasKorean && proseIsJapanese) ? (proseTerm || "") : "");
@@ -3881,7 +3885,7 @@ function _renderAnchorPlaceCard(name, displayJa = "") {
 
 const _PLAN_CLOCK_RE = /\[[\d０-９]{1,2}\s*[:：]\s*[\d０-９]{2}[^\]]*\]/g;
 const _PLAN_DAY_HEAD_RE = /^(【\s*)?(\d+)\s*日目|^(【\s*)?最終日|帰国日|最終\s*日|^#{1,3}\s*\d+\s*日目/i;
-const _PLAN_SLOT_RE = /^(?:\[(午前|午後|昼食|夕食|夜|朝食|朝|ランチ|ディナー|カフェ|오전|오후|점심|저녁|밤|아침|카페)\]|(午前|午後|昼食|夕食|夜|朝食|朝|ランチ|ディナー|カフェ|오전|오후|점심|저녁|밤|아침|카페)(?=$|\s|[:：]))/;
+const _PLAN_SLOT_RE = /^(?:\[(午前|午後|昼食|夕食|夜|朝食|朝|ランチ|ディナー|カフェ(?:休憩|タイム)?|오전|오후|점심|저녁|밤|아침|카페(?:\s*(?:휴식|타임))?)\]|(午前|午後|昼食|夕食|夜|朝食|朝|ランチ|ディナー|カフェ(?:休憩|タイム)?|오전|오후|점심|저녁|밤|아침|카페(?:\s*(?:휴식|타임))?)(?=$|\s|[:：]))/;
 const _PLAN_STEP_RE = /^[①②③④⑤⑥⑦⑧⑨⑩]\s*/;
 
 function _stripPlanClocks(line) {
@@ -3904,8 +3908,16 @@ function _planSlotKind(line) {
   const match = String(line || "").trim().match(_PLAN_SLOT_RE);
   const label = match?.slice(1).find(Boolean) || "";
   if (/^(?:昼食|ランチ|점심|夕食|ディナー|저녁)$/.test(label)) return "meal";
-  if (/^(?:カフェ|카페)$/.test(label)) return "cafe";
+  if (/^(?:カフェ(?:休憩|タイム)?|카페(?:\s*(?:휴식|타임))?)$/.test(label)) return "cafe";
   return label ? "activity" : "";
+}
+
+function _isGenericCafePlaceholder(line) {
+  const text = _stripPlanClocks(line)
+    .replace(/^[-・*①②③④⑤⑥⑦⑧⑨⑩]\s*/, "")
+    .replace(/[。.!！]\s*$/, "")
+    .trim();
+  return /^(?:カフェ(?:休憩|タイム|巡り)?|周辺(?:の)?カフェで休憩|카페(?:\s*(?:휴식|타임|순회))?|주변\s*카페에서\s*휴식)$/i.test(text);
 }
 
 function _formatPlanTextLine(line) {
@@ -3951,6 +3963,11 @@ function _tryRenderPlaceCard(indexes, rendered, url, renderedScope, slotKind = "
   }
   // 식사 슬롯에 관광 명소(비음식) 카드 차단
   if (slotKind === "meal" && !_isMealPlaceForRefs(place) && !_isCafePlaceForRefs(place)) {
+    rendered.add(key);
+    return false;
+  }
+  // カフェ枠には、カフェと確認できた実在候補だけを表示する。
+  if (slotKind === "cafe" && !_isCafePlaceForRefs(place)) {
     rendered.add(key);
     return false;
   }
@@ -4043,8 +4060,21 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
   };
 
   let _pendingProse = null;
+  let pendingCafeSlotCheckpoint = null;
+  const discardPendingCafeSlot = () => {
+    if (pendingCafeSlotCheckpoint === null) return;
+    out.splice(pendingCafeSlotCheckpoint);
+    pendingCafeSlotCheckpoint = null;
+    _pendingProse = null;
+  };
+  const commitPendingCafeSlot = () => {
+    pendingCafeSlotCheckpoint = null;
+  };
   let renderedCardNames = new Set(); // 렌더된 카드명 → 이후 동일 텍스트 줄 억제
   const emitCard = (place) => {
+    if (currentSlotKind === "cafe" && _isCafePlaceForRefs(place)) {
+      commitPendingCafeSlot();
+    }
     const prose = _pendingProse;
     _pendingProse = null;
     // 카드 이름 키를 모두 등록해 이후 echo 줄 억제
@@ -4319,11 +4349,15 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
     }
 
     if (_isPlanSlotLabel(trimmed)) {
+      discardPendingCafeSlot();
       const match = trimmed.match(_PLAN_SLOT_RE);
       const slot = match?.slice(1).find(Boolean) || trimmed;
-      currentSlotKind = _planSlotKind(trimmed);
+      const slotKind = _planSlotKind(trimmed);
+      const rest = trimmed.replace(_PLAN_SLOT_RE, "").replace(/^[:：]\s*/, "").trim();
+      const isCafeOnlySlot = slotKind === "cafe" || (slotKind === "activity" && _isGenericCafePlaceholder(rest));
+      currentSlotKind = isCafeOnlySlot ? "cafe" : slotKind;
+      if (isCafeOnlySlot) pendingCafeSlotCheckpoint = out.length;
       pushSlot(`<span class="plan-slot-label">${_escapeHtml(slot)}</span>`);
-      const rest = trimmed.replace(_PLAN_SLOT_RE, "").trim();
       if (rest) pushStep(`<p class="plan-line">${_formatPlanTextLine(rest)}</p>`);
       return;
     }
@@ -4372,6 +4406,15 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
     for (let j = i + 1; j < lines.length; j++) {
       if (lines[j].trim()) { nextNonEmpty = lines[j]; break; }
     }
+    // 「カフェ休憩」だけの行は、次の実在カフェカードが成功した場合だけ採用する。
+    // URL解決に失敗した場合はテキストも検索リンクも残さない。
+    if (_isGenericCafePlaceholder(trimmed) && !_isPlanSlotLabel(trimmed)) {
+      discardPendingCafeSlot();
+      pendingCafeSlotCheckpoint = out.length;
+      currentSlotKind = "cafe";
+      _pendingProse = trimmed;
+      continue;
+    }
     if (lineLooksLikePlaceLabelBeforeUrl(lines[i], nextNonEmpty)) {
       // 前のpendingProseが消費されていない場合（カードブロック等）、先にテキスト出力する
       if (_pendingProse !== null) {
@@ -4382,6 +4425,7 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
     }
 
     if (_isPlanDayHeader(trimmed)) {
+      discardPendingCafeSlot();
       _pendingProse = null;
       renderedDayPlaces = new Set();
       cafeGuard = { used: false };
@@ -4394,6 +4438,7 @@ function _renderPlanHtml(text, placeIndexes, ticketEventIndex) {
     processContentLine(lines[i]);
   }
 
+  discardPendingCafeSlot();
   closeTimeline();
   if (_vacItems.length > 0) out.push(_renderVacationCards(_vacItems));
   return out.join("");

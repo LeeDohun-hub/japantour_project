@@ -256,7 +256,10 @@ class FaissVectorStore(BaseVectorStore):
             record = self._meta[idx]
             if category and record.get("category") != category:
                 continue
-            if area and record.get("area") != area:
+            # area는 소프트 조건: 채워져 있고 서로 다를 때만 제외.
+            # area가 빈 레코드(약 69%)는 정답을 포함할 수 있으므로 살린다.
+            rec_area = record.get("area")
+            if area and rec_area and rec_area != area:
                 continue
             results.append({**record, "_score": float(dist)})
 
@@ -302,7 +305,9 @@ class PgVectorStore(BaseVectorStore):
             if category:
                 queryset = queryset.filter(category=category)
             if area:
-                queryset = queryset.filter(area=area)
+                # area는 소프트 조건: 빈 area 레코드(정답 포함 가능)도 후보로 유지.
+                from django.db.models import Q
+                queryset = queryset.filter(Q(area=area) | Q(area="") | Q(area__isnull=True))
 
             queryset = queryset.annotate(distance=CosineDistance("embedding", query_embedding)).order_by("distance")[:top_k * 2]
 
