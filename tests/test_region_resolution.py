@@ -811,6 +811,46 @@ class RouterItineraryRepairTests(unittest.TestCase):
         self.assertIn("명동교자", repaired_stay)
         self.assertIn(stay_url, repaired_stay)
 
+    def test_repair_keeps_reused_restaurant_when_pool_is_too_small(self) -> None:
+        profile = {
+            "plan_mode": True,
+            "days": 3,
+            "regions": ["seoul"],
+            "regionCities": "서울 중구",
+        }
+        url = "https://map.naver.com/p/search/myeongdong-kyoja"
+        places = [self._restaurant("명동교자", "서울 중구 명동10길", url)]
+        reply = "\n".join([
+            "1日目", "昼食", "명동교자", url,
+            "2日目", "昼食", "명동교자", url,
+        ])
+
+        repaired = _repair_wizard_itinerary_rules(reply, places, profile, "旅行プラン")
+
+        self.assertEqual(repaired.count("명동교자"), 2)
+        self.assertEqual(repaired.count(url), 2)
+
+    def test_repair_replaces_candidate_exhaustion_note_with_verified_restaurant(self) -> None:
+        profile = {
+            "plan_mode": True,
+            "days": 3,
+            "regions": ["seoul"],
+            "regionCities": "서울 중구",
+        }
+        url = "https://map.naver.com/p/search/myeongdong-kyoja"
+        places = [self._restaurant("명동교자", "서울 중구 명동10길", url)]
+        reply = "\n".join([
+            "3日目",
+            "昼食",
+            "※食事候補リストの店舗を全て使い切ったため、周辺で評判の韓国料理店をご利用ください。",
+        ])
+
+        repaired = _repair_wizard_itinerary_rules(reply, places, profile, "旅行プラン")
+
+        self.assertNotIn("使い切った", repaired)
+        self.assertIn("명동교자", repaired)
+        self.assertIn(url, repaired)
+
     def test_repair_removes_civic_office_tourism_block(self) -> None:
         profile = {
             "plan_mode": True,

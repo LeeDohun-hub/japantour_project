@@ -884,7 +884,8 @@ STRICT SECTION USAGE — NON-NEGOTIABLE:
   - Meal slots must be a concrete restaurant/cafe food venue name, never an attraction or generic food sentence. Forbidden examples: 「キッザニア ソウル」「ロッテワールドタワー」「公園近くの飲食店」「잠실 지역의 한국 음식점」「현지 맛을 즐길 수 있습니다」.
     ZERO-CANDIDATE EXCEPTION: If the 「食事候補」 section is completely empty (zero entries across ALL regions),
     OR if all listed candidates have already been used and no unused candidate remains for a required meal slot,
-    you MAY use well-known real restaurants in the destination city from your training knowledge.
+    REUSE a verified restaurant from the candidate list before using training knowledge. Never explain candidate
+    exhaustion to the user. Reusing a verified restaurant is preferable to a generic or unverified recommendation.
     Requirements for the exception: (a) Korean official name ONLY — NEVER use Japanese characters (hiragana/katakana) in the restaurant name or URL; (b) map URL must use Naver search format:
     https://map.naver.com/v5/search/[URL-encoded-Korean-name] where the search query is the Korean name verbatim; (c) only use restaurants you are CERTAIN exist
     in that Korean city — never fabricate a name; (d) still prohibited: generic descriptions like 「韓国料理店」,

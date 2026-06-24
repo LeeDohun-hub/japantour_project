@@ -192,6 +192,7 @@ _ITINERARY_BAD_PLACEHOLDER_RE = re.compile(
     r"(?:지역|에리어|エリア|근처|주변|일대|近く|周辺).{0,12}(?:음식점|식당|맛집|한국음식|요리|レストラン|食堂|食事)|"
     r"(?:현지|当地|地元|한국\s*같은|韓国らしい).{0,12}(?:맛|요리|음식|グルメ|料理|食事)|"
     r"候補が(?:足りない|全部終わった)|"
+    r"食事候補(?:リスト)?(?:の店舗)?を(?:全て|すべて)使い切|"
     r"候補不足|時間外の可能性|現地で探す|店名は記載しない|コンビニ|軽食|間食)",
     re.I,
 )
@@ -638,6 +639,17 @@ def _repair_wizard_itinerary_rules(
         total_days = None
     late_arrival_blocks_meals = _late_arrival_blocks_meals(traveler_profile)
     early_departure_blocks_meals = _early_departure_blocks_meals(traveler_profile)
+    required_meal_slots = (total_days or 0) * 2
+    if total_days and late_arrival_blocks_meals:
+        required_meal_slots -= 2
+    if total_days and early_departure_blocks_meals:
+        required_meal_slots -= 2
+    # When the verified pool is smaller than the itinerary's meal slots,
+    # reusing a real restaurant is safer than deleting it and leaving a generic
+    # "candidates exhausted" message.
+    allow_cross_day_food_reuse = bool(
+        required_meal_slots > 0 and len(food_names) < required_meal_slots
+    )
     travel_areas = _tourism_search_areas(traveler_profile)
     stay_areas = _accommodation_food_areas(traveler_profile)
     penultimate_return_day = (
@@ -728,24 +740,27 @@ def _repair_wizard_itinerary_rules(
         blob = str(line or "").lower()
         return bool(re.search(r"카페|커피|coffee|cafe|디저트|베이커리|dessert|bakery|スイーツ|ベーカリー", blob, re.I))
 
-    def next_place_line(kind: str) -> list[str]:
+    def next_place_line(kind: str, *, allow_reuse: bool = False) -> list[str]:
         queue = food_queue if kind == "food" else cafe_queue if kind == "cafe" else attr_queue
         used = used_food if kind == "food" else used_cafe if kind == "cafe" else used_attr
-        for p in queue:
-            pkey = f"{p.name}|{p.google_maps_uri}"
-            if pkey in used:
-                continue
-            if kind == "attr" and duplicate_day_attr_place(p):
-                continue
-            if (
-                p.name
-                and p.google_maps_uri
-                and _place_matches_day_focus(p, current_day_focus)
-            ):
-                used.add(pkey)
-                if kind == "attr":
-                    day_attr_places.append(p)
-                return [p.name, p.google_maps_uri]
+        for reuse_pass in (False, True):
+            if reuse_pass and not allow_reuse:
+                break
+            for p in queue:
+                pkey = f"{p.name}|{p.google_maps_uri}"
+                if not reuse_pass and pkey in used:
+                    continue
+                if kind == "attr" and duplicate_day_attr_place(p):
+                    continue
+                if (
+                    p.name
+                    and p.google_maps_uri
+                    and _place_matches_day_focus(p, current_day_focus)
+                ):
+                    used.add(pkey)
+                    if kind == "attr":
+                        day_attr_places.append(p)
+                    return [p.name, p.google_maps_uri]
         return []
 
     def skip_plain_cafe_tail(start_idx: int) -> int:
@@ -850,6 +865,18 @@ def _repair_wizard_itinerary_rules(
                 continue
 
         if stripped and not _MAPS_URL_IN_TEXT_RE.search(stripped) and _ITINERARY_BAD_PLACEHOLDER_RE.search(stripped):
+            if (
+                slot in {"lunch", "dinner"}
+                and day_food_count < 2
+                and not meals_blocked_for_day(current_day)
+            ):
+                replacement = next_place_line(
+                    "food", allow_reuse=allow_cross_day_food_reuse
+                )
+                if replacement:
+                    out.extend(replacement)
+                    day_food_count += 1
+                    last_kept_place_food = True
             idx += 1
             continue
 
@@ -944,7 +971,12 @@ def _repair_wizard_itinerary_rules(
                 and duplicate_day_attr_place(place_for_block)
             )
             # Cross-day restaurant dedup: remove if this exact restaurant already appeared.
-            is_duplicate_food = is_food_block and name_key and name_key in used_food_names_global
+            is_duplicate_food = (
+                is_food_block
+                and name_key
+                and name_key in used_food_names_global
+                and not allow_cross_day_food_reuse
+            )
             remove_food = is_duplicate_food or (
                 is_food_block
                 and (
