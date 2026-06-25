@@ -121,7 +121,10 @@ def generate_case(case: dict, client, top_k: int) -> dict:
     }
 
 
-def run_ragas(records: list[dict]) -> tuple[dict[str, float | None], list[dict]]:
+def run_ragas(
+    records: list[dict],
+    metric_names: list[str] | None = None,
+) -> tuple[dict[str, float | None], list[dict]]:
     from datasets import Dataset
     from langchain_openai import ChatOpenAI, OpenAIEmbeddings
     from ragas import evaluate
@@ -151,12 +154,23 @@ def run_ragas(records: list[dict]) -> tuple[dict[str, float | None], list[dict]]
     # strictness=3(default)은 답변당 synthetic question을 3개 생성하는데,
     # LLM이 1개만 반환하는 경우 AR=0.000 아티팩트가 발생한다. 1개로 줄여 안정화.
     answer_relevancy.strictness = 1
-    metrics = [
-        faithfulness,
-        answer_relevancy,
-        context_precision,
-        context_recall,
-    ]
+    # 비용이 큰 faithfulness/context_precision를 빼고 돌릴 수 있도록 지표를 선택 가능.
+    # 예: AR 반복 평가에서 --metrics answer_relevancy,context_recall (≈4배 빠름)
+    _all_metrics = {
+        "faithfulness": faithfulness,
+        "answer_relevancy": answer_relevancy,
+        "context_precision": context_precision,
+        "context_recall": context_recall,
+    }
+    if metric_names:
+        unknown = [n for n in metric_names if n not in _all_metrics]
+        if unknown:
+            raise SystemExit(
+                f"알 수 없는 지표: {unknown}. 사용 가능: {list(_all_metrics)}"
+            )
+        metrics = [_all_metrics[n] for n in metric_names]
+    else:
+        metrics = list(_all_metrics.values())
     result = evaluate(
         dataset=dataset,
         metrics=metrics,
@@ -175,21 +189,23 @@ def run_ragas(records: list[dict]) -> tuple[dict[str, float | None], list[dict]]
         raise_exceptions=False,
     )
     frame = result.to_pandas()
-    metric_names = [metric.name for metric in metrics]
+    selected_names = [metric.name for metric in metrics]
     # AR=0.000 + Faithfulness>=0.5 조합은 RAGAS synthetic question 생성 실패 아티팩트.
     # 답변은 정상이지만 측정이 왜곡된 케이스를 AR 평균에서 제외한다.
-    faith_values = [
-        (float(v) if v is not None and not (isinstance(v, float) and math.isnan(v)) else None)
-        for v in frame["faithfulness"].tolist()
-    ]
+    # faithfulness를 함께 돌린 경우에만 판별 가능(둘 다 선택됐을 때).
     ar_artifact_indices: set[int] = set()
-    for i, (ar_val, f_val) in enumerate(zip(frame["answer_relevancy"].tolist(), faith_values)):
-        ar_f = float(ar_val) if ar_val is not None and not (isinstance(ar_val, float) and math.isnan(ar_val)) else None
-        if ar_f is not None and ar_f <= 0.05 and f_val is not None and f_val >= 0.5:
-            ar_artifact_indices.add(i)
+    if "answer_relevancy" in selected_names and "faithfulness" in selected_names:
+        faith_values = [
+            (float(v) if v is not None and not (isinstance(v, float) and math.isnan(v)) else None)
+            for v in frame["faithfulness"].tolist()
+        ]
+        for i, (ar_val, f_val) in enumerate(zip(frame["answer_relevancy"].tolist(), faith_values)):
+            ar_f = float(ar_val) if ar_val is not None and not (isinstance(ar_val, float) and math.isnan(ar_val)) else None
+            if ar_f is not None and ar_f <= 0.05 and f_val is not None and f_val >= 0.5:
+                ar_artifact_indices.add(i)
 
     averages: dict[str, float | None] = {}
-    for name in metric_names:
+    for name in selected_names:
         raw = frame[name].tolist()
         values = [
             float(raw[i])
@@ -212,7 +228,7 @@ def run_ragas(records: list[dict]) -> tuple[dict[str, float | None], list[dict]]
                     or (isinstance(row.get(name), float) and math.isnan(row.get(name)))
                     else float(row.get(name))
                 )
-                for name in metric_names
+                for name in selected_names
             }
         )
     return averages, per_case
@@ -234,7 +250,31 @@ def main() -> None:
         action="store_true",
         help="검색·답변 생성만 수행하고 RAGAS 판정은 생략",
     )
+    parser.add_argument(
+        "--metrics",
+        type=str,
+        default=None,
+        help=(
+            "쉼표로 구분한 RAGAS 지표 선택(기본: 전체 4개). "
+            "예: answer_relevancy,context_recall — 비싼 faithfulness/context_precision 생략(≈4배 빠름)"
+        ),
+    )
+    parser.add_argument(
+        "--generated-from",
+        type=Path,
+        default=None,
+        help=(
+            "기존 리포트/_generated.json의 생성 답변을 재사용해 재생성 없이 RAGAS만 재실행. "
+            "AR 반복 평가·크래시 재개용."
+        ),
+    )
     args = parser.parse_args()
+
+    metric_names = (
+        [m.strip() for m in args.metrics.split(",") if m.strip()]
+        if args.metrics
+        else None
+    )
 
     if not args.dataset.exists():
         from evaluation.scripts.build_chat_corpus_eval import build_dataset
@@ -248,31 +288,42 @@ def main() -> None:
             encoding="utf-8",
         )
 
-    from openai import OpenAI
-
     logging.basicConfig(level=logging.WARNING)
-    client = OpenAI()
-    cases = load_cases(args.dataset, args.limit)
-    print(f"[GENERATE] {len(cases)}건, top_k={args.top_k}")
 
-    records: list[dict] = []
-    for index, case in enumerate(cases, 1):
-        try:
-            record = generate_case(case, client, args.top_k)
-            records.append(record)
-            mark = "OK" if record["target_retrieved"] else "MISS"
-            print(
-                f"  {index:03d}/{len(cases):03d} {mark:4s} "
-                f"rank={str(record['target_rank']):>4s} "
-                f"rag={record['rag_count']} places={record['places_count']} "
-                f"{record['latency_ms']}ms {case['id']}"
-            )
-        except Exception as exc:
-            print(f"  {index:03d}/{len(cases):03d} ERROR {case['id']}: {exc}")
-            traceback.print_exc()
+    if args.generated_from:
+        # 재생성 없이 기존 생성 답변을 재사용 → RAGAS만 재실행
+        cached = json.loads(args.generated_from.read_text(encoding="utf-8"))
+        records = cached.get("cases") or []
+        if not records:
+            raise SystemExit(f"재사용할 생성 답변이 없습니다: {args.generated_from}")
+        if args.limit and 0 < args.limit < len(records):
+            records = records[: args.limit]
+        print(f"[REUSE] {len(records)}건 생성 답변 재사용 ({args.generated_from})")
+    else:
+        from openai import OpenAI
 
-    if not records:
-        raise SystemExit("평가 가능한 결과가 없습니다.")
+        client = OpenAI()
+        cases = load_cases(args.dataset, args.limit)
+        print(f"[GENERATE] {len(cases)}건, top_k={args.top_k}")
+
+        records = []
+        for index, case in enumerate(cases, 1):
+            try:
+                record = generate_case(case, client, args.top_k)
+                records.append(record)
+                mark = "OK" if record["target_retrieved"] else "MISS"
+                print(
+                    f"  {index:03d}/{len(cases):03d} {mark:4s} "
+                    f"rank={str(record['target_rank']):>4s} "
+                    f"rag={record['rag_count']} places={record['places_count']} "
+                    f"{record['latency_ms']}ms {case['id']}"
+                )
+            except Exception as exc:
+                print(f"  {index:03d}/{len(cases):03d} ERROR {case['id']}: {exc}")
+                traceback.print_exc()
+
+        if not records:
+            raise SystemExit("평가 가능한 결과가 없습니다.")
 
     metrics: dict[str, float | None] = {}
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -301,8 +352,9 @@ def main() -> None:
     print(f"[CHECKPOINT] {checkpoint}")
 
     if not args.skip_ragas:
-        print(f"[RAGAS] {len(records)}건 평가 시작")
-        metrics, per_case_scores = run_ragas(records)
+        sel = ",".join(metric_names) if metric_names else "all(4)"
+        print(f"[RAGAS] {len(records)}건 평가 시작 (metrics={sel})")
+        metrics, per_case_scores = run_ragas(records, metric_names)
         for record, scores in zip(records, per_case_scores):
             record["ragas"] = scores
 
