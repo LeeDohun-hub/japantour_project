@@ -207,6 +207,17 @@
 
     if (/map\.naver\.com/i.test(raw)) {
       const rawSearchTerm = _naverSearchTerm(raw);
+      // 표시名이 일본어でも、検証済みURLが韓国語の検索語(例: 서울스카이)を持っていれば
+      // それを使う。LLMは韓国語URLを出すが、place.nameが日本語名のとき名前で再生成して
+      // 日本語URLになる不具合(例: ソウルスカイ)を防ぐ。
+      if (
+        _hasJapanese(name) &&
+        rawSearchTerm &&
+        _hasKorean(rawSearchTerm) &&
+        !_hasJapanese(rawSearchTerm)
+      ) {
+        return naverSearchUrl(disambiguatedSearchQuery(rawSearchTerm, place, opts));
+      }
       const koName = _bestKoreanName(place, name || rawSearchTerm);
       if (koName && (_hasJapanese(name) || _hasJapanese(rawSearchTerm))) {
         return naverSearchUrl(disambiguatedSearchQuery(koName, place, opts));
