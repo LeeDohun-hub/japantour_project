@@ -258,6 +258,26 @@ def _itinerary_day_number(line: str, total_days: int | None = None) -> int | Non
     return None
 
 
+def _meal_slot_is_empty(lines: list[str], start_idx: int) -> bool:
+    """식사 슬롯 라벨 다음(start_idx부터)에 실제 내용이 있는지 검사.
+
+    다음 슬롯 라벨 / 날짜 헤더 / 섹션 경계까지 비어있는 줄만 있으면 True(빈 슬롯).
+    LLM이 「夕食」 라벨만 남기고 가게를 누락한 경우를 결정적으로 잡는다.
+    """
+    j = start_idx
+    while j < len(lines):
+        tail = lines[j].strip()
+        if not tail:
+            j += 1
+            continue
+        # 다음 슬롯/날짜 경계에 닿을 때까지 내용이 없었으면 빈 슬롯
+        if _ITINERARY_DAY_RE.match(tail) or _itinerary_slot_from_line(tail):
+            return True
+        # 어떤 형태든 내용 줄(장소명·URL·설명 등)을 만나면 비어있지 않음
+        return False
+    return True
+
+
 # ─── 식사 타이밍 ─────────────────────────────────────────────────────────────
 
 
@@ -763,6 +783,31 @@ def _repair_wizard_itinerary_rules(
                     return [p.name, p.google_maps_uri]
         return []
 
+    def pick_food_for_empty_slot() -> list[str]:
+        """빈 식사 슬롯에 넣을 검증된 식당을 선택.
+
+        같은 날 점심/이미 사용된 식당과 중복되지 않는 미사용 후보를 우선 선택하고,
+        후보 풀이 슬롯 수보다 작을 때만(allow_cross_day_food_reuse) 재사용한다.
+        """
+        for p in food_queue:
+            pkey = f"{p.name}|{p.google_maps_uri}"
+            if pkey in used_food:
+                continue
+            name_key = _norm_plan_place_name(p.name)
+            if name_key in used_food_names_global:
+                continue
+            if not _place_matches_day_focus(p, current_day_focus):
+                continue
+            used_food.add(pkey)
+            if name_key:
+                used_food_names_global.add(name_key)
+            return [p.name, p.google_maps_uri]
+        if allow_cross_day_food_reuse:
+            for p in food_queue:
+                if _place_matches_day_focus(p, current_day_focus):
+                    return [p.name, p.google_maps_uri]
+        return []
+
     def skip_plain_cafe_tail(start_idx: int) -> int:
         """Skip stale LLM cafe name/prose after the single chosen cafe card.
 
@@ -817,6 +862,18 @@ def _repair_wizard_itinerary_rules(
                     if inserted:
                         out.extend(inserted)
                         day_cafe_count += 1
+            # 빈 식사 슬롯(라벨만 있고 가게 누락)을 검증된 식당으로 결정적 보강.
+            # LLM 재시도가 반복적으로 비워두는 케이스(예: 경주 夕食)를 확정적으로 채운다.
+            if (
+                new_slot in {"lunch", "dinner"}
+                and day_food_count < 2
+                and _meal_slot_is_empty(lines, idx + 1)
+            ):
+                inserted = pick_food_for_empty_slot()
+                if inserted:
+                    out.extend(inserted)
+                    day_food_count += 1
+                    last_kept_place_food = True
             idx += 1
             continue
 
