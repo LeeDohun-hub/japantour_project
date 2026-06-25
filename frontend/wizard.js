@@ -4775,10 +4775,16 @@ const _ATTR_AREA_SKIP_RE = /^(홍대|명동|강남|인사동|동대문|이태원
 const _ATTR_PROSE_SKIP_RE =
   /(?:おすすめ|推奨|人気|有名|地元|現地|代表|確認|利用|楽し|撮影|散策|移動|候補|動線|経路|満点|愛され|できます|できる|です|ます|합니다|있습니다|추천|인기|현지|대표|확인|이용|즐길|사랑|평판|후보|동선|경로|만점|좋습니다|입니다|있다)/i;
 
+// 점포 지점 접미사(아쿠아가든카페 롯데월드몰점, ○○본점 등) — 구체 점포명 신호
+const _ATTR_BRANCH_SUFFIX_RE = /(?:본점|지점|\d+호점|점)$/;
+
 function _looksLikeStandalonePlaceName(name) {
   const t = String(name || "").trim();
   if (!t || t.length < 2 || t.length > 32) return false;
-  if (_ATTR_FOOD_SKIP_RE.test(t) || _ATTR_PROSE_SKIP_RE.test(t)) return false;
+  if (_ATTR_PROSE_SKIP_RE.test(t)) return false;
+  // 음식/카페명은 원칙적으로 제외(URL 없는 임의 식당명 enrich로 인한 오매칭 방지)하되,
+  // 지점·본점 접미사가 붙은 구체 점포명은 카드화 허용(URL 누락 시에도 카드 생성).
+  if (_ATTR_FOOD_SKIP_RE.test(t) && !_ATTR_BRANCH_SUFFIX_RE.test(t.replace(/\s+/g, ""))) return false;
   if (/[。.!?！？]/.test(t)) return false;
   if (/\s/.test(t) && t.length > 18) return false;
   if (/^(?:\d+\s*日目|第\s*\d+\s*日|Day\s*\d+\b|최종일|첫날|\d+\s*(?:일째|일차))/i.test(t)) return false;
