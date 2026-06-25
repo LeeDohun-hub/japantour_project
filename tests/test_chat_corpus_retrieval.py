@@ -75,6 +75,8 @@ class ChatCorpusRetrievalTests(unittest.TestCase):
     def test_deogyusan_record_is_top_unfiltered_bm25_hit(self) -> None:
         index = BM25Index()
         index.build(load_jsonl_records())
+        if not index.is_ready():
+            self.skipTest("BM25 index unavailable (rank_bm25 미설치 등)")
 
         results = index.search(
             "徳裕山国立公園で見られる具体的な動植物",

@@ -259,55 +259,40 @@ def _build_itinerary_attraction_queries(
         add(f"{area} 명소")
         add(f"{area} 관광지")
         acts = {str(a).lower() for a in (traveler_profile or {}).get("activities") or []}
+        # 활동별 쿼리를 그룹으로 모은 뒤 라운드로빈으로 추가한다.
+        # (각 활동의 1순위 → 모든 활동의 2순위 …) 이렇게 하면 지역 고정추천·다수 활동으로
+        # 쿼리 수가 상한(queries[:16/24])을 넘겨도 선택한 모든 활동의 대표 쿼리가 보장된다.
+        groups: list[list[str]] = []
         if "nature" in acts:
-            add(f"{area} 공원")
-            add(f"{area} 산책로")
-            add(f"{area} 자연 명소")
-            add(f"{area} 전망대")
+            groups.append([f"{area} 공원", f"{area} 산책로", f"{area} 자연 명소", f"{area} 전망대"])
         if "photo" in acts:
-            add(f"{area} 포토스팟")
-            add(f"{area} 사진 명소")
-            add(f"{area} SNS 명소")
-            add(f"{area} 야경 포토스팟")
+            groups.append([f"{area} 포토스팟", f"{area} 사진 명소", f"{area} SNS 명소", f"{area} 야경 포토스팟"])
         if "nightview" in acts:
-            add(f"{area} 야경")
-            add(f"{area} 야경 명소")
-            add(f"{area} 야경 포인트")
-            add(f"{area} 전망대")
+            groups.append([f"{area} 야경", f"{area} 야경 명소", f"{area} 야경 포인트", f"{area} 전망대"])
         if "tradition" in acts:
-            add(f"{area} 전통문화")
-            add(f"{area} 한옥")
-            add(f"{area} 박물관")
-            add(f"{area} 문화예술")
+            groups.append([f"{area} 전통문화", f"{area} 한옥", f"{area} 박물관", f"{area} 문화예술"])
         if any(a in acts for a in ("drama", "performance", "performances", "theater", "musical", "kpop")):
-            add(f"{area} 공연장")
-            add(f"{area} 문화공간")
-            add(f"{area} 라이브 공연")
-            add(f"{area} 뮤지컬")
+            perf = [f"{area} 공연장", f"{area} 문화공간", f"{area} 라이브 공연", f"{area} 뮤지컬"]
             # 대학로는 서울 전용 공연 특구 — 서울 지역일 때만 추가
             _seoul_indicators = ("서울", "seoul", "종로", "홍대", "명동", "동대문", "마포", "강남")
             if any(si in area.lower() for si in _seoul_indicators):
-                add(f"{area} 대학로 공연")
+                perf.append(f"{area} 대학로 공연")
             else:
-                add(f"{area} 예술의전당")
-                add(f"{area} 콘서트")
+                perf.extend([f"{area} 예술의전당", f"{area} 콘서트"])
+            groups.append(perf)
         # 축제·행사는 일정 본문에 카드로 넣지 않는다(VisitKorea 축제 섹션 전용).
         # → Naver 축제 검색 쿼리를 생성하지 않아 본문에 축제 Naver 카드가 섞이지 않게 한다.
         if has_shopping_interest:
-            add(f"{area} 쇼핑")
-            add(f"{area} 쇼핑몰")
-            add(f"{area} 전통시장")
+            groups.append([f"{area} 쇼핑", f"{area} 쇼핑몰", f"{area} 전통시장"])
         vacation_types = _vacation_types_from_profile(traveler_profile, f"{user_message} {keyword}")
         if "vacation" in acts or "beach" in vacation_types:
-            add(f"{area} 해수욕장")
-            add(f"{area} 해변")
-            add(f"{area} 바다 전망")
-            add(f"{area} 비치")
+            groups.append([f"{area} 해수욕장", f"{area} 해변", f"{area} 바다 전망", f"{area} 비치"])
         if has_cafe_interest:
-            add(f"{area} 유명 카페")
-            add(f"{area} 로컬 카페")
-            add(f"{area} 감성 카페")
-            add(f"{area} 디저트 카페")
+            groups.append([f"{area} 유명 카페", f"{area} 로컬 카페", f"{area} 감성 카페", f"{area} 디저트 카페"])
+        for _tier in range(max((len(g) for g in groups), default=0)):
+            for g in groups:
+                if _tier < len(g):
+                    add(g[_tier])
 
     if _needs_accommodation_buffer_candidates(traveler_profile, areas):
         for area in _accommodation_food_areas(traveler_profile)[:2]:
