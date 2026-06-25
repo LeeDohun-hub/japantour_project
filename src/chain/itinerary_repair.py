@@ -787,7 +787,9 @@ def _repair_wizard_itinerary_rules(
         """빈 식사 슬롯에 넣을 검증된 식당을 선택.
 
         같은 날 점심/이미 사용된 식당과 중복되지 않는 미사용 후보를 우선 선택하고,
-        후보 풀이 슬롯 수보다 작을 때만(allow_cross_day_food_reuse) 재사용한다.
+        미사용 후보가 없으면(후보 소진·지역 필터로) 마지막 수단으로 검증된 식당을
+        재사용한다. 빈 식사 슬롯을 "후보없음" 텍스트로 두는 것보다 실제 식당 카드를
+        재사용하는 편이 낫다.
         """
         for p in food_queue:
             pkey = f"{p.name}|{p.google_maps_uri}"
@@ -802,10 +804,10 @@ def _repair_wizard_itinerary_rules(
             if name_key:
                 used_food_names_global.add(name_key)
             return [p.name, p.google_maps_uri]
-        if allow_cross_day_food_reuse:
-            for p in food_queue:
-                if _place_matches_day_focus(p, current_day_focus):
-                    return [p.name, p.google_maps_uri]
+        # 마지막 수단: 미사용 후보가 없으면 지역이 맞는 검증된 식당을 재사용한다.
+        for p in food_queue:
+            if _place_matches_day_focus(p, current_day_focus):
+                return [p.name, p.google_maps_uri]
         return []
 
     def skip_plain_cafe_tail(start_idx: int) -> int:
@@ -927,9 +929,9 @@ def _repair_wizard_itinerary_rules(
                 and day_food_count < 2
                 and not meals_blocked_for_day(current_day)
             ):
-                replacement = next_place_line(
-                    "food", allow_reuse=allow_cross_day_food_reuse
-                )
+                # 식사 슬롯의 "근처 식당" 등 플레이스홀더는 미사용 후보가 없으면
+                # 마지막 수단으로 검증된 식당을 재사용해서라도 실제 카드로 채운다.
+                replacement = next_place_line("food", allow_reuse=True)
                 if replacement:
                     out.extend(replacement)
                     day_food_count += 1
