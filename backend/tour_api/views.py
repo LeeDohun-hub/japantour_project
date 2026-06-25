@@ -699,6 +699,35 @@ def api_maps_transit_route_debug(request):
         return JsonResponse({"ok": False, "error": str(exc)})
 
 
+_ENRICH_FOOD_CAT_RE = re.compile(
+    r"음식점|식당|맛집|레스토랑|분식|한식|중식|일식|양식|카페|커피|베이커리|디저트|제과|"
+    r"restaurant|cafe|coffee|bakery|dessert|food",
+    re.I,
+)
+_ENRICH_BRANCH_TAIL_RE = re.compile(r"(?:본점|신점|구점|\d+호점|지점|점)?")
+
+
+def _enrich_match_is_branch_at_landmark(query: str, name: str, category: str) -> bool:
+    """랜드마크 질의가 그곳에 입점한 음식점/카페로 잘못 매칭됐는지 판단.
+
+    예: 질의 '올림픽공원' → 네이버 인기 1위 '오르빗 올림픽공원점'(카페).
+    이름이 [브랜드]+[질의]+[지점접미사] 구조(질의가 맨 앞이 아님)이고 매칭
+    카테고리가 음식/카페면, 그 장소 자신이 아니라 랜드마크에 입점한 가게로 본다.
+    특정 장소명 하드코딩 없이 구조·카테고리 신호만 사용한다.
+    """
+    if not _ENRICH_FOOD_CAT_RE.search(category or ""):
+        return False
+    q = re.sub(r"\s+", "", query or "")
+    n = re.sub(r"\s+", "", name or "")
+    if not q or q == n or q not in n:
+        return False
+    idx = n.find(q)
+    if idx <= 0:
+        return False  # 질의가 이름 맨 앞 → 그 장소 자신의 이름(예: 개나리아구찜 본점)
+    tail = n[idx + len(q):]
+    return bool(_ENRICH_BRANCH_TAIL_RE.fullmatch(tail))
+
+
 @require_POST
 def api_places_enrich(request):
     """プラン本文の地図URLを場所詳細（写真・評価等）に変換."""
@@ -765,6 +794,10 @@ def api_places_enrich(request):
             if _is_bad_place_query(query):
                 continue
             scored = sclient.search_places(query, display=1, area_hint=_enrich_area_hint) if sclient.is_configured else []
+            if scored and _enrich_match_is_branch_at_landmark(query, scored[0].name, scored[0].category):
+                # 랜드마크 질의가 입점 음식점/카페에 잘못 매칭 → geocode 폴백으로 실제 위치 사용
+                logger.debug("enrich: dropped branch-at-landmark match %r for query %r", scored[0].name, query)
+                scored = []
             if scored:
                 p = scored[0]
                 if p.address and not _addr_matches_dest(p.address):
