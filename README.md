@@ -69,7 +69,7 @@ python backend\manage.py runserver 127.0.0.1:8000
 | システム設計概要 | [docs/system-design-overview.md](./docs/system-design-overview.md) | [docs/system-design-overview_jp.md](./docs/system-design-overview_jp.md) |
 | 基本設計書 | [docs/기본설계서.md](./docs/기본설계서.md) | [docs/基本設計書.md](./docs/基本設計書.md) |
 | 詳細設計書 | [docs/상세설계서.md](./docs/상세설계서.md) | [docs/詳細設計書.md](./docs/詳細設計書.md) |
-| `/chat` 評価サマリー (1枚PPT) | [evaluation/reports/chat_corpus_eval_20260624.md](./evaluation/reports/chat_corpus_eval_20260624.md) | [docs/chat_eval_summary_20260624_jp.pptx](./docs/chat_eval_summary_20260624_jp.pptx) |
+| テスト資料 | [evaluation/reports/chat_corpus_eval_20260624.md](./evaluation/reports/chat_corpus_eval_20260624.md) | [docs/chat_eval_summary_20260624_jp.pptx](./docs/chat_eval_summary_20260624_jp.pptx) |
 
 ## 7. テスト
 
